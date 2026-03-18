@@ -14,7 +14,6 @@ Supported download backends:
 from __future__ import annotations
 
 import logging
-import shutil
 import subprocess
 import urllib.request
 from pathlib import Path
@@ -154,11 +153,6 @@ def _download_huggingface(
             "huggingface_hub is required to download this dataset. "
             "Install it with: pip install huggingface-hub"
         )
-
-    try:
-        from tqdm import tqdm
-    except ImportError:
-        pass
 
     print(f"Downloading from HuggingFace: {repo_id}")
 

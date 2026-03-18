@@ -15,7 +15,7 @@ from __future__ import annotations
 import logging
 import struct
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -53,7 +53,7 @@ class GsplatTrainer:
     def _check_dependencies(self) -> None:
         """Check that required dependencies are available."""
         try:
-            import torch
+            import torch  # noqa: F401
         except ImportError:
             raise ImportError(
                 "PyTorch is required for 3DGS training. "
@@ -61,7 +61,7 @@ class GsplatTrainer:
             )
 
         try:
-            import gsplat
+            import gsplat  # noqa: F401
             self._has_gsplat = True
         except ImportError:
             self._has_gsplat = False
@@ -287,7 +287,7 @@ class GsplatTrainer:
         """Parse COLMAP images.txt."""
         images = {}
         with open(path) as f:
-            lines = [l.strip() for l in f if l.strip() and not l.startswith("#")]
+            lines = [line.strip() for line in f if line.strip() and not line.startswith("#")]
 
         # images.txt has pairs of lines: metadata + 2D points
         for i in range(0, len(lines), 2):
@@ -392,10 +392,10 @@ class GsplatTrainer:
         with open(path, "rb") as f:
             num_points = struct.unpack("<Q", f.read(8))[0]
             for _ in range(num_points):
-                point_id = struct.unpack("<Q", f.read(8))[0]
+                struct.unpack("<Q", f.read(8))[0]  # point_id (unused)
                 x, y, z = struct.unpack("<3d", f.read(24))
                 r, g, b = struct.unpack("<3B", f.read(3))
-                error = struct.unpack("<d", f.read(8))[0]
+                struct.unpack("<d", f.read(8))[0]  # error (unused)
                 track_len = struct.unpack("<Q", f.read(8))[0]
                 # Skip track data
                 f.read(track_len * 8)
@@ -612,7 +612,6 @@ class GsplatTrainer:
         lr_schedule = self.config.get("lr_schedule", {})
         lr_init = lr_schedule.get("position_lr_init", 0.00016)
         lr_final = lr_schedule.get("position_lr_final", 0.0000016)
-        lr_delay_mult = lr_schedule.get("position_lr_delay_mult", 0.01)
         max_steps = lr_schedule.get("position_lr_max_steps", max_iterations)
 
         t = min(iteration / max_steps, 1.0)
@@ -642,8 +641,6 @@ class GsplatTrainer:
         Returns:
             Rendered image tensor of shape (H, W, 3).
         """
-        import torch
-
         if self._has_gsplat:
             return self._render_gsplat(gaussians, viewmat, K, H, W, device)
         else:
@@ -727,9 +724,6 @@ class GsplatTrainer:
         py = py[sort_idx]
         colors_valid = colors_valid[sort_idx]
         opacities_valid = opacities_valid[sort_idx]
-
-        # Splat radius based on scale and depth
-        splat_radius = 2  # pixels
 
         # Initialize output
         output = torch.zeros(H, W, 3, device=device)
@@ -927,8 +921,6 @@ class GsplatTrainer:
             output_path: Path to save the .ply file.
             gaussians: The trained Gaussian model.
         """
-        import torch
-
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
         means = gaussians.means.detach().cpu().numpy()
