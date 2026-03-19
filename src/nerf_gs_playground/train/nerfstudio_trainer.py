@@ -12,7 +12,6 @@ Reference: nerfstudio (https://github.com/nerfstudio-project/nerfstudio)
 from __future__ import annotations
 
 import logging
-import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -76,7 +75,7 @@ class NerfstudioTrainer:
         print(f"Running nerfstudio data processing: {' '.join(cmd)}")
 
         try:
-            result = subprocess.run(
+            subprocess.run(
                 cmd,
                 check=True,
                 text=True,
@@ -135,7 +134,7 @@ class NerfstudioTrainer:
             for key, value in config.items():
                 cmd.extend([f"--{key}", str(value)])
 
-        print(f"Starting nerfstudio training:")
+        print("Starting nerfstudio training:")
         print(f"  Method: {method}")
         print(f"  Data: {data_dir}")
         print(f"  Output: {output_dir}")
