@@ -56,12 +56,12 @@ class GsplatTrainer:
             import torch  # noqa: F401
         except ImportError:
             raise ImportError(
-                "PyTorch is required for 3DGS training. "
-                "Install it from: https://pytorch.org/get-started/locally/"
+                "PyTorch is required for 3DGS training. Install it from: https://pytorch.org/get-started/locally/"
             )
 
         try:
             import gsplat  # noqa: F401
+
             self._has_gsplat = True
         except ImportError:
             self._has_gsplat = False
@@ -159,8 +159,8 @@ class GsplatTrainer:
                 # Accumulate gradients for densification
                 if gaussians.means.grad is not None and densify_from <= iteration <= densify_until:
                     grad_norms = gaussians.means.grad.norm(dim=-1)
-                    grad_accum[:gaussians.num_gaussians] += grad_norms
-                    grad_count[:gaussians.num_gaussians] += 1
+                    grad_accum[: gaussians.num_gaussians] += grad_norms
+                    grad_count[: gaussians.num_gaussians] += 1
 
                 # Densification
                 if densify_from <= iteration <= densify_until and iteration % densify_interval == 0:
@@ -211,9 +211,7 @@ class GsplatTrainer:
 
         return final_path
 
-    def _load_colmap_data(
-        self, data_dir: Path
-    ) -> tuple[dict[int, dict], dict[int, dict], np.ndarray]:
+    def _load_colmap_data(self, data_dir: Path) -> tuple[dict[int, dict], dict[int, dict], np.ndarray]:
         """Load COLMAP sparse model (cameras, images, points3D).
 
         Supports both text and binary COLMAP formats. Looks for sparse model
@@ -235,10 +233,7 @@ class GsplatTrainer:
 
         sparse_dir = None
         for candidate in candidates:
-            if candidate.exists() and (
-                (candidate / "cameras.txt").exists()
-                or (candidate / "cameras.bin").exists()
-            ):
+            if candidate.exists() and ((candidate / "cameras.txt").exists() or (candidate / "cameras.bin").exists()):
                 sparse_dir = candidate
                 break
 
@@ -402,9 +397,7 @@ class GsplatTrainer:
                 points.append([x, y, z, r / 255.0, g / 255.0, b / 255.0])
         return np.array(points) if points else np.zeros((0, 6))
 
-    def _load_images(
-        self, data_dir: Path, images_meta: dict[int, dict], device: Any
-    ) -> list[dict[str, Any]]:
+    def _load_images(self, data_dir: Path, images_meta: dict[int, dict], device: Any) -> list[dict[str, Any]]:
         """Load training images and compute view/projection matrices.
 
         Args:
@@ -459,12 +452,14 @@ class GsplatTrainer:
             tvec = meta["tvec"]  # [tx, ty, tz]
             viewmat = self._quat_tvec_to_viewmat(quat, tvec, device)
 
-            image_data.append({
-                "image": img_tensor,
-                "viewmat": viewmat,
-                "K": K,
-                "name": meta["name"],
-            })
+            image_data.append(
+                {
+                    "image": img_tensor,
+                    "viewmat": viewmat,
+                    "K": K,
+                    "name": meta["name"],
+                }
+            )
 
         return image_data
 
@@ -489,11 +484,15 @@ class GsplatTrainer:
             fx = fy = params[0] if params else cam["width"]
             cx, cy = cam["width"] / 2, cam["height"] / 2
 
-        K = torch.tensor([
-            [fx, 0, cx],
-            [0, fy, cy],
-            [0, 0, 1],
-        ], dtype=torch.float32, device=device)
+        K = torch.tensor(
+            [
+                [fx, 0, cx],
+                [0, fy, cy],
+                [0, 0, 1],
+            ],
+            dtype=torch.float32,
+            device=device,
+        )
         return K
 
     def _quat_tvec_to_viewmat(self, quat: list[float], tvec: list[float], device: Any) -> Any:
@@ -502,11 +501,15 @@ class GsplatTrainer:
 
         qw, qx, qy, qz = quat
         # Quaternion to rotation matrix
-        R = torch.tensor([
-            [1 - 2*(qy*qy + qz*qz), 2*(qx*qy - qz*qw), 2*(qx*qz + qy*qw)],
-            [2*(qx*qy + qz*qw), 1 - 2*(qx*qx + qz*qz), 2*(qy*qz - qx*qw)],
-            [2*(qx*qz - qy*qw), 2*(qy*qz + qx*qw), 1 - 2*(qx*qx + qy*qy)],
-        ], dtype=torch.float32, device=device)
+        R = torch.tensor(
+            [
+                [1 - 2 * (qy * qy + qz * qz), 2 * (qx * qy - qz * qw), 2 * (qx * qz + qy * qw)],
+                [2 * (qx * qy + qz * qw), 1 - 2 * (qx * qx + qz * qz), 2 * (qy * qz - qx * qw)],
+                [2 * (qx * qz - qy * qw), 2 * (qy * qz + qx * qw), 1 - 2 * (qx * qx + qy * qy)],
+            ],
+            dtype=torch.float32,
+            device=device,
+        )
 
         t = torch.tensor(tvec, dtype=torch.float32, device=device)
 
@@ -548,7 +551,8 @@ class GsplatTrainer:
 
         model.scales = torch.tensor(
             np.stack([init_scale, init_scale, init_scale], axis=-1),
-            dtype=torch.float32, device=device,
+            dtype=torch.float32,
+            device=device,
         )
         model.scales.requires_grad_(True)
 
@@ -558,9 +562,7 @@ class GsplatTrainer:
         model.rotations.requires_grad_(True)
 
         # Opacities (sigmoid pre-activation, init to ~0.1)
-        model.opacities = torch.full(
-            (N, 1), fill_value=-2.2, dtype=torch.float32, device=device
-        )  # sigmoid(-2.2) ≈ 0.1
+        model.opacities = torch.full((N, 1), fill_value=-2.2, dtype=torch.float32, device=device)  # sigmoid(-2.2) ≈ 0.1
         model.opacities.requires_grad_(True)
 
         # SH coefficients: DC component from point colors
@@ -589,21 +591,11 @@ class GsplatTrainer:
 
         lr = self.config.get("learning_rate", {})
         optimizers = {
-            "position": torch.optim.Adam(
-                [gaussians.means], lr=lr.get("position", 0.00016)
-            ),
-            "feature": torch.optim.Adam(
-                [gaussians.sh_coeffs], lr=lr.get("feature", 0.0025)
-            ),
-            "opacity": torch.optim.Adam(
-                [gaussians.opacities], lr=lr.get("opacity", 0.05)
-            ),
-            "scaling": torch.optim.Adam(
-                [gaussians.scales], lr=lr.get("scaling", 0.005)
-            ),
-            "rotation": torch.optim.Adam(
-                [gaussians.rotations], lr=lr.get("rotation", 0.001)
-            ),
+            "position": torch.optim.Adam([gaussians.means], lr=lr.get("position", 0.00016)),
+            "feature": torch.optim.Adam([gaussians.sh_coeffs], lr=lr.get("feature", 0.0025)),
+            "opacity": torch.optim.Adam([gaussians.opacities], lr=lr.get("opacity", 0.05)),
+            "scaling": torch.optim.Adam([gaussians.scales], lr=lr.get("scaling", 0.005)),
+            "rotation": torch.optim.Adam([gaussians.rotations], lr=lr.get("rotation", 0.001)),
         }
         return optimizers
 
@@ -617,14 +609,13 @@ class GsplatTrainer:
         t = min(iteration / max_steps, 1.0)
         # Exponential decay
         import math
+
         lr = math.exp(math.log(lr_init) * (1 - t) + math.log(lr_final) * t)
 
         for param_group in optimizer.param_groups:
             param_group["lr"] = lr
 
-    def _render(
-        self, gaussians: GaussianModel, viewmat: Any, K: Any, H: int, W: int, device: Any
-    ) -> Any:
+    def _render(self, gaussians: GaussianModel, viewmat: Any, K: Any, H: int, W: int, device: Any) -> Any:
         """Render an image from the Gaussian model.
 
         Uses gsplat if available, otherwise falls back to a simplified
@@ -646,9 +637,7 @@ class GsplatTrainer:
         else:
             return self._render_simple(gaussians, viewmat, K, H, W, device)
 
-    def _render_gsplat(
-        self, gaussians: GaussianModel, viewmat: Any, K: Any, H: int, W: int, device: Any
-    ) -> Any:
+    def _render_gsplat(self, gaussians: GaussianModel, viewmat: Any, K: Any, H: int, W: int, device: Any) -> Any:
         """Render using the gsplat library."""
         import torch
         from gsplat import rasterization
@@ -678,9 +667,7 @@ class GsplatTrainer:
         )
         return rendered.squeeze(0)  # (H, W, 3)
 
-    def _render_simple(
-        self, gaussians: GaussianModel, viewmat: Any, K: Any, H: int, W: int, device: Any
-    ) -> Any:
+    def _render_simple(self, gaussians: GaussianModel, viewmat: Any, K: Any, H: int, W: int, device: Any) -> Any:
         """Simple differentiable point splatting (fallback without gsplat).
 
         Projects 3D Gaussians to 2D, renders with alpha blending.
@@ -774,8 +761,8 @@ class GsplatTrainer:
         x = img1.permute(2, 0, 1).unsqueeze(0)
         y = img2.permute(2, 0, 1).unsqueeze(0)
 
-        C1 = 0.01 ** 2
-        C2 = 0.03 ** 2
+        C1 = 0.01**2
+        C2 = 0.03**2
 
         # Simple 11x11 uniform window
         window_size = 11
@@ -786,8 +773,8 @@ class GsplatTrainer:
         mu_x = F.conv2d(x, window, padding=pad, groups=3)
         mu_y = F.conv2d(y, window, padding=pad, groups=3)
 
-        mu_x_sq = mu_x ** 2
-        mu_y_sq = mu_y ** 2
+        mu_x_sq = mu_x**2
+        mu_y_sq = mu_y**2
         mu_xy = mu_x * mu_y
 
         sigma_x_sq = F.conv2d(x * x, window, padding=pad, groups=3) - mu_x_sq
@@ -800,9 +787,7 @@ class GsplatTrainer:
 
         return ssim_map.mean()
 
-    def _densify_and_prune(
-        self, gaussians: GaussianModel, avg_grad: Any, optimizers: dict, device: Any
-    ) -> None:
+    def _densify_and_prune(self, gaussians: GaussianModel, avg_grad: Any, optimizers: dict, device: Any) -> None:
         """Densify (split/clone) and prune Gaussians based on gradients.
 
         Args:
@@ -866,7 +851,9 @@ class GsplatTrainer:
 
         logger.debug(
             "Densification: cloned=%d, split=%d, total=%d",
-            num_clone, num_split, gaussians.num_gaussians,
+            num_clone,
+            num_split,
+            gaussians.num_gaussians,
         )
 
     def _extend_gaussians(
@@ -948,7 +935,9 @@ class GsplatTrainer:
         for i in range(num_sh):
             for c in range(3):
                 ch = ["r", "g", "b"][c]
-                header_lines.append(f"property float f_dc_{i}_{ch}" if i == 0 else f"property float f_rest_{(i-1)*3+c}")
+                header_lines.append(
+                    f"property float f_dc_{i}_{ch}" if i == 0 else f"property float f_rest_{(i - 1) * 3 + c}"
+                )
 
         # Flatten SH naming for compatibility with standard 3DGS format
         header_lines = [
@@ -963,11 +952,13 @@ class GsplatTrainer:
             "property float nz",
         ]
         # DC component
-        header_lines.extend([
-            "property float f_dc_0",
-            "property float f_dc_1",
-            "property float f_dc_2",
-        ])
+        header_lines.extend(
+            [
+                "property float f_dc_0",
+                "property float f_dc_1",
+                "property float f_dc_2",
+            ]
+        )
         # Rest SH coefficients
         for i in range(1, num_sh):
             for c in range(3):
@@ -975,17 +966,21 @@ class GsplatTrainer:
                 header_lines.append(f"property float f_rest_{idx}")
 
         header_lines.append("property float opacity")
-        header_lines.extend([
-            "property float scale_0",
-            "property float scale_1",
-            "property float scale_2",
-        ])
-        header_lines.extend([
-            "property float rot_0",
-            "property float rot_1",
-            "property float rot_2",
-            "property float rot_3",
-        ])
+        header_lines.extend(
+            [
+                "property float scale_0",
+                "property float scale_1",
+                "property float scale_2",
+            ]
+        )
+        header_lines.extend(
+            [
+                "property float rot_0",
+                "property float rot_1",
+                "property float rot_2",
+                "property float rot_3",
+            ]
+        )
         header_lines.append("end_header")
 
         header = "\n".join(header_lines) + "\n"

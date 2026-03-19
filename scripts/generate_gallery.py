@@ -2,7 +2,6 @@
 """Download sample images and generate realistic training metrics for the 3DGS playground demo."""
 
 import json
-import os
 import urllib.request
 from pathlib import Path
 
@@ -122,11 +121,7 @@ def generate_training_metrics():
         losses = []
         for i, it in enumerate(iterations):
             t = it / 30000
-            loss = (
-                base_loss * np.exp(-3 * t)
-                + 0.01
-                + np.random.normal(0, 0.003 * (1 - t))
-            )
+            loss = base_loss * np.exp(-3 * t) + 0.01 + np.random.normal(0, 0.003 * (1 - t))
             losses.append(round(max(0.005, float(loss)), 6))
 
         # PSNR - starts low (~15dB), increases to ~28-32dB
@@ -134,11 +129,7 @@ def generate_training_metrics():
         psnrs = []
         for i, it in enumerate(iterations):
             t = it / 30000
-            psnr = (
-                14
-                + (peak_psnr - 14) * (1 - np.exp(-4 * t))
-                + np.random.normal(0, 0.3 * (1 - t))
-            )
+            psnr = 14 + (peak_psnr - 14) * (1 - np.exp(-4 * t)) + np.random.normal(0, 0.3 * (1 - t))
             psnrs.append(round(float(psnr), 3))
 
         # Number of Gaussians - grows during densification, drops at pruning
@@ -160,11 +151,7 @@ def generate_training_metrics():
         ssims = []
         for i, it in enumerate(iterations):
             t = it / 30000
-            ssim = (
-                0.5
-                + (peak_ssim - 0.5) * (1 - np.exp(-3.5 * t))
-                + np.random.normal(0, 0.01 * (1 - t))
-            )
+            ssim = 0.5 + (peak_ssim - 0.5) * (1 - np.exp(-3.5 * t)) + np.random.normal(0, 0.01 * (1 - t))
             ssims.append(round(float(min(1.0, max(0.4, ssim))), 4))
 
         metrics[scene_name] = {
@@ -191,10 +178,7 @@ def generate_scenes_json():
             "name": scene_info["name"],
             "dataset": scene_info["dataset"],
             "description": scene_info["description"],
-            "images": [
-                f"gallery/{scene_key}/{filename}"
-                for _, filename in scene_info["images"]
-            ],
+            "images": [f"gallery/{scene_key}/{filename}" for _, filename in scene_info["images"]],
         }
     return scenes
 

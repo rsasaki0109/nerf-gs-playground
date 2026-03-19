@@ -167,16 +167,17 @@ class GaussianViewer:
         )
 
         url = f"http://localhost:{self.port}" if self.host == "0.0.0.0" else f"http://{self.host}:{self.port}"
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print(f"  3D Viewer: {title}")
         print(f"  Points: {len(data.positions):,}")
         print(f"  Open in browser: {url}")
-        print(f"{'='*60}")
+        print(f"{'=' * 60}")
         print("  Press Ctrl+C to stop the viewer.\n")
 
         try:
             while True:
                 import time
+
                 time.sleep(1.0)
         except KeyboardInterrupt:
             print("\nViewer stopped.")
@@ -304,11 +305,13 @@ def load_ply(path: Path | str) -> PLYData:
     # Extract normals
     normals = None
     if "nx" in prop_indices:
-        normals = np.column_stack([
-            data[:, prop_indices["nx"]],
-            data[:, prop_indices["ny"]],
-            data[:, prop_indices["nz"]],
-        ])
+        normals = np.column_stack(
+            [
+                data[:, prop_indices["nx"]],
+                data[:, prop_indices["ny"]],
+                data[:, prop_indices["nz"]],
+            ]
+        )
 
     # Check if this is a Gaussian splat file
     is_gs = "scale_0" in prop_indices and "rot_0" in prop_indices
@@ -318,17 +321,21 @@ def load_ply(path: Path | str) -> PLYData:
     opacities = None
 
     if is_gs:
-        scales = np.column_stack([
-            data[:, prop_indices["scale_0"]],
-            data[:, prop_indices["scale_1"]],
-            data[:, prop_indices["scale_2"]],
-        ])
-        rotations = np.column_stack([
-            data[:, prop_indices["rot_0"]],
-            data[:, prop_indices["rot_1"]],
-            data[:, prop_indices["rot_2"]],
-            data[:, prop_indices["rot_3"]],
-        ])
+        scales = np.column_stack(
+            [
+                data[:, prop_indices["scale_0"]],
+                data[:, prop_indices["scale_1"]],
+                data[:, prop_indices["scale_2"]],
+            ]
+        )
+        rotations = np.column_stack(
+            [
+                data[:, prop_indices["rot_0"]],
+                data[:, prop_indices["rot_1"]],
+                data[:, prop_indices["rot_2"]],
+                data[:, prop_indices["rot_3"]],
+            ]
+        )
         if "opacity" in prop_indices:
             opacities = data[:, prop_indices["opacity"]]
 
@@ -354,9 +361,7 @@ def _read_ply_ascii(f, num_vertices: int, num_properties: int) -> np.ndarray:
     return data
 
 
-def _read_ply_binary_le(
-    f, num_vertices: int, properties: list[tuple[str, str]]
-) -> np.ndarray:
+def _read_ply_binary_le(f, num_vertices: int, properties: list[tuple[str, str]]) -> np.ndarray:
     """Read binary little-endian PLY vertex data."""
     # Map PLY types to struct format and numpy dtype
     type_map = {

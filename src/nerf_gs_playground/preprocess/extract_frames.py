@@ -49,10 +49,7 @@ def extract_frames(
     try:
         import cv2
     except ImportError:
-        raise ImportError(
-            "OpenCV is required for frame extraction. "
-            "Install it with: pip install opencv-python"
-        )
+        raise ImportError("OpenCV is required for frame extraction. Install it with: pip install opencv-python")
 
     video_path = Path(video_path)
     output_dir = Path(output_dir)
@@ -101,6 +98,7 @@ def extract_frames(
 
     try:
         from tqdm import tqdm
+
         progress = tqdm(total=min(total_frames, (max_frames or total_frames) * frame_interval), desc="Extracting")
     except ImportError:
         progress = None
@@ -166,9 +164,7 @@ def extract_frames_from_dir(
     if not input_dir.exists():
         raise FileNotFoundError(f"Input directory not found: {input_dir}")
 
-    video_files = sorted(
-        p for p in input_dir.iterdir() if p.suffix.lower() in VIDEO_EXTENSIONS
-    )
+    video_files = sorted(p for p in input_dir.iterdir() if p.suffix.lower() in VIDEO_EXTENSIONS)
 
     if not video_files:
         print(f"No video files found in {input_dir}")
