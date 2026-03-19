@@ -8,6 +8,12 @@ One-command pipelines to go from robotics/autonomous driving dataset images to 3
 
 ロボティクス・自動運転データセットから3D Gaussian Splattingの学習、Webビューアでの可視化までをワンコマンドで実行できるツールです。
 
+## Live Demo
+
+**https://rsasaki0109.github.io/nerf-gs-playground/**
+
+The demo page features an interactive Three.js 3D point cloud viewer and Plotly.js training metrics charts. You can explore reconstructed scenes directly in the browser without any local setup.
+
 ## Concept
 
 ```

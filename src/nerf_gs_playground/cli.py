@@ -43,8 +43,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     pp.add_argument("--fps", type=float, default=2.0, help="FPS for frame extraction (default: 2)")
     pp.add_argument("--max-frames", type=int, default=100, help="Max frames to extract (default: 100)")
-    pp.add_argument("--matching", choices=["exhaustive", "sequential"], default="exhaustive",
-                     help="COLMAP matching strategy (default: exhaustive)")
+    pp.add_argument(
+        "--matching",
+        choices=["exhaustive", "sequential"],
+        default="exhaustive",
+        help="COLMAP matching strategy (default: exhaustive)",
+    )
     pp.add_argument("--no-gpu", action="store_true", help="Disable GPU for COLMAP")
 
     # train
@@ -145,6 +149,7 @@ def cmd_train(args: argparse.Namespace) -> None:
     config = None
     if args.config:
         from nerf_gs_playground.common.config import load_config
+
         config = load_config(args.config)
 
     if args.method == "gsplat":

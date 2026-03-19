@@ -150,8 +150,7 @@ def _download_huggingface(
         from huggingface_hub import snapshot_download
     except ImportError:
         raise RuntimeError(
-            "huggingface_hub is required to download this dataset. "
-            "Install it with: pip install huggingface-hub"
+            "huggingface_hub is required to download this dataset. Install it with: pip install huggingface-hub"
         )
 
     print(f"Downloading from HuggingFace: {repo_id}")
@@ -233,10 +232,7 @@ def _download_gdown(file_id: str, output_dir: Path) -> None:
     try:
         import gdown
     except ImportError:
-        raise RuntimeError(
-            "gdown is required to download from Google Drive. "
-            "Install it with: pip install gdown"
-        )
+        raise RuntimeError("gdown is required to download from Google Drive. Install it with: pip install gdown")
 
     url = f"https://drive.google.com/uc?id={file_id}"
     print(f"Downloading from Google Drive: {file_id}")
@@ -295,9 +291,7 @@ def _create_download_instructions(name: str, config: dict[str, Any], output_dir:
             instructions += f"- Description: {sub_config.get('description', 'N/A')}\n"
             instructions += f"- URL: {sub_config.get('url', 'N/A')}\n"
 
-    instructions += (
-        f"\nPlease download the data manually and place it in:\n  {output_dir}\n"
-    )
+    instructions += f"\nPlease download the data manually and place it in:\n  {output_dir}\n"
 
     readme_path = output_dir / "DOWNLOAD_INSTRUCTIONS.md"
     readme_path.write_text(instructions)

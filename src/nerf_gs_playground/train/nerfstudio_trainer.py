@@ -68,8 +68,10 @@ class NerfstudioTrainer:
         cmd = [
             "ns-process-data",
             "images",
-            "--data", str(data_dir),
-            "--output-dir", str(output_dir),
+            "--data",
+            str(data_dir),
+            "--output-dir",
+            str(output_dir),
         ]
 
         print(f"Running nerfstudio data processing: {' '.join(cmd)}")
@@ -124,9 +126,12 @@ class NerfstudioTrainer:
         cmd = [
             "ns-train",
             method,
-            "--data", str(data_dir),
-            "--output-dir", str(output_dir),
-            "--max-num-iterations", str(num_iterations),
+            "--data",
+            str(data_dir),
+            "--output-dir",
+            str(output_dir),
+            "--max-num-iterations",
+            str(num_iterations),
         ]
 
         # Add any additional config overrides
@@ -160,9 +165,7 @@ class NerfstudioTrainer:
                 raise RuntimeError(f"nerfstudio training failed with return code {process.returncode}")
 
         except FileNotFoundError:
-            raise ImportError(
-                "ns-train command not found. Is nerfstudio installed and on PATH?"
-            )
+            raise ImportError("ns-train command not found. Is nerfstudio installed and on PATH?")
 
         print(f"\nNerfstudio training complete. Output at: {output_dir}")
         return output_dir
@@ -188,8 +191,10 @@ class NerfstudioTrainer:
         cmd = [
             "ns-export",
             "gaussian-splat",
-            "--load-config", str(config_path),
-            "--output-dir", str(output_path.parent),
+            "--load-config",
+            str(config_path),
+            "--output-dir",
+            str(output_path.parent),
         ]
 
         print(f"Exporting model to PLY: {' '.join(cmd)}")
