@@ -4,6 +4,8 @@ Multi-dataset 3D Gaussian Splatting reconstruction playground.
 
 One-command pipelines to go from robotics/autonomous driving dataset images to 3DGS training to interactive web viewer.
 
+![Training Metrics](docs/demo_training.png)
+
 ---
 
 ロボティクス・自動運転データセットから3D Gaussian Splattingの学習、Webビューアでの可視化までをワンコマンドで実行できるツールです。
