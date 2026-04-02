@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate demo images for nerf-gs-playground README."""
+"""Generate demo images for gs-sim2real README."""
 
 import matplotlib
 matplotlib.use('Agg')
