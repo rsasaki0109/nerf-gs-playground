@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from gs_sim2real.cli import build_parser, main
@@ -34,6 +36,61 @@ class TestCLIHelp:
             main(["train", "--help"])
         assert exc_info.value.code == 0
 
+    def test_cmd_train_gsplat_fails_fast_without_colmap(self, tmp_path: Path) -> None:
+        """gsplat training should reject data dirs with no COLMAP sparse model."""
+        from gs_sim2real import cli
+
+        data = tmp_path / "empty"
+        data.mkdir()
+        args = build_parser().parse_args(
+            [
+                "train",
+                "--data",
+                str(data),
+                "--output",
+                str(tmp_path / "out"),
+                "--method",
+                "gsplat",
+                "--iterations",
+                "1",
+            ]
+        )
+        with pytest.raises(FileNotFoundError, match="No COLMAP sparse"):
+            cli.cmd_train(args)
+
+    def test_cmd_train_gsplat_skip_data_check(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """--skip-data-check should bypass preflight (train_gsplat may still fail later)."""
+        from gs_sim2real import cli
+        from gs_sim2real.train import gsplat_trainer as gsplat_module
+
+        data = tmp_path / "empty"
+        data.mkdir()
+        out = tmp_path / "tout"
+        out.mkdir()
+
+        def fake_train_gsplat(data_dir, output_dir, config=None, num_iterations=30000):
+            del data_dir, output_dir, config, num_iterations
+            ply = out / "point_cloud.ply"
+            ply.write_bytes(b"ply")
+            return ply
+
+        monkeypatch.setattr(gsplat_module, "train_gsplat", fake_train_gsplat)
+        args = build_parser().parse_args(
+            [
+                "train",
+                "--data",
+                str(data),
+                "--output",
+                str(out),
+                "--method",
+                "gsplat",
+                "--iterations",
+                "1",
+                "--skip-data-check",
+            ]
+        )
+        cli.cmd_train(args)
+
     def test_cli_view_help(self) -> None:
         """Running view --help raises SystemExit(0)."""
         with pytest.raises(SystemExit) as exc_info:
@@ -44,6 +101,12 @@ class TestCLIHelp:
         """Running run --help raises SystemExit(0)."""
         with pytest.raises(SystemExit) as exc_info:
             main(["run", "--help"])
+        assert exc_info.value.code == 0
+
+    def test_cli_benchmark_help(self) -> None:
+        """Running benchmark --help raises SystemExit(0)."""
+        with pytest.raises(SystemExit) as exc_info:
+            main(["benchmark", "--help"])
         assert exc_info.value.code == 0
 
     def test_cli_robotics_node_help(self) -> None:
@@ -262,6 +325,875 @@ class TestCLIHelp:
         assert args.scene_id == "demo-room"
         assert args.label == "Demo Room"
         assert args.description == "GitHub Pages demo scene"
+
+    def test_cli_preprocess_waymo_optional_extraction_flags(self) -> None:
+        """preprocess parser accepts Waymo depth and mask extraction toggles."""
+        args = build_parser().parse_args(
+            [
+                "preprocess",
+                "--images",
+                "data/waymo",
+                "--method",
+                "waymo",
+                "--camera",
+                "FRONT_LEFT",
+                "--extract-lidar-depth",
+                "--extract-dynamic-masks",
+            ]
+        )
+        assert args.method == "waymo"
+        assert args.camera == "FRONT_LEFT"
+        assert args.extract_lidar_depth is True
+        assert args.extract_dynamic_masks is True
+
+    def test_cli_preprocess_accepts_colmap_path(self) -> None:
+        """preprocess parser accepts a custom COLMAP executable path."""
+        args = build_parser().parse_args(
+            [
+                "preprocess",
+                "--images",
+                "data/images",
+                "--method",
+                "colmap",
+                "--colmap-path",
+                "/opt/colmap/bin/colmap",
+            ]
+        )
+        assert args.method == "colmap"
+        assert args.colmap_path == "/opt/colmap/bin/colmap"
+
+    def test_cli_preprocess_mcd_optional_extraction_flags(self) -> None:
+        """preprocess parser accepts MCD topic and extraction settings."""
+        args = build_parser().parse_args(
+            [
+                "preprocess",
+                "--images",
+                "data/mcd",
+                "--method",
+                "mcd",
+                "--image-topic",
+                "/d455t/color/image_raw",
+                "--lidar-topic",
+                "/os_cloud_node/points",
+                "--imu-topic",
+                "/vn200/imu",
+                "--extract-lidar",
+                "--extract-imu",
+            ]
+        )
+        assert args.method == "mcd"
+        assert args.image_topic == "/d455t/color/image_raw"
+        assert args.lidar_topic == "/os_cloud_node/points"
+        assert args.imu_topic == "/vn200/imu"
+        assert args.extract_lidar is True
+        assert args.extract_imu is True
+
+    def test_cli_preprocess_mcd_lidar_seed_flags(self) -> None:
+        """preprocess parser accepts MCD LiDAR seed flags."""
+        args = build_parser().parse_args(
+            [
+                "preprocess",
+                "--images",
+                "data/mcd",
+                "--method",
+                "mcd",
+                "--mcd-lidar-frame",
+                "os_sensor",
+                "--mcd-skip-lidar-seed",
+            ]
+        )
+        assert args.mcd_lidar_frame == "os_sensor"
+        assert args.mcd_skip_lidar_seed is True
+
+    def test_cli_preprocess_mcd_lidar_seed_flags_defaults(self) -> None:
+        """preprocess parser defaults for MCD LiDAR seed flags are empty/false."""
+        args = build_parser().parse_args(["preprocess", "--images", "data/mcd", "--method", "mcd"])
+        assert args.mcd_lidar_frame == ""
+        assert args.mcd_skip_lidar_seed is False
+
+    def test_cli_preprocess_mcd_list_topics_flag(self) -> None:
+        """preprocess parser accepts MCD topic listing mode."""
+        args = build_parser().parse_args(
+            [
+                "preprocess",
+                "--images",
+                "data/mcd",
+                "--method",
+                "mcd",
+                "--list-topics",
+            ]
+        )
+        assert args.method == "mcd"
+        assert args.list_topics is True
+
+    def test_cli_preprocess_lidar_slam_accepts_nmea_format(self) -> None:
+        """preprocess parser accepts NMEA trajectory input for lidar-slam."""
+        args = build_parser().parse_args(
+            [
+                "preprocess",
+                "--images",
+                "data/images",
+                "--method",
+                "lidar-slam",
+                "--trajectory",
+                "data/gnss.nmea",
+                "--trajectory-format",
+                "nmea",
+            ]
+        )
+        assert args.method == "lidar-slam"
+        assert args.trajectory == "data/gnss.nmea"
+        assert args.trajectory_format == "nmea"
+
+    def test_cli_run_lidar_slam_flags(self) -> None:
+        """run parser accepts lidar-slam trajectory settings."""
+        args = build_parser().parse_args(
+            [
+                "run",
+                "--images",
+                "data/images",
+                "--preprocess-method",
+                "lidar-slam",
+                "--trajectory",
+                "data/poses.nmea",
+                "--trajectory-format",
+                "nmea",
+                "--pointcloud",
+                "data/cloud.ply",
+            ]
+        )
+        assert args.preprocess_method == "lidar-slam"
+        assert args.trajectory == "data/poses.nmea"
+        assert args.trajectory_format == "nmea"
+        assert args.pointcloud == "data/cloud.ply"
+
+    def test_cli_run_waymo_flags(self) -> None:
+        """run parser accepts Waymo extraction settings."""
+        args = build_parser().parse_args(
+            [
+                "run",
+                "--images",
+                "data/waymo",
+                "--preprocess-method",
+                "waymo",
+                "--camera",
+                "FRONT_LEFT",
+                "--extract-lidar-depth",
+                "--extract-dynamic-masks",
+            ]
+        )
+        assert args.preprocess_method == "waymo"
+        assert args.camera == "FRONT_LEFT"
+        assert args.extract_lidar_depth is True
+        assert args.extract_dynamic_masks is True
+
+    def test_cli_run_accepts_colmap_path(self) -> None:
+        """run parser accepts a custom COLMAP executable path."""
+        args = build_parser().parse_args(
+            [
+                "run",
+                "--images",
+                "data/images",
+                "--colmap-path",
+                "/opt/colmap/bin/colmap",
+            ]
+        )
+        assert args.colmap_path == "/opt/colmap/bin/colmap"
+
+    def test_cli_run_accepts_no_gpu(self) -> None:
+        """run parser accepts disabling GPU for COLMAP preprocessing."""
+        args = build_parser().parse_args(
+            [
+                "run",
+                "--images",
+                "data/images",
+                "--no-gpu",
+            ]
+        )
+        assert args.no_gpu is True
+
+    def test_cli_run_accepts_matching(self) -> None:
+        """run parser accepts COLMAP matching strategy overrides."""
+        args = build_parser().parse_args(
+            [
+                "run",
+                "--images",
+                "data/images",
+                "--matching",
+                "sequential",
+            ]
+        )
+        assert args.matching == "sequential"
+
+    def test_cli_run_accepts_config(self) -> None:
+        """run parser accepts a training config override path."""
+        args = build_parser().parse_args(
+            [
+                "run",
+                "--images",
+                "data/images",
+                "--config",
+                "configs/training_outdoor.yaml",
+            ]
+        )
+        assert args.config == "configs/training_outdoor.yaml"
+
+    def test_cli_run_mcd_flags(self) -> None:
+        """run parser accepts MCD extraction settings."""
+        args = build_parser().parse_args(
+            [
+                "run",
+                "--images",
+                "data/mcd",
+                "--preprocess-method",
+                "mcd",
+                "--image-topic",
+                "/d455t/color/image_raw",
+                "--extract-lidar",
+                "--extract-imu",
+            ]
+        )
+        assert args.preprocess_method == "mcd"
+        assert args.image_topic == "/d455t/color/image_raw"
+        assert args.extract_lidar is True
+        assert args.extract_imu is True
+
+    def test_cli_demo_lidar_slam_flags(self) -> None:
+        """demo parser accepts lidar-slam trajectory settings."""
+        args = build_parser().parse_args(
+            [
+                "demo",
+                "--images",
+                "data/images",
+                "--preprocess-method",
+                "lidar-slam",
+                "--trajectory",
+                "data/poses.txt",
+                "--trajectory-format",
+                "tum",
+            ]
+        )
+        assert args.preprocess_method == "lidar-slam"
+        assert args.trajectory == "data/poses.txt"
+        assert args.trajectory_format == "tum"
+
+    def test_cli_demo_waymo_flags(self) -> None:
+        """demo parser accepts Waymo extraction settings."""
+        args = build_parser().parse_args(
+            [
+                "demo",
+                "--images",
+                "data/waymo",
+                "--preprocess-method",
+                "waymo",
+                "--camera",
+                "SIDE_LEFT",
+                "--extract-lidar-depth",
+            ]
+        )
+        assert args.preprocess_method == "waymo"
+        assert args.camera == "SIDE_LEFT"
+        assert args.extract_lidar_depth is True
+
+    def test_cli_demo_accepts_colmap_path(self) -> None:
+        """demo parser accepts a custom COLMAP executable path."""
+        args = build_parser().parse_args(
+            [
+                "demo",
+                "--images",
+                "data/images",
+                "--colmap-path",
+                "/opt/colmap/bin/colmap",
+            ]
+        )
+        assert args.colmap_path == "/opt/colmap/bin/colmap"
+
+    def test_cli_demo_accepts_no_gpu(self) -> None:
+        """demo parser accepts disabling GPU for COLMAP preprocessing."""
+        args = build_parser().parse_args(
+            [
+                "demo",
+                "--images",
+                "data/images",
+                "--no-gpu",
+            ]
+        )
+        assert args.no_gpu is True
+
+    def test_cli_demo_accepts_matching(self) -> None:
+        """demo parser accepts COLMAP matching strategy overrides."""
+        args = build_parser().parse_args(
+            [
+                "demo",
+                "--images",
+                "data/images",
+                "--matching",
+                "sequential",
+            ]
+        )
+        assert args.matching == "sequential"
+
+    def test_cli_demo_accepts_config(self) -> None:
+        """demo parser accepts a training config override path."""
+        args = build_parser().parse_args(
+            [
+                "demo",
+                "--images",
+                "data/images",
+                "--config",
+                "configs/training_outdoor.yaml",
+            ]
+        )
+        assert args.config == "configs/training_outdoor.yaml"
+
+    def test_cli_demo_mcd_flags(self) -> None:
+        """demo parser accepts MCD extraction settings."""
+        args = build_parser().parse_args(
+            [
+                "demo",
+                "--images",
+                "data/mcd",
+                "--preprocess-method",
+                "mcd",
+                "--image-topic",
+                "/d455b/color/image_raw",
+                "--extract-lidar",
+            ]
+        )
+        assert args.preprocess_method == "mcd"
+        assert args.image_topic == "/d455b/color/image_raw"
+        assert args.extract_lidar is True
+
+    def test_cmd_preprocess_waymo_runs_optional_extractions(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Waymo preprocess should call optional depth and mask extractors when requested."""
+        from gs_sim2real import cli
+        from gs_sim2real.datasets import waymo as waymo_module
+
+        calls: list[tuple[str, str, str, int, int]] = []
+
+        class FakeWaymoLoader:
+            def __init__(self, data_dir: str):
+                calls.append(("init", data_dir, "", 0, 0))
+
+            def extract_frames(self, output_dir: str, camera: str, max_frames: int, every_n: int) -> str:
+                calls.append(("frames", output_dir, camera, max_frames, every_n))
+                return str(tmp_path / "out" / "images")
+
+            def extract_lidar_depth(self, output_dir: str, camera: str, max_frames: int, every_n: int) -> str:
+                calls.append(("depth", output_dir, camera, max_frames, every_n))
+                return str(tmp_path / "out" / "depth")
+
+            def extract_dynamic_masks(self, output_dir: str, camera: str, max_frames: int, every_n: int) -> str:
+                calls.append(("masks", output_dir, camera, max_frames, every_n))
+                return str(tmp_path / "out" / "masks")
+
+        monkeypatch.setattr(waymo_module, "WaymoLoader", FakeWaymoLoader)
+
+        args = build_parser().parse_args(
+            [
+                "preprocess",
+                "--images",
+                str(tmp_path / "waymo"),
+                "--output",
+                str(tmp_path / "out"),
+                "--method",
+                "waymo",
+                "--camera",
+                "FRONT_RIGHT",
+                "--max-frames",
+                "12",
+                "--every-n",
+                "3",
+                "--extract-lidar-depth",
+                "--extract-dynamic-masks",
+            ]
+        )
+
+        cli.cmd_preprocess(args)
+
+        assert calls == [
+            ("init", str(tmp_path / "waymo"), "", 0, 0),
+            ("frames", str(tmp_path / "out"), "FRONT_RIGHT", 12, 3),
+            ("depth", str(tmp_path / "out"), "FRONT_RIGHT", 12, 3),
+            ("masks", str(tmp_path / "out"), "FRONT_RIGHT", 12, 3),
+        ]
+
+        out = capsys.readouterr().out
+        assert "Waymo frames loaded from:" in out
+        assert "Waymo LiDAR depth extracted to:" in out
+        assert "Waymo dynamic masks extracted to:" in out
+
+    def test_cmd_preprocess_mcd_runs_optional_extractions(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """MCD preprocess should call optional LiDAR and IMU extractors when requested."""
+        from gs_sim2real import cli
+        from gs_sim2real.datasets import mcd as mcd_module
+
+        calls: list[tuple[str, str, str, int, int | None]] = []
+
+        class FakeMCDLoader:
+            def __init__(self, data_dir: str):
+                calls.append(("init", data_dir, "", 0, None))
+
+            def extract_frames(
+                self, output_dir: str, image_topic: str | None, max_frames: int, every_n: int, **kwargs
+            ) -> str:
+                del kwargs
+                calls.append(("frames", output_dir, image_topic or "", max_frames, every_n))
+                return str(tmp_path / "out" / "images")
+
+            def extract_lidar(
+                self, output_dir: str, lidar_topic: str | None, max_frames: int, every_n: int, **kwargs
+            ) -> str:
+                del kwargs
+                calls.append(("lidar", output_dir, lidar_topic or "", max_frames, every_n))
+                return str(tmp_path / "out" / "lidar")
+
+            def extract_imu(self, output_dir: str, imu_topic: str | None) -> str:
+                calls.append(("imu", output_dir, imu_topic or "", 0, None))
+                return str(tmp_path / "out" / "imu.csv")
+
+        monkeypatch.setattr(mcd_module, "MCDLoader", FakeMCDLoader)
+
+        args = build_parser().parse_args(
+            [
+                "preprocess",
+                "--images",
+                str(tmp_path / "mcd"),
+                "--output",
+                str(tmp_path / "out"),
+                "--method",
+                "mcd",
+                "--image-topic",
+                "/d455t/color/image_raw",
+                "--lidar-topic",
+                "/os_cloud_node/points",
+                "--imu-topic",
+                "/vn200/imu",
+                "--max-frames",
+                "8",
+                "--every-n",
+                "2",
+                "--extract-lidar",
+                "--extract-imu",
+            ]
+        )
+
+        cli.cmd_preprocess(args)
+
+        assert calls == [
+            ("init", str(tmp_path / "mcd"), "", 0, None),
+            ("frames", str(tmp_path / "out"), "/d455t/color/image_raw", 8, 2),
+            ("lidar", str(tmp_path / "out"), "/os_cloud_node/points", 8, 2),
+            ("imu", str(tmp_path / "out"), "/vn200/imu", 0, None),
+        ]
+
+        out = capsys.readouterr().out
+        assert "MCD frames available at:" in out
+        assert "MCD LiDAR extracted to:" in out
+        assert "MCD IMU extracted to:" in out
+
+    def test_cmd_preprocess_colmap_passes_custom_colmap_path(self, monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+        """Plain COLMAP preprocess should forward --colmap-path to run_colmap."""
+        from gs_sim2real import cli
+        from gs_sim2real.preprocess import colmap as colmap_module
+
+        calls: list[tuple[str, str, str, bool, str, bool]] = []
+
+        def fake_run_colmap(
+            image_dir,
+            output_dir,
+            matching="exhaustive",
+            gpu_index=0,
+            use_gpu=True,
+            colmap_path="colmap",
+            single_camera_per_folder=False,
+        ):
+            del gpu_index
+            calls.append((str(image_dir), str(output_dir), matching, use_gpu, colmap_path, single_camera_per_folder))
+            return tmp_path / "out" / "sparse" / "0"
+
+        monkeypatch.setattr(colmap_module, "run_colmap", fake_run_colmap)
+
+        args = build_parser().parse_args(
+            [
+                "preprocess",
+                "--images",
+                str(tmp_path / "images"),
+                "--output",
+                str(tmp_path / "out"),
+                "--method",
+                "colmap",
+                "--matching",
+                "sequential",
+                "--no-gpu",
+                "--colmap-path",
+                "/opt/colmap/bin/colmap",
+            ]
+        )
+
+        cli.cmd_preprocess(args)
+
+        assert calls == [
+            (
+                str(tmp_path / "images"),
+                str(tmp_path / "out"),
+                "sequential",
+                False,
+                "/opt/colmap/bin/colmap",
+                False,
+            )
+        ]
+
+    def test_cmd_preprocess_mcd_list_topics_mode(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """MCD topic listing mode should print topics and skip extraction."""
+        from gs_sim2real import cli
+        from gs_sim2real.datasets import mcd as mcd_module
+
+        calls: list[str] = []
+
+        class FakeMCDLoader:
+            def __init__(self, data_dir: str):
+                calls.append(f"init:{data_dir}")
+
+            def list_topics(self):
+                calls.append("list_topics")
+                return [
+                    {
+                        "topic": "/d455t/color/image_raw",
+                        "msgtype": "sensor_msgs/msg/Image",
+                        "msgcount": 12,
+                        "role": "image",
+                        "is_preferred_default": True,
+                    },
+                    {
+                        "topic": "/vn200/imu",
+                        "msgtype": "sensor_msgs/msg/Imu",
+                        "msgcount": 400,
+                        "role": "imu",
+                        "is_preferred_default": True,
+                    },
+                ]
+
+            def extract_frames(self, *args, **kwargs):
+                raise AssertionError("extract_frames should not run in list-topics mode")
+
+        monkeypatch.setattr(mcd_module, "MCDLoader", FakeMCDLoader)
+
+        args = build_parser().parse_args(
+            [
+                "preprocess",
+                "--images",
+                str(tmp_path / "mcd"),
+                "--method",
+                "mcd",
+                "--list-topics",
+            ]
+        )
+
+        cli.cmd_preprocess(args)
+
+        assert calls == [f"init:{tmp_path / 'mcd'}", "list_topics"]
+        out = capsys.readouterr().out
+        assert "MCD rosbag topics:" in out
+        assert "[image] /d455t/color/image_raw" in out
+        assert "default" in out
+
+    def test_cmd_run_mcd_extracts_frames_then_runs_colmap_and_training(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """run should support MCD bags by extracting frames before COLMAP and training."""
+        from gs_sim2real import cli
+        from gs_sim2real.datasets import mcd as mcd_module
+        from gs_sim2real.preprocess import colmap as colmap_module
+        from gs_sim2real.train import gsplat_trainer as gsplat_module
+
+        calls: list[tuple[str, str, str]] = []
+
+        class FakeMCDLoader:
+            def __init__(self, data_dir: str):
+                calls.append(("init", data_dir, ""))
+
+            def extract_frames(
+                self, output_dir: str, image_topic: str | None, max_frames: int, every_n: int, **kwargs
+            ) -> str:
+                del kwargs
+                assert max_frames == 6
+                assert every_n == 2
+                calls.append(("frames", output_dir, image_topic or ""))
+                return str(tmp_path / "out" / "colmap" / "images")
+
+            def extract_lidar(
+                self, output_dir: str, lidar_topic: str | None, max_frames: int, every_n: int, **kwargs
+            ) -> str:
+                del kwargs
+                calls.append(("lidar", output_dir, lidar_topic or ""))
+                return str(tmp_path / "out" / "colmap" / "lidar")
+
+            def extract_imu(self, output_dir: str, imu_topic: str | None) -> str:
+                calls.append(("imu", output_dir, imu_topic or ""))
+                return str(tmp_path / "out" / "colmap" / "imu.csv")
+
+        def fake_run_colmap(
+            image_dir,
+            output_dir,
+            matching="exhaustive",
+            gpu_index=0,
+            use_gpu=True,
+            colmap_path="colmap",
+            single_camera_per_folder=False,
+        ):
+            del gpu_index
+            calls.append(
+                (
+                    "colmap",
+                    str(image_dir),
+                    str(output_dir),
+                    colmap_path,
+                    str(use_gpu),
+                    matching,
+                    str(single_camera_per_folder),
+                )
+            )
+            return tmp_path / "out" / "colmap" / "sparse" / "0"
+
+        def fake_train_gsplat(data_dir, output_dir, config=None, num_iterations=30000):
+            calls.append(("train", str(data_dir), str(output_dir)))
+            assert num_iterations == 123
+            assert config == {"appearance_embedding_dim": 32, "depth_loss_weight": 0.25}
+            return tmp_path / "out" / "train" / "point_cloud.ply"
+
+        monkeypatch.setattr(mcd_module, "MCDLoader", FakeMCDLoader)
+        monkeypatch.setattr(colmap_module, "run_colmap", fake_run_colmap)
+        monkeypatch.setattr(gsplat_module, "train_gsplat", fake_train_gsplat)
+        config_path = tmp_path / "training.yaml"
+        config_path.write_text("appearance_embedding_dim: 32\ndepth_loss_weight: 0.25\n")
+
+        args = build_parser().parse_args(
+            [
+                "run",
+                "--images",
+                str(tmp_path / "mcd"),
+                "--output",
+                str(tmp_path / "out"),
+                "--method",
+                "gsplat",
+                "--iterations",
+                "123",
+                "--config",
+                str(config_path),
+                "--preprocess-method",
+                "mcd",
+                "--colmap-path",
+                "/opt/colmap/bin/colmap",
+                "--matching",
+                "sequential",
+                "--no-gpu",
+                "--image-topic",
+                "/d455t/color/image_raw",
+                "--lidar-topic",
+                "/os_cloud_node/points",
+                "--imu-topic",
+                "/vn200/imu",
+                "--extract-lidar",
+                "--extract-imu",
+                "--max-frames",
+                "6",
+                "--every-n",
+                "2",
+                "--no-viewer",
+                "--skip-data-check",
+            ]
+        )
+
+        cli.cmd_run(args)
+
+        assert calls == [
+            ("init", str(tmp_path / "mcd"), ""),
+            ("frames", str(tmp_path / "out" / "colmap"), "/d455t/color/image_raw"),
+            ("lidar", str(tmp_path / "out" / "colmap"), "/os_cloud_node/points"),
+            ("imu", str(tmp_path / "out" / "colmap"), "/vn200/imu"),
+            (
+                "colmap",
+                str(tmp_path / "out" / "colmap" / "images"),
+                str(tmp_path / "out" / "colmap"),
+                "/opt/colmap/bin/colmap",
+                "False",
+                "sequential",
+                "False",
+            ),
+            ("train", str(tmp_path / "out" / "colmap"), str(tmp_path / "out" / "train")),
+        ]
+
+        out = capsys.readouterr().out
+        assert "Step 1: Preprocessing (mcd)" in out
+        assert "MCD frames available at:" in out
+        assert "Step 2: Training" in out
+        assert "Pipeline complete!" in out
+
+    def test_cmd_run_mcd_multi_topic_uses_per_folder_colmap(self, monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+        """Comma-separated MCD image topics should enable per-folder COLMAP intrinsics."""
+        from gs_sim2real import cli
+        from gs_sim2real.datasets import mcd as mcd_module
+        from gs_sim2real.preprocess import colmap as colmap_module
+        from gs_sim2real.train import gsplat_trainer as gsplat_module
+
+        calls: list[tuple[str, object]] = []
+
+        class FakeMCDLoader:
+            def __init__(self, data_dir: str):
+                calls.append(("init", data_dir))
+
+            def extract_frames(self, output_dir, image_topic, max_frames, every_n, **kwargs):
+                del max_frames, every_n, kwargs
+                calls.append(("frames", image_topic))
+                return str(tmp_path / "out" / "colmap" / "images")
+
+        def fake_run_colmap(
+            image_dir,
+            output_dir,
+            matching="exhaustive",
+            gpu_index=0,
+            use_gpu=True,
+            colmap_path="colmap",
+            single_camera_per_folder=False,
+        ):
+            del image_dir, output_dir, matching, gpu_index, use_gpu, colmap_path
+            calls.append(("per_folder", single_camera_per_folder))
+            return tmp_path / "out" / "colmap" / "sparse" / "0"
+
+        monkeypatch.setattr(mcd_module, "MCDLoader", FakeMCDLoader)
+        monkeypatch.setattr(colmap_module, "run_colmap", fake_run_colmap)
+        monkeypatch.setattr(
+            gsplat_module,
+            "train_gsplat",
+            lambda data_dir, output_dir, config=None, num_iterations=30000: (
+                tmp_path / "out" / "train" / "point_cloud.ply"
+            ),
+        )
+
+        args = build_parser().parse_args(
+            [
+                "run",
+                "--images",
+                str(tmp_path / "mcd"),
+                "--output",
+                str(tmp_path / "out"),
+                "--preprocess-method",
+                "mcd",
+                "--image-topic",
+                "/cam0,/cam1,/cam2",
+                "--iterations",
+                "1",
+                "--no-viewer",
+                "--skip-data-check",
+            ]
+        )
+
+        cli.cmd_run(args)
+
+        assert calls == [
+            ("init", str(tmp_path / "mcd")),
+            ("frames", ["/cam0", "/cam1", "/cam2"]),
+            ("per_folder", True),
+        ]
+
+    def test_cmd_run_waymo_uses_loader_outputs_and_optional_extractions(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """run should support Waymo tfrecords through the Waymo loader path."""
+        from gs_sim2real import cli
+        from gs_sim2real.datasets import waymo as waymo_module
+        from gs_sim2real.train import gsplat_trainer as gsplat_module
+
+        calls: list[tuple[str, str, str, int, int]] = []
+
+        class FakeWaymoLoader:
+            def __init__(self, data_dir: str):
+                calls.append(("init", data_dir, "", 0, 0))
+
+            def extract_frames(self, output_dir: str, camera: str, max_frames: int, every_n: int) -> str:
+                calls.append(("frames", output_dir, camera, max_frames, every_n))
+                params_path = Path(output_dir) / "camera_params.json"
+                params_path.parent.mkdir(parents=True, exist_ok=True)
+                params_path.write_text("{}")
+                return str(Path(output_dir) / "images")
+
+            def to_colmap_format(self, camera_params_path: str, output_dir: str) -> str:
+                calls.append(("colmap", camera_params_path, output_dir, 0, 0))
+                return str(Path(output_dir) / "sparse" / "0")
+
+            def extract_lidar_depth(self, output_dir: str, camera: str, max_frames: int, every_n: int) -> str:
+                calls.append(("depth", output_dir, camera, max_frames, every_n))
+                return str(Path(output_dir) / "depth")
+
+            def extract_dynamic_masks(self, output_dir: str, camera: str, max_frames: int, every_n: int) -> str:
+                calls.append(("masks", output_dir, camera, max_frames, every_n))
+                return str(Path(output_dir) / "masks")
+
+        def fake_train_gsplat(data_dir, output_dir, config=None, num_iterations=30000):
+            assert num_iterations == 55
+            assert config is None
+            assert str(data_dir) == str(tmp_path / "out" / "colmap")
+            assert str(output_dir) == str(tmp_path / "out" / "train")
+            return tmp_path / "out" / "train" / "point_cloud.ply"
+
+        monkeypatch.setattr(waymo_module, "WaymoLoader", FakeWaymoLoader)
+        monkeypatch.setattr(gsplat_module, "train_gsplat", fake_train_gsplat)
+
+        args = build_parser().parse_args(
+            [
+                "run",
+                "--images",
+                str(tmp_path / "waymo"),
+                "--output",
+                str(tmp_path / "out"),
+                "--method",
+                "gsplat",
+                "--iterations",
+                "55",
+                "--preprocess-method",
+                "waymo",
+                "--camera",
+                "FRONT_RIGHT",
+                "--max-frames",
+                "9",
+                "--every-n",
+                "3",
+                "--extract-lidar-depth",
+                "--extract-dynamic-masks",
+                "--no-viewer",
+                "--skip-data-check",
+            ]
+        )
+
+        cli.cmd_run(args)
+
+        assert calls == [
+            ("init", str(tmp_path / "waymo"), "", 0, 0),
+            ("frames", str(tmp_path / "out" / "colmap"), "FRONT_RIGHT", 9, 3),
+            (
+                "colmap",
+                str(tmp_path / "out" / "colmap" / "camera_params.json"),
+                str(tmp_path / "out" / "colmap"),
+                0,
+                0,
+            ),
+            ("depth", str(tmp_path / "out" / "colmap"), "FRONT_RIGHT", 9, 3),
+            ("masks", str(tmp_path / "out" / "colmap"), "FRONT_RIGHT", 9, 3),
+        ]
+
+        out = capsys.readouterr().out
+        assert "Step 1: Preprocessing (waymo)" in out
+        assert "Waymo frames extracted to:" in out
+        assert "Waymo LiDAR depth extracted to:" in out
+        assert "Waymo dynamic masks extracted to:" in out
+        assert "Pipeline complete!" in out
 
     def test_cli_sim2real_server_websocket_query_flags(self) -> None:
         """sim2real-server parser accepts websocket query settings."""

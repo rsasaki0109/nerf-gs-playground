@@ -1,0 +1,1137 @@
+"""MCD rosbag loader for outdoor 3DGS preprocessing.
+
+Provides utilities to extract camera frames and selected sensor streams from
+MCD rosbag recordings using ``rosbags``. The loader also falls back to
+pre-extracted images when bag files are unavailable.
+"""
+
+from __future__ import annotations
+
+import csv
+import json
+import logging
+from pathlib import Path
+from typing import Any
+
+import cv2
+import numpy as np
+
+logger = logging.getLogger(__name__)
+
+
+def _apply_antenna_offset_base_link(
+    east: np.ndarray,
+    north: np.ndarray,
+    up: np.ndarray,
+    offset_base: tuple[float, float, float],
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Subtract ``R_enu_base @ offset_base`` from antenna positions in ENU (base_link x=forward, y=left, z=up).
+
+    Heading for each sample is inferred from successive ENU horizontal differences (GNSS course proxy).
+    """
+    ox, oy, oz = (float(offset_base[0]), float(offset_base[1]), float(offset_base[2]))
+    v = np.array([ox, oy, oz], dtype=np.float64)
+    n = len(east)
+    out_e = east.astype(np.float64).copy()
+    out_n = north.astype(np.float64).copy()
+    out_u = up.astype(np.float64).copy()
+
+    for i in range(n):
+        if i > 0:
+            d_e = float(east[i] - east[i - 1])
+            d_n = float(north[i] - north[i - 1])
+        elif n > 1:
+            d_e = float(east[1] - east[0])
+            d_n = float(north[1] - north[0])
+        else:
+            d_e, d_n = 1.0, 0.0
+        norm = float(np.hypot(d_e, d_n))
+        if norm < 1e-6:
+            d_e, d_n = 1.0, 0.0
+            norm = 1.0
+        f = np.array([d_e / norm, d_n / norm, 0.0], dtype=np.float64)
+        left = np.array([-f[1], f[0], 0.0], dtype=np.float64)
+        fz = np.array([0.0, 0.0, 1.0], dtype=np.float64)
+        r_enu_base = np.column_stack([f, left, fz])
+        delta = r_enu_base @ v
+        out_e[i] -= delta[0]
+        out_n[i] -= delta[1]
+        out_u[i] -= delta[2]
+
+    return out_e, out_n, out_u
+
+
+class MCDLoader:
+    """Load and process MCD rosbag recordings for 3DGS reconstruction."""
+
+    IMAGE_MSGTYPES = frozenset(
+        {
+            "sensor_msgs/msg/Image",
+            "sensor_msgs/Image",
+            "sensor_msgs/msg/CompressedImage",
+            "sensor_msgs/CompressedImage",
+        }
+    )
+    COMPRESSED_IMAGE_MSGTYPES = frozenset(
+        {
+            "sensor_msgs/msg/CompressedImage",
+            "sensor_msgs/CompressedImage",
+        }
+    )
+    POINTCLOUD_MSGTYPES = frozenset(
+        {
+            "sensor_msgs/msg/PointCloud2",
+            "sensor_msgs/PointCloud2",
+        }
+    )
+    IMU_MSGTYPES = frozenset(
+        {
+            "sensor_msgs/msg/Imu",
+            "sensor_msgs/Imu",
+        }
+    )
+    NAVSAT_MSGTYPES = frozenset(
+        {
+            "sensor_msgs/msg/NavSatFix",
+            "sensor_msgs/NavSatFix",
+        }
+    )
+    CAMERA_INFO_MSGTYPES = frozenset(
+        {
+            "sensor_msgs/msg/CameraInfo",
+            "sensor_msgs/CameraInfo",
+        }
+    )
+    TF_MESSAGE_MSGTYPES = frozenset(
+        {
+            "tf2_msgs/msg/TFMessage",
+            "tf2_msgs/TFMessage",
+            "tf/msg/tfMessage",
+            "tf/tfMessage",
+        }
+    )
+
+    DEFAULT_IMAGE_TOPICS = (
+        "/d455t/color/image_raw",
+        "/d455b/color/image_raw",
+        "/d435i/color/image_raw",
+        "/d455t/infra1/image_rect_raw",
+        "/d455b/infra1/image_rect_raw",
+        "/d435i/infra1/image_rect_raw",
+    )
+    DEFAULT_LIDAR_TOPICS = (
+        "/os_cloud_node/points",
+        "/livox/lidar",
+    )
+    DEFAULT_IMU_TOPICS = (
+        "/vn200/imu",
+        "/vn100/imu",
+        "/os_cloud_node/imu",
+        "/d455t/imu",
+        "/d455b/imu",
+        "/d435i/imu",
+    )
+    DEFAULT_GNSS_TOPICS = (
+        "/gnss/fix",
+        "/gps/fix",
+        "/fix",
+    )
+    DEFAULT_TF_STATIC_TOPICS = ("/tf_static",)
+
+    POINTFIELD_DTYPES = {
+        1: np.int8,
+        2: np.uint8,
+        3: np.int16,
+        4: np.uint16,
+        5: np.int32,
+        6: np.uint32,
+        7: np.float32,
+        8: np.float64,
+    }
+
+    def __init__(self, data_dir: str | Path):
+        self.data_dir = Path(data_dir)
+
+    def extract_frames(
+        self,
+        output_dir: str | Path,
+        image_topic: str | list[str] | tuple[str, ...] | None = None,
+        max_frames: int = 100,
+        every_n: int = 1,
+        save_image_timestamps: bool = False,
+    ) -> str:
+        """Extract camera frames from an MCD rosbag or pre-extracted images."""
+        output_path = Path(output_dir)
+        images_dir = output_path / "images"
+        images_dir.mkdir(parents=True, exist_ok=True)
+
+        bag_paths = self._find_bag_paths(self.data_dir)
+        if not bag_paths:
+            logger.info("No rosbag found in %s; falling back to pre-extracted images", self.data_dir)
+            return self._load_pre_extracted(output_path, max_frames)
+
+        try:
+            reader_cls = self._get_anyreader()
+        except ImportError:
+            logger.warning("rosbags not available; falling back to pre-extracted images")
+            return self._load_pre_extracted(output_path, max_frames)
+
+        requested_topics = self._normalize_requested_topics(image_topic)
+        with self._create_reader(reader_cls, bag_paths) as reader:
+            connections = self._select_connections(
+                reader.topics,
+                requested_topics=requested_topics,
+                preferred_topics=self.DEFAULT_IMAGE_TOPICS,
+                allowed_msgtypes=self.IMAGE_MSGTYPES,
+            )
+            if not connections:
+                raise FileNotFoundError("No supported image topic found in the provided MCD rosbag.")
+
+            multi_topic = len(connections) > 1
+            write_dirs = {
+                connection.topic: (
+                    images_dir / self._sanitize_topic_name(connection.topic) if multi_topic else images_dir
+                )
+                for connection in connections
+            }
+            for path in write_dirs.values():
+                path.mkdir(parents=True, exist_ok=True)
+
+            extracted_counts = {connection.topic: 0 for connection in connections}
+            seen_counts = {connection.topic: 0 for connection in connections}
+            timestamp_rows: list[tuple[str, int]] = []
+
+            for connection, timestamp_ns, rawdata in reader.messages(connections=connections):
+                topic_name = connection.topic
+                idx = seen_counts[topic_name]
+                seen_counts[topic_name] += 1
+                if idx % every_n != 0:
+                    continue
+                if extracted_counts[topic_name] >= max_frames:
+                    if all(count >= max_frames for count in extracted_counts.values()):
+                        break
+                    continue
+
+                msg = reader.deserialize(rawdata, connection.msgtype)
+                image, extension = self._decode_image_message(msg, connection.msgtype)
+                if image is None:
+                    continue
+
+                output_image = write_dirs[topic_name] / f"frame_{extracted_counts[topic_name]:06d}{extension}"
+                cv2.imwrite(str(output_image), image)
+                if save_image_timestamps:
+                    rel = output_image.relative_to(images_dir).as_posix()
+                    timestamp_rows.append((rel, int(timestamp_ns)))
+                extracted_counts[topic_name] += 1
+
+            if save_image_timestamps and timestamp_rows:
+                ts_path = images_dir / "image_timestamps.csv"
+                with open(ts_path, "w", newline="") as tf:
+                    writer = csv.writer(tf)
+                    writer.writerow(["filename", "timestamp_ns"])
+                    writer.writerows(timestamp_rows)
+                logger.info("Wrote %d image timestamps to %s", len(timestamp_rows), ts_path)
+
+        for topic_name, count in extracted_counts.items():
+            logger.info("Extracted %d frames from MCD topic %s", count, topic_name)
+        return str(images_dir)
+
+    def list_topics(self) -> list[dict[str, str | int | bool]]:
+        """List bag topics with msg types, counts, and inferred sensor role."""
+        bag_paths = self._find_bag_paths(self.data_dir)
+        if not bag_paths:
+            return []
+
+        reader_cls = self._get_anyreader()
+        with self._create_reader(reader_cls, bag_paths) as reader:
+            topics = []
+            for topic_name, info in sorted(reader.topics.items()):
+                msgtype = info.msgtype or "unknown"
+                topics.append(
+                    {
+                        "topic": topic_name,
+                        "msgtype": msgtype,
+                        "msgcount": int(info.msgcount),
+                        "role": self._infer_topic_role(topic_name, msgtype),
+                        "is_preferred_default": self._is_preferred_default_topic(topic_name),
+                    }
+                )
+            return topics
+
+    def extract_lidar(
+        self,
+        output_dir: str | Path,
+        lidar_topic: str | None = None,
+        max_frames: int = 100,
+        every_n: int = 1,
+        save_timestamps: bool = False,
+    ) -> str:
+        """Extract LiDAR point clouds from an MCD rosbag as ``.npy`` arrays."""
+        output_path = Path(output_dir)
+        lidar_dir = output_path / "lidar"
+        lidar_dir.mkdir(parents=True, exist_ok=True)
+
+        bag_paths = self._find_bag_paths(self.data_dir)
+        if not bag_paths:
+            logger.warning("No rosbag found in %s; cannot extract LiDAR", self.data_dir)
+            return str(lidar_dir)
+
+        try:
+            reader_cls = self._get_anyreader()
+        except ImportError:
+            logger.warning("rosbags not available; cannot extract LiDAR")
+            return str(lidar_dir)
+        count = 0
+        timestamp_rows: list[tuple[str, int]] = []
+        with self._create_reader(reader_cls, bag_paths) as reader:
+            connection = self._select_connection(
+                reader.topics,
+                requested_topic=lidar_topic,
+                preferred_topics=self.DEFAULT_LIDAR_TOPICS,
+                allowed_msgtypes=self.POINTCLOUD_MSGTYPES,
+            )
+            if connection is None:
+                raise FileNotFoundError("No supported PointCloud2 topic found in the provided MCD rosbag.")
+
+            for idx, (_, timestamp_ns, rawdata) in enumerate(reader.messages(connections=[connection])):
+                if idx % every_n != 0:
+                    continue
+                if count >= max_frames:
+                    break
+
+                msg = reader.deserialize(rawdata, connection.msgtype)
+                points = self._pointcloud2_to_numpy(msg)
+                filename = f"frame_{count:06d}.npy"
+                np.save(lidar_dir / filename, points)
+                if save_timestamps:
+                    timestamp_rows.append((filename, int(timestamp_ns)))
+                count += 1
+
+        if save_timestamps and timestamp_rows:
+            ts_path = lidar_dir / "timestamps.csv"
+            with open(ts_path, "w", newline="") as tf:
+                writer = csv.writer(tf)
+                writer.writerow(["filename", "timestamp_ns"])
+                writer.writerows(timestamp_rows)
+            logger.info("Wrote %d LiDAR timestamps to %s", len(timestamp_rows), ts_path)
+
+        logger.info("Extracted %d LiDAR frames from MCD topic %s", count, connection.topic)
+        return str(lidar_dir)
+
+    def merge_lidar_frames_to_world(
+        self,
+        lidar_dir: str | Path,
+        trajectory_path: str | Path,
+        output_path: str | Path,
+        T_base_lidar: np.ndarray | None = None,
+        max_points: int = 200_000,
+        rng_seed: int = 42,
+    ) -> str:
+        """Merge per-frame LiDAR NPYs into a single world-frame ``.npy`` using a TUM ENU trajectory."""
+        from gs_sim2real.preprocess.lidar_slam import LiDARSLAMProcessor
+
+        lidar_path = Path(lidar_dir)
+        traj_path = Path(trajectory_path)
+        out_path = Path(output_path)
+
+        npy_files = sorted(lidar_path.glob("frame_*.npy"))
+        if not npy_files:
+            raise FileNotFoundError(f"No LiDAR frames found in {lidar_path}")
+
+        ts_csv = lidar_path / "timestamps.csv"
+        stamp_map: dict[str, int] = {}
+        if ts_csv.exists():
+            with open(ts_csv) as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    stamp_map[str(row["filename"])] = int(row["timestamp_ns"])
+
+        timestamps, poses = LiDARSLAMProcessor._load_tum_trajectory(LiDARSLAMProcessor(), traj_path)
+        if len(timestamps) < 1:
+            raise ValueError(f"Trajectory {traj_path} has no poses")
+
+        ts_array = np.array(timestamps, dtype=np.float64)
+        poses_arr = [np.asarray(p, dtype=np.float64) for p in poses]
+
+        rotations = self._infer_trajectory_rotations(ts_array, poses_arr)
+
+        if stamp_map:
+            frame_times = np.array(
+                [float(stamp_map.get(p.name, 0)) * 1e-9 for p in npy_files],
+                dtype=np.float64,
+            )
+        else:
+            logger.warning(
+                "No timestamps.csv in %s; falling back to sequential time mapping across trajectory range",
+                lidar_path,
+            )
+            if len(npy_files) == 1:
+                frame_times = np.array([ts_array[0]], dtype=np.float64)
+            else:
+                frame_times = np.linspace(ts_array[0], ts_array[-1], num=len(npy_files))
+
+        chunks: list[np.ndarray] = []
+        for idx, npy_file in enumerate(npy_files):
+            pts = np.load(npy_file)
+            if pts.ndim != 2 or pts.shape[1] < 3:
+                continue
+            xyz = pts[:, :3].astype(np.float64, copy=False)
+            mask = np.isfinite(xyz).all(axis=1)
+            xyz = xyz[mask]
+            if xyz.shape[0] == 0:
+                continue
+
+            nearest = int(np.argmin(np.abs(ts_array - frame_times[idx])))
+            T_world_base = np.eye(4, dtype=np.float64)
+            T_world_base[:3, :3] = rotations[nearest]
+            T_world_base[:3, 3] = poses_arr[nearest][:3, 3]
+            T_world_lidar = T_world_base if T_base_lidar is None else T_world_base @ np.asarray(T_base_lidar)
+
+            R = T_world_lidar[:3, :3]
+            t = T_world_lidar[:3, 3]
+            transformed = xyz @ R.T + t
+            chunks.append(transformed.astype(np.float32, copy=False))
+
+        if not chunks:
+            raise ValueError(f"No valid LiDAR points after filtering in {lidar_path}")
+
+        all_pts = np.concatenate(chunks, axis=0)
+        finite = np.isfinite(all_pts).all(axis=1)
+        all_pts = all_pts[finite]
+
+        if all_pts.shape[0] > max_points:
+            rng = np.random.default_rng(rng_seed)
+            idx = rng.choice(all_pts.shape[0], size=max_points, replace=False)
+            all_pts = all_pts[idx]
+
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        np.save(out_path, all_pts.astype(np.float32, copy=False))
+        logger.info("Merged %d LiDAR frames -> %d points at %s", len(npy_files), all_pts.shape[0], out_path)
+        return str(out_path)
+
+    @staticmethod
+    def _infer_trajectory_rotations(timestamps: np.ndarray, poses: list[np.ndarray]) -> list[np.ndarray]:
+        """Return per-pose rotations, replacing identity orientations with yaw inferred from ENU motion."""
+        del timestamps
+        n = len(poses)
+        positions = np.array([p[:3, 3] for p in poses], dtype=np.float64)
+        rotations: list[np.ndarray] = []
+        is_identity = [bool(np.allclose(p[:3, :3], np.eye(3), atol=1e-6)) for p in poses]
+        if not any(is_identity):
+            return [p[:3, :3].copy() for p in poses]
+
+        yaws = np.zeros(n, dtype=np.float64)
+        for i in range(n):
+            if 0 < i < n - 1:
+                de = positions[i + 1, 0] - positions[i - 1, 0]
+                dn = positions[i + 1, 1] - positions[i - 1, 1]
+            elif i == 0 and n > 1:
+                de = positions[1, 0] - positions[0, 0]
+                dn = positions[1, 1] - positions[0, 1]
+            elif i == n - 1 and n > 1:
+                de = positions[-1, 0] - positions[-2, 0]
+                dn = positions[-1, 1] - positions[-2, 1]
+            else:
+                de, dn = 1.0, 0.0
+            if float(np.hypot(de, dn)) < 1e-9:
+                yaws[i] = np.nan
+            else:
+                yaws[i] = float(np.arctan2(dn, de))
+
+        if np.all(np.isnan(yaws)):
+            yaws[:] = 0.0
+        else:
+            valid = ~np.isnan(yaws)
+            first_valid = int(np.argmax(valid))
+            last_valid = n - 1 - int(np.argmax(valid[::-1]))
+            for i in range(n):
+                if np.isnan(yaws[i]):
+                    if i < first_valid:
+                        yaws[i] = yaws[first_valid]
+                    elif i > last_valid:
+                        yaws[i] = yaws[last_valid]
+                    else:
+                        yaws[i] = yaws[first_valid]
+
+        for i, pose in enumerate(poses):
+            if is_identity[i]:
+                c, s = float(np.cos(yaws[i])), float(np.sin(yaws[i]))
+                R = np.array(
+                    [
+                        [c, -s, 0.0],
+                        [s, c, 0.0],
+                        [0.0, 0.0, 1.0],
+                    ],
+                    dtype=np.float64,
+                )
+                rotations.append(R)
+            else:
+                rotations.append(pose[:3, :3].copy())
+        return rotations
+
+    def extract_imu(
+        self,
+        output_dir: str | Path,
+        imu_topic: str | None = None,
+        max_messages: int | None = None,
+    ) -> str:
+        """Extract IMU measurements from an MCD rosbag into ``imu.csv``."""
+        output_path = Path(output_dir)
+        output_path.mkdir(parents=True, exist_ok=True)
+        imu_path = output_path / "imu.csv"
+
+        bag_paths = self._find_bag_paths(self.data_dir)
+        if not bag_paths:
+            logger.warning("No rosbag found in %s; cannot extract IMU", self.data_dir)
+            return str(imu_path)
+
+        try:
+            reader_cls = self._get_anyreader()
+        except ImportError:
+            logger.warning("rosbags not available; cannot extract IMU")
+            return str(imu_path)
+        with self._create_reader(reader_cls, bag_paths) as reader, open(imu_path, "w", newline="") as f:
+            connection = self._select_connection(
+                reader.topics,
+                requested_topic=imu_topic,
+                preferred_topics=self.DEFAULT_IMU_TOPICS,
+                allowed_msgtypes=self.IMU_MSGTYPES,
+            )
+            if connection is None:
+                raise FileNotFoundError("No supported IMU topic found in the provided MCD rosbag.")
+
+            writer = csv.writer(f)
+            writer.writerow(
+                [
+                    "timestamp_ns",
+                    "timestamp_sec",
+                    "orientation_x",
+                    "orientation_y",
+                    "orientation_z",
+                    "orientation_w",
+                    "angular_velocity_x",
+                    "angular_velocity_y",
+                    "angular_velocity_z",
+                    "linear_acceleration_x",
+                    "linear_acceleration_y",
+                    "linear_acceleration_z",
+                ]
+            )
+
+            count = 0
+            for _, timestamp_ns, rawdata in reader.messages(connections=[connection]):
+                if max_messages is not None and count >= max_messages:
+                    break
+                msg = reader.deserialize(rawdata, connection.msgtype)
+                writer.writerow(
+                    [
+                        int(timestamp_ns),
+                        float(timestamp_ns) * 1e-9,
+                        float(msg.orientation.x),
+                        float(msg.orientation.y),
+                        float(msg.orientation.z),
+                        float(msg.orientation.w),
+                        float(msg.angular_velocity.x),
+                        float(msg.angular_velocity.y),
+                        float(msg.angular_velocity.z),
+                        float(msg.linear_acceleration.x),
+                        float(msg.linear_acceleration.y),
+                        float(msg.linear_acceleration.z),
+                    ]
+                )
+                count += 1
+
+        logger.info("Extracted %d IMU measurements from MCD topic %s", count, connection.topic)
+        return str(imu_path)
+
+    def extract_navsat_trajectory(
+        self,
+        output_dir: str | Path,
+        gnss_topic: str | None = None,
+        max_poses: int | None = None,
+        T_base_cam: np.ndarray | None = None,
+        vehicle_frame_only: bool = False,
+        antenna_offset_enu: tuple[float, float, float] | None = None,
+        antenna_offset_base: tuple[float, float, float] | None = None,
+    ) -> str:
+        """Write ``sensor_msgs/NavSatFix`` samples to a TUM trajectory file (local ENU).
+
+        The first valid fix defines the ENU origin. Without ``T_base_cam``, orientation is identity
+        (vehicle / antenna frame). With ``T_base_cam`` (base_link→camera from ``/tf_static``),
+        each line is the **camera** pose (camera-to-world) in ENU.
+
+        ``antenna_offset_enu`` subtracts a fixed (East, North, Up) vector (metres).
+
+        ``antenna_offset_base`` is the vector from ``base_link`` origin to the GNSS antenna in **base_link**
+        (x forward, y left, z up). It is rotated into ENU using a per-sample heading from successive ENU
+        positions, then subtracted. Do not combine with ``antenna_offset_enu``.
+        """
+        from gs_sim2real.preprocess.lidar_slam import LiDARSLAMProcessor
+
+        if antenna_offset_enu is not None and antenna_offset_base is not None:
+            raise ValueError("Use only one of antenna_offset_enu or antenna_offset_base, not both.")
+
+        output_path = Path(output_dir)
+        pose_dir = output_path / "pose"
+        pose_dir.mkdir(parents=True, exist_ok=True)
+        tum_path = pose_dir / "gnss_trajectory.tum"
+
+        bag_paths = self._find_bag_paths(self.data_dir)
+        if not bag_paths:
+            raise FileNotFoundError(f"No rosbag found in {self.data_dir}; cannot extract NavSatFix trajectory.")
+
+        reader_cls = self._get_anyreader()
+        rows_ts: list[float] = []
+        rows_e: list[float] = []
+        rows_n: list[float] = []
+        rows_u: list[float] = []
+        connection = None
+
+        with self._create_reader(reader_cls, bag_paths) as reader:
+            connection = self._select_connection(
+                reader.topics,
+                requested_topic=gnss_topic,
+                preferred_topics=self.DEFAULT_GNSS_TOPICS,
+                allowed_msgtypes=self.NAVSAT_MSGTYPES,
+            )
+            if connection is None:
+                raise FileNotFoundError("No sensor_msgs/NavSatFix topic found in the provided MCD rosbag.")
+
+            ref_lat: float | None = None
+            ref_lon: float | None = None
+            ref_alt: float | None = None
+            count = 0
+            for _, timestamp_ns, rawdata in reader.messages(connections=[connection]):
+                if max_poses is not None and count >= max_poses:
+                    break
+                msg = reader.deserialize(rawdata, connection.msgtype)
+                lat = float(getattr(msg, "latitude", float("nan")))
+                lon = float(getattr(msg, "longitude", float("nan")))
+                alt = float(getattr(msg, "altitude", 0.0))
+                if not (np.isfinite(lat) and np.isfinite(lon)):
+                    continue
+                st = getattr(msg, "status", None)
+                if st is not None:
+                    code = getattr(st, "status", st)
+                    try:
+                        if int(code) < 0:
+                            continue
+                    except (TypeError, ValueError):
+                        pass
+
+                if ref_lat is None:
+                    ref_lat, ref_lon, ref_alt = lat, lon, alt
+
+                assert ref_lat is not None and ref_lon is not None and ref_alt is not None
+                east, north, up = LiDARSLAMProcessor._wgs84_to_enu(lat, lon, alt, ref_lat, ref_lon, ref_alt)
+                ts = float(timestamp_ns) * 1e-9
+                rows_ts.append(ts)
+                rows_e.append(float(east))
+                rows_n.append(float(north))
+                rows_u.append(float(up))
+                count += 1
+
+        if count < 2:
+            raise ValueError(f"Need at least 2 NavSatFix samples for a trajectory, got {count} from {connection.topic}")
+
+        east_a = np.array(rows_e, dtype=np.float64)
+        north_a = np.array(rows_n, dtype=np.float64)
+        up_a = np.array(rows_u, dtype=np.float64)
+
+        if antenna_offset_enu is not None:
+            east_a -= float(antenna_offset_enu[0])
+            north_a -= float(antenna_offset_enu[1])
+            up_a -= float(antenna_offset_enu[2])
+        if antenna_offset_base is not None:
+            east_a, north_a, up_a = _apply_antenna_offset_base_link(east_a, north_a, up_a, antenna_offset_base)
+
+        with open(tum_path, "w") as f:
+            for i, ts in enumerate(rows_ts):
+                east = float(east_a[i])
+                north = float(north_a[i])
+                up = float(up_a[i])
+                if vehicle_frame_only:
+                    f.write(f"{ts} {east} {north} {up} 0 0 0 1\n")
+                elif T_base_cam is None:
+                    f.write(f"{ts} {east} {north} {up} 0 0 0 1\n")
+                else:
+                    T_world_base = np.eye(4, dtype=np.float64)
+                    T_world_base[0, 3] = east
+                    T_world_base[1, 3] = north
+                    T_world_base[2, 3] = up
+                    T_world_cam = T_world_base @ T_base_cam
+                    twc = T_world_cam[:3, 3]
+                    R_wc = T_world_cam[:3, :3]
+                    qw, qx, qy, qz = LiDARSLAMProcessor._rotation_to_quaternion(R_wc)
+                    f.write(f"{ts} {twc[0]} {twc[1]} {twc[2]} {qx} {qy} {qz} {qw}\n")
+
+        logger.info("Wrote %d GNSS poses to %s", count, tum_path)
+        return str(tum_path)
+
+    def build_tf_map(self, include_dynamic_tf: bool = False):
+        """Load ``TFMessage`` transforms into a :class:`~gs_sim2real.datasets.ros_tf.StaticTfMap`.
+
+        Reads ``/tf_static`` first, then optionally ``/tf`` (later messages override earlier ones
+        for the same child frame).
+        """
+        from gs_sim2real.datasets.ros_tf import StaticTfMap, geometry_transform_to_matrix
+
+        bag_paths = self._find_bag_paths(self.data_dir)
+        tf_map = StaticTfMap()
+        if not bag_paths:
+            return tf_map
+
+        topic_names = list(self.DEFAULT_TF_STATIC_TOPICS)
+        if include_dynamic_tf:
+            topic_names.append("/tf")
+
+        reader_cls = self._get_anyreader()
+        for topic_name in topic_names:
+            with self._create_reader(reader_cls, bag_paths) as reader:
+                info = reader.topics.get(topic_name)
+                if info is None:
+                    continue
+                connections: list[Any] = []
+                for c in info.connections:
+                    if c.msgtype in self.TF_MESSAGE_MSGTYPES:
+                        connections.append(c)
+                if not connections:
+                    continue
+
+                for connection, _, rawdata in reader.messages(connections=connections):
+                    msg = reader.deserialize(rawdata, connection.msgtype)
+                    transforms = getattr(msg, "transforms", None)
+                    if not transforms:
+                        continue
+                    for ts in transforms:
+                        parent = str(getattr(getattr(ts, "header", None), "frame_id", "") or "")
+                        child = str(getattr(ts, "child_frame_id", "") or "")
+                        if not parent or not child:
+                            continue
+                        T = geometry_transform_to_matrix(ts.transform)
+                        tf_map.add(parent, child, T)
+
+        logger.info(
+            "Loaded %d TF edges from rosbag (dynamic_tf=%s)",
+            len(tf_map),
+            include_dynamic_tf,
+        )
+        return tf_map
+
+    def build_static_tf_map(self):
+        """Backward-compatible alias for ``build_tf_map(include_dynamic_tf=False)``."""
+        return self.build_tf_map(include_dynamic_tf=False)
+
+    def collect_tf_dynamic_edges(self):
+        """Read ``/tf`` and return time-stamped edges for per-message extrinsics (see :class:`TimestampedTfEdges`)."""
+        from gs_sim2real.datasets.ros_tf import TimestampedTfEdges, geometry_transform_to_matrix
+
+        edges = TimestampedTfEdges()
+        bag_paths = self._find_bag_paths(self.data_dir)
+        if not bag_paths:
+            edges.finalize()
+            return edges
+
+        reader_cls = self._get_anyreader()
+        with self._create_reader(reader_cls, bag_paths) as reader:
+            info = reader.topics.get("/tf")
+            if info is None:
+                logger.warning("No /tf topic in bag; timestamped TF lookup will be unavailable")
+                edges.finalize()
+                return edges
+
+            connections: list[Any] = []
+            for c in info.connections:
+                if c.msgtype in self.TF_MESSAGE_MSGTYPES:
+                    connections.append(c)
+            if not connections:
+                edges.finalize()
+                return edges
+
+            for connection, _, rawdata in reader.messages(connections=connections):
+                msg = reader.deserialize(rawdata, connection.msgtype)
+                transforms = getattr(msg, "transforms", None)
+                if not transforms:
+                    continue
+                for ts_msg in transforms:
+                    parent = str(getattr(getattr(ts_msg, "header", None), "frame_id", "") or "")
+                    child = str(getattr(ts_msg, "child_frame_id", "") or "")
+                    if not parent or not child:
+                        continue
+                    hdr = getattr(ts_msg, "header", None)
+                    st = getattr(hdr, "stamp", None) if hdr is not None else None
+                    if st is None:
+                        stamp_ns = 0
+                    else:
+                        sec = int(getattr(st, "sec", 0))
+                        nsec = int(getattr(st, "nanosec", getattr(st, "nsec", 0)))
+                        stamp_ns = sec * 1_000_000_000 + nsec
+                    T = geometry_transform_to_matrix(ts_msg.transform)
+                    edges.add(stamp_ns, parent, child, T)
+
+        edges.finalize()
+        logger.info("Collected %d /tf transform samples", len(edges))
+        return edges
+
+    def extract_camera_info(
+        self,
+        output_dir: str | Path,
+        image_topics: str | list[str] | tuple[str, ...] | None = None,
+    ) -> list[str]:
+        """Save one ``sensor_msgs/CameraInfo`` message per image topic as JSON (PINHOLE intrinsics).
+
+        Infers ``.../camera_info`` from each image topic's parent path (e.g. ``.../raw_image`` → ``.../camera_info``).
+        """
+        output_path = Path(output_dir)
+        calib_dir = output_path / "calibration"
+        calib_dir.mkdir(parents=True, exist_ok=True)
+
+        topics = self._normalize_requested_topics(image_topics)
+        if not topics:
+            return []
+
+        bag_paths = self._find_bag_paths(self.data_dir)
+        if not bag_paths:
+            raise FileNotFoundError(f"No rosbag found in {self.data_dir}; cannot extract CameraInfo.")
+
+        reader_cls = self._get_anyreader()
+        written: list[str] = []
+        with self._create_reader(reader_cls, bag_paths) as reader:
+            for image_topic in topics:
+                info_topic = self._infer_camera_info_topic(str(image_topic))
+                try:
+                    connection = self._select_connection(
+                        reader.topics,
+                        requested_topic=info_topic,
+                        preferred_topics=tuple(),
+                        allowed_msgtypes=self.CAMERA_INFO_MSGTYPES,
+                    )
+                except ValueError:
+                    logger.warning("No CameraInfo topic %s for image topic %s", info_topic, image_topic)
+                    continue
+                if connection is None:
+                    logger.warning("No CameraInfo at %s for image topic %s", info_topic, image_topic)
+                    continue
+                for _, _, rawdata in reader.messages(connections=[connection]):
+                    msg = reader.deserialize(rawdata, connection.msgtype)
+                    calib = self._camera_info_to_pinhole_dict(msg)
+                    label = self._sanitize_topic_name(str(image_topic))
+                    out_path = calib_dir / f"{label}.json"
+                    with open(out_path, "w") as f:
+                        json.dump(calib, f, indent=2)
+                    written.append(str(out_path))
+                    logger.info("Wrote camera calibration for %s to %s", image_topic, out_path)
+                    break
+
+        return written
+
+    @staticmethod
+    def _infer_camera_info_topic(image_topic: str) -> str:
+        """Map an image topic to a sibling ``camera_info`` topic."""
+        parts = [p for p in image_topic.split("/") if p]
+        if not parts:
+            return "/camera_info"
+        parent = "/" + "/".join(parts[:-1])
+        return f"{parent}/camera_info" if parent else "/camera_info"
+
+    @staticmethod
+    def _camera_info_to_pinhole_dict(msg: Any) -> dict[str, float | int | str]:
+        """Convert CameraInfo K matrix to PINHOLE parameters plus ``header.frame_id``."""
+        w = int(getattr(msg, "width", 0))
+        h = int(getattr(msg, "height", 0))
+        k = getattr(msg, "k", None)
+        if k is None or len(k) < 9:
+            raise ValueError("CameraInfo.k must have at least 9 elements")
+        fx = float(k[0])
+        fy = float(k[4])
+        cx = float(k[2])
+        cy = float(k[5])
+        hdr = getattr(msg, "header", None)
+        fid = str(getattr(hdr, "frame_id", "") or "") if hdr is not None else ""
+        return {"width": w, "height": h, "fx": fx, "fy": fy, "cx": cx, "cy": cy, "frame_id": fid}
+
+    @staticmethod
+    def _get_anyreader():
+        """Return the rosbags AnyReader class."""
+        from rosbags.highlevel import AnyReader
+
+        return AnyReader
+
+    @classmethod
+    def _create_reader(cls, reader_cls: type[Any], bag_paths: list[Path]):
+        """Instantiate AnyReader with a default typestore for bags lacking definitions."""
+        kwargs = cls._get_reader_kwargs(bag_paths)
+        if not kwargs:
+            return reader_cls(bag_paths)
+        try:
+            return reader_cls(bag_paths, **kwargs)
+        except TypeError as exc:
+            if "default_typestore" not in str(exc):
+                raise
+            return reader_cls(bag_paths)
+
+    @staticmethod
+    def _get_reader_kwargs(bag_paths: list[Path]) -> dict[str, Any]:
+        """Build AnyReader kwargs based on rosbag format."""
+        if not bag_paths:
+            return {}
+
+        try:
+            from rosbags.typesys import Stores, get_typestore
+        except ImportError:
+            return {}
+
+        if any(path.suffix == ".bag" for path in bag_paths):
+            return {"default_typestore": get_typestore(Stores.ROS1_NOETIC)}
+        if any(path.is_dir() for path in bag_paths):
+            return {"default_typestore": get_typestore(Stores.ROS2_HUMBLE)}
+        return {}
+
+    @staticmethod
+    def _find_bag_paths(data_dir: Path) -> list[Path]:
+        """Find rosbag1 files or rosbag2 directories under the input path."""
+        if data_dir.is_file() and data_dir.suffix == ".bag":
+            return [data_dir]
+        if data_dir.is_file() and data_dir.suffix == ".db3" and (data_dir.parent / "metadata.yaml").exists():
+            return [data_dir.parent]
+        if data_dir.is_dir() and (data_dir / "metadata.yaml").exists():
+            return [data_dir]
+        if data_dir.is_dir():
+            bag1_paths = sorted(data_dir.rglob("*.bag"))
+            bag2_dirs = sorted({path.parent for path in data_dir.rglob("metadata.yaml")})
+            return bag2_dirs or bag1_paths
+        return []
+
+    def _load_pre_extracted(self, output_dir: Path, max_frames: int) -> str:
+        """Load pre-extracted images from ``images/`` or the dataset root."""
+        del max_frames
+        candidates = [
+            output_dir / "images",
+            self.data_dir / "images",
+            self.data_dir,
+        ]
+        for images_dir in candidates:
+            images = sorted(list(images_dir.glob("*.jpg")) + list(images_dir.glob("*.png")))
+            if images:
+                logger.info("Found %d pre-extracted MCD images", len(images))
+                return str(images_dir)
+
+        raise FileNotFoundError(
+            f"No images found in {self.data_dir}. Either provide rosbag files or pre-extracted images."
+        )
+
+    @classmethod
+    def _infer_topic_role(cls, topic_name: str, msgtype: str) -> str:
+        """Infer whether a topic is best treated as image, lidar, imu, or other."""
+        if msgtype in cls.IMAGE_MSGTYPES:
+            return "image"
+        if msgtype in cls.POINTCLOUD_MSGTYPES:
+            return "lidar"
+        if msgtype in cls.IMU_MSGTYPES:
+            return "imu"
+        if msgtype in cls.NAVSAT_MSGTYPES:
+            return "gnss"
+        if msgtype in cls.CAMERA_INFO_MSGTYPES:
+            return "calibration"
+        if msgtype in cls.TF_MESSAGE_MSGTYPES:
+            return "tf"
+        if "image" in topic_name:
+            return "image"
+        if "point" in topic_name or "lidar" in topic_name:
+            return "lidar"
+        if "imu" in topic_name:
+            return "imu"
+        return "other"
+
+    @classmethod
+    def _is_preferred_default_topic(cls, topic_name: str) -> bool:
+        """Return whether the topic matches one of the built-in MCD defaults."""
+        return topic_name in {
+            *cls.DEFAULT_IMAGE_TOPICS,
+            *cls.DEFAULT_LIDAR_TOPICS,
+            *cls.DEFAULT_IMU_TOPICS,
+            *cls.DEFAULT_GNSS_TOPICS,
+        }
+
+    @staticmethod
+    def _select_connection(
+        topics: dict[str, Any],
+        requested_topic: str | None,
+        preferred_topics: tuple[str, ...],
+        allowed_msgtypes: frozenset[str],
+    ):
+        """Pick the first matching connection for the requested or preferred topics."""
+        if requested_topic:
+            info = topics.get(requested_topic)
+            if info is None:
+                raise ValueError(f"Requested topic not found: {requested_topic}")
+            for connection in info.connections:
+                if connection.msgtype in allowed_msgtypes:
+                    return connection
+            raise ValueError(f"Requested topic {requested_topic} has unsupported type(s).")
+
+        for topic_name in preferred_topics:
+            info = topics.get(topic_name)
+            if info is None:
+                continue
+            for connection in info.connections:
+                if connection.msgtype in allowed_msgtypes:
+                    return connection
+
+        for info in topics.values():
+            for connection in info.connections:
+                if connection.msgtype in allowed_msgtypes:
+                    return connection
+        return None
+
+    @classmethod
+    def _select_connections(
+        cls,
+        topics: dict[str, Any],
+        requested_topics: list[str] | None,
+        preferred_topics: tuple[str, ...],
+        allowed_msgtypes: frozenset[str],
+    ) -> list[Any]:
+        """Pick one or more matching connections."""
+        if requested_topics:
+            selected = []
+            for requested_topic in requested_topics:
+                connection = cls._select_connection(
+                    topics,
+                    requested_topic=requested_topic,
+                    preferred_topics=preferred_topics,
+                    allowed_msgtypes=allowed_msgtypes,
+                )
+                if connection is None:
+                    raise ValueError(f"Requested topic not found: {requested_topic}")
+                selected.append(connection)
+            return selected
+
+        connection = cls._select_connection(
+            topics,
+            requested_topic=None,
+            preferred_topics=preferred_topics,
+            allowed_msgtypes=allowed_msgtypes,
+        )
+        return [] if connection is None else [connection]
+
+    @staticmethod
+    def _normalize_requested_topics(
+        requested_topic: str | list[str] | tuple[str, ...] | None,
+    ) -> list[str] | None:
+        """Normalize a requested topic argument into a list."""
+        if requested_topic is None:
+            return None
+        if isinstance(requested_topic, (list, tuple)):
+            topics = [str(topic).strip() for topic in requested_topic if str(topic).strip()]
+            return topics or None
+        topics = [topic.strip() for topic in str(requested_topic).split(",") if topic.strip()]
+        return topics or None
+
+    @staticmethod
+    def _sanitize_topic_name(topic_name: str) -> str:
+        """Convert a ROS topic name into a filesystem-friendly folder label."""
+        parts = [part for part in topic_name.split("/") if part]
+        if not parts:
+            return "images"
+        return "__".join(parts)
+
+    @classmethod
+    def _decode_image_message(cls, msg: Any, msgtype: str) -> tuple[np.ndarray | None, str]:
+        """Decode a ROS image message into an OpenCV image."""
+        if msgtype in cls.COMPRESSED_IMAGE_MSGTYPES:
+            img = cv2.imdecode(np.frombuffer(bytes(msg.data), dtype=np.uint8), cv2.IMREAD_UNCHANGED)
+            if img is None:
+                return None, ".jpg"
+            if img.ndim == 2:
+                return img, ".png"
+            return img, ".jpg"
+
+        encoding = str(getattr(msg, "encoding", "")).lower()
+        height = int(msg.height)
+        width = int(msg.width)
+        step = int(getattr(msg, "step", 0))
+        data = bytes(msg.data)
+
+        if encoding == "rgb8":
+            image = cls._reshape_image_buffer(data, height, width, np.uint8, 3, step)
+            return cv2.cvtColor(image, cv2.COLOR_RGB2BGR), ".jpg"
+        if encoding == "bgr8":
+            return cls._reshape_image_buffer(data, height, width, np.uint8, 3, step), ".jpg"
+        if encoding in {"mono8", "8uc1"}:
+            return cls._reshape_image_buffer(data, height, width, np.uint8, 1, step), ".png"
+        if encoding in {"mono16", "16uc1"}:
+            image16 = cls._reshape_image_buffer(data, height, width, np.uint16, 1, step)
+            scale = 255.0 / max(1.0, float(np.max(image16)))
+            return cv2.convertScaleAbs(image16, alpha=scale), ".png"
+
+        # Fall back to raw bytes interpreted as BGR8, which is a common case.
+        if len(data) == height * width * 3:
+            return np.frombuffer(data, dtype=np.uint8).reshape(height, width, 3), ".jpg"
+        return None, ".png"
+
+    @staticmethod
+    def _reshape_image_buffer(
+        data: bytes,
+        height: int,
+        width: int,
+        dtype: type[np.generic],
+        channels: int,
+        step: int,
+    ) -> np.ndarray:
+        """Reshape image bytes using the ROS step size when present."""
+        itemsize = np.dtype(dtype).itemsize
+        row_items = width * channels if step <= 0 else step // itemsize
+        array = np.frombuffer(data, dtype=dtype).reshape(height, row_items)
+        array = array[:, : width * channels]
+        if channels == 1:
+            return array.reshape(height, width)
+        return array.reshape(height, width, channels)
+
+    @classmethod
+    def _pointcloud2_to_numpy(cls, msg: Any) -> np.ndarray:
+        """Convert a ``sensor_msgs/PointCloud2`` message to an ``Nx4`` float array."""
+        formats = []
+        names = []
+        offsets = []
+        endian = ">" if getattr(msg, "is_bigendian", False) else "<"
+
+        for field in msg.fields:
+            dtype = cls.POINTFIELD_DTYPES.get(int(field.datatype))
+            if dtype is None:
+                continue
+            np_dtype = np.dtype(dtype).newbyteorder(endian)
+            names.append(str(field.name))
+            offsets.append(int(field.offset))
+            formats.append((np_dtype, int(field.count)) if int(field.count) > 1 else np_dtype)
+
+        dtype = np.dtype(
+            {
+                "names": names,
+                "formats": formats,
+                "offsets": offsets,
+                "itemsize": int(msg.point_step),
+            }
+        )
+        count = int(msg.width) * int(msg.height)
+        raw = np.frombuffer(bytes(msg.data), dtype=dtype, count=count)
+
+        if not {"x", "y", "z"}.issubset(raw.dtype.names or ()):
+            raise ValueError("PointCloud2 message does not contain x/y/z fields.")
+
+        x = raw["x"].astype(np.float32, copy=False)
+        y = raw["y"].astype(np.float32, copy=False)
+        z = raw["z"].astype(np.float32, copy=False)
+        intensity = np.zeros_like(x, dtype=np.float32)
+        for key in ("intensity", "reflectivity", "i"):
+            if key in raw.dtype.names:
+                values = raw[key]
+                intensity = (
+                    values[:, 0].astype(np.float32, copy=False)
+                    if values.ndim > 1
+                    else values.astype(np.float32, copy=False)
+                )
+                break
+
+        mask = np.isfinite(x) & np.isfinite(y) & np.isfinite(z)
+        return np.stack([x[mask], y[mask], z[mask], intensity[mask]], axis=-1)
