@@ -1,4 +1,4 @@
-"""Command-line interface for nerf-gs-sim2real.
+"""Command-line interface for GS Mapper.
 
 Provides subcommands for the full 3DGS pipeline:
 - download: Download datasets from supported sources
@@ -18,8 +18,8 @@ from pathlib import Path
 def build_parser() -> argparse.ArgumentParser:
     """Build the argument parser with all subcommands."""
     parser = argparse.ArgumentParser(
-        prog="gs-sim2real",
-        description="Multi-dataset 3D Gaussian Splatting reconstruction playground",
+        prog="gs-mapper",
+        description="Large-scale 3D Gaussian Splatting mapper for robotics and driving datasets",
     )
     parser.add_argument("--version", action="version", version="%(prog)s 0.1.0")
 
@@ -38,12 +38,14 @@ def build_parser() -> argparse.ArgumentParser:
     pp.add_argument("--output", default="outputs/colmap", help="Output directory")
     pp.add_argument(
         "--method",
-        choices=["colmap", "frames", "pose-free", "dust3r", "simple", "waymo"],
+        choices=["colmap", "frames", "pose-free", "dust3r", "simple", "waymo", "mcd", "lidar-slam"],
         default="colmap",
         help="Preprocessing method (default: colmap). "
         "'pose-free' and 'dust3r' use DUSt3R for pose estimation; "
         "'simple' uses circular camera initialization; "
-        "'waymo' extracts frames from Waymo tfrecord files.",
+        "'waymo' extracts frames from Waymo tfrecord files; "
+        "'mcd' extracts images and optional sensors from MCD rosbags; "
+        "'lidar-slam' imports an external SLAM trajectory.",
     )
     pp.add_argument("--fps", type=float, default=2.0, help="FPS for frame extraction (default: 2)")
     pp.add_argument("--max-frames", type=int, default=100, help="Max frames to extract (default: 100)")
@@ -53,6 +55,7 @@ def build_parser() -> argparse.ArgumentParser:
         default="exhaustive",
         help="COLMAP matching strategy (default: exhaustive)",
     )
+    pp.add_argument("--colmap-path", default="colmap", help="Path to the COLMAP executable (default: colmap)")
     pp.add_argument("--no-gpu", action="store_true", help="Disable GPU for COLMAP")
     pp.add_argument(
         "--camera",
@@ -60,7 +63,107 @@ def build_parser() -> argparse.ArgumentParser:
         choices=["FRONT", "FRONT_LEFT", "FRONT_RIGHT", "SIDE_LEFT", "SIDE_RIGHT"],
         help="Waymo camera to extract (default: FRONT)",
     )
-    pp.add_argument("--every-n", type=int, default=1, help="Extract every N-th frame for Waymo (default: 1)")
+    pp.add_argument("--every-n", type=int, default=1, help="Extract every N-th frame for Waymo/MCD (default: 1)")
+    pp.add_argument("--image-topic", default=None, help="ROS image topic for MCD preprocessing")
+    pp.add_argument("--lidar-topic", default=None, help="ROS PointCloud2 topic for MCD preprocessing")
+    pp.add_argument("--imu-topic", default=None, help="ROS IMU topic for MCD preprocessing")
+    pp.add_argument(
+        "--list-topics",
+        action="store_true",
+        help="For MCD preprocessing, print bag topics with inferred roles and exit",
+    )
+    pp.add_argument(
+        "--extract-lidar-depth",
+        action="store_true",
+        help="For Waymo preprocessing, also project TOP lidar into per-frame depth maps",
+    )
+    pp.add_argument(
+        "--extract-dynamic-masks",
+        action="store_true",
+        help="For Waymo preprocessing, also generate per-frame dynamic-object masks from camera labels",
+    )
+    pp.add_argument(
+        "--extract-lidar",
+        action="store_true",
+        help="For MCD preprocessing, also export PointCloud2 frames to lidar/*.npy",
+    )
+    pp.add_argument(
+        "--extract-imu",
+        action="store_true",
+        help="For MCD preprocessing, also export IMU measurements to imu.csv",
+    )
+    pp.add_argument(
+        "--gnss-topic",
+        default=None,
+        help="For MCD preprocessing, NavSatFix topic used with --mcd-seed-poses-from-gnss (default: try /gnss/fix)",
+    )
+    pp.add_argument(
+        "--mcd-seed-poses-from-gnss",
+        action="store_true",
+        help="For MCD preprocessing, write COLMAP sparse from GNSS (NavSatFix) + images; single --image-topic only",
+    )
+    pp.add_argument(
+        "--mcd-base-frame",
+        default="base_link",
+        help="For MCD GNSS seeding, parent frame for /tf_static lookup (default: base_link)",
+    )
+    pp.add_argument(
+        "--mcd-camera-frame",
+        default=None,
+        help="For MCD GNSS seeding, camera frame id (default: CameraInfo header.frame_id)",
+    )
+    pp.add_argument(
+        "--mcd-disable-tf-extrinsics",
+        action="store_true",
+        help="For MCD GNSS seeding, ignore /tf_static (GNSS-only trajectory at vehicle frame)",
+    )
+    pp.add_argument(
+        "--mcd-include-tf-dynamic",
+        action="store_true",
+        help="For MCD GNSS seeding, merge /tf into TF map after /tf_static (slower on large bags)",
+    )
+    pp.add_argument(
+        "--mcd-gnss-antenna-offset-enu",
+        nargs=3,
+        type=float,
+        default=None,
+        metavar=("E", "N", "U"),
+        help="Subtract (East, North, Up) meters from each NavSat fix in ENU (approx. base vs antenna)",
+    )
+    pp.add_argument(
+        "--mcd-gnss-antenna-offset-base",
+        nargs=3,
+        type=float,
+        default=None,
+        metavar=("X", "Y", "Z"),
+        help=(
+            "Antenna position in base_link (x forward, y left, z up, metres); "
+            "subtract using per-sample heading from GNSS motion (do not combine with --mcd-gnss-antenna-offset-enu)"
+        ),
+    )
+    pp.add_argument(
+        "--mcd-tf-use-image-stamps",
+        action="store_true",
+        help="Multi-camera GNSS seed: resolve TF at each image time (/tf + /tf_static topology)",
+    )
+    pp.add_argument(
+        "--mcd-lidar-frame",
+        default="",
+        help="For MCD GNSS seeding, LiDAR frame id under base_link (empty = identity T_base_lidar)",
+    )
+    pp.add_argument(
+        "--mcd-skip-lidar-seed",
+        action="store_true",
+        help="For MCD GNSS seeding, skip merging LiDAR frames to world as points3D seed",
+    )
+    pp.add_argument("--trajectory", default=None, help="SLAM trajectory file (for lidar-slam method)")
+    pp.add_argument(
+        "--trajectory-format",
+        choices=["tum", "kitti", "nmea"],
+        default="tum",
+        help="Trajectory format (default: tum)",
+    )
+    pp.add_argument("--pointcloud", default=None, help="Point cloud file for lidar-slam (.ply/.npy/.pcd)")
 
     # train
     tr = subparsers.add_parser("train", help="Train a 3DGS model")
@@ -74,6 +177,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     tr.add_argument("--iterations", type=int, default=30000, help="Number of training iterations")
     tr.add_argument("--config", default=None, help="Path to training config YAML override")
+    tr.add_argument(
+        "--skip-data-check",
+        action="store_true",
+        help="Skip COLMAP sparse preflight before gsplat training (not recommended)",
+    )
 
     # view
     vw = subparsers.add_parser("view", help="Launch the web viewer")
@@ -115,11 +223,30 @@ def build_parser() -> argparse.ArgumentParser:
         default="both",
         help="Backend to benchmark (default: both)",
     )
+    bm.add_argument(
+        "--skip-data-check",
+        action="store_true",
+        help="Skip COLMAP sparse preflight before gsplat benchmark (not recommended)",
+    )
 
     # run (full pipeline)
     rn = subparsers.add_parser("run", help="Run the full pipeline end-to-end")
     rn.add_argument("--images", required=True, help="Input image directory")
     rn.add_argument("--output", default="outputs", help="Root output directory")
+    rn.add_argument(
+        "--max-frames", type=int, default=100, help="Max frames to extract for dataset-specific preprocessors"
+    )
+    rn.add_argument(
+        "--every-n", type=int, default=1, help="Extract every N-th frame for dataset-specific preprocessors"
+    )
+    rn.add_argument("--colmap-path", default="colmap", help="Path to the COLMAP executable (default: colmap)")
+    rn.add_argument(
+        "--matching",
+        choices=["exhaustive", "sequential"],
+        default="exhaustive",
+        help="COLMAP matching strategy for COLMAP-based preprocessors (default: exhaustive)",
+    )
+    rn.add_argument("--no-gpu", action="store_true", help="Disable GPU for COLMAP-based preprocessing")
     rn.add_argument(
         "--method",
         choices=["gsplat", "nerfstudio"],
@@ -127,15 +254,122 @@ def build_parser() -> argparse.ArgumentParser:
         help="Training method (default: gsplat)",
     )
     rn.add_argument("--iterations", type=int, default=30000, help="Training iterations")
+    rn.add_argument("--config", default=None, help="Path to training config YAML override")
     rn.add_argument(
         "--preprocess-method",
-        choices=["colmap", "pose-free", "dust3r", "simple"],
+        choices=["colmap", "pose-free", "dust3r", "simple", "waymo", "mcd", "lidar-slam"],
         default="colmap",
         help="Preprocessing method (default: colmap)",
     )
+    rn.add_argument(
+        "--camera",
+        default="FRONT",
+        choices=["FRONT", "FRONT_LEFT", "FRONT_RIGHT", "SIDE_LEFT", "SIDE_RIGHT"],
+        help="Waymo camera for --preprocess-method waymo (default: FRONT)",
+    )
+    rn.add_argument(
+        "--extract-lidar-depth",
+        action="store_true",
+        help="For --preprocess-method waymo, also project TOP lidar into per-frame depth maps",
+    )
+    rn.add_argument(
+        "--extract-dynamic-masks",
+        action="store_true",
+        help="For --preprocess-method waymo, also generate per-frame dynamic-object masks from camera labels",
+    )
+    rn.add_argument("--image-topic", default=None, help="ROS image topic for --preprocess-method mcd")
+    rn.add_argument("--lidar-topic", default=None, help="ROS PointCloud2 topic for --preprocess-method mcd")
+    rn.add_argument("--imu-topic", default=None, help="ROS IMU topic for --preprocess-method mcd")
+    rn.add_argument(
+        "--extract-lidar",
+        action="store_true",
+        help="For --preprocess-method mcd, also export PointCloud2 frames to lidar/*.npy",
+    )
+    rn.add_argument(
+        "--extract-imu",
+        action="store_true",
+        help="For --preprocess-method mcd, also export IMU measurements to imu.csv",
+    )
+    rn.add_argument(
+        "--gnss-topic",
+        default=None,
+        help="For --preprocess-method mcd, NavSatFix topic for --mcd-seed-poses-from-gnss (default: try /gnss/fix)",
+    )
+    rn.add_argument(
+        "--mcd-seed-poses-from-gnss",
+        action="store_true",
+        help="For --preprocess-method mcd, COLMAP sparse from GNSS + images; single --image-topic only",
+    )
+    rn.add_argument(
+        "--mcd-base-frame",
+        default="base_link",
+        help="For MCD GNSS seeding, parent frame for /tf_static lookup (default: base_link)",
+    )
+    rn.add_argument(
+        "--mcd-camera-frame",
+        default=None,
+        help="For MCD GNSS seeding, camera frame id (default: CameraInfo header.frame_id)",
+    )
+    rn.add_argument(
+        "--mcd-disable-tf-extrinsics",
+        action="store_true",
+        help="For MCD GNSS seeding, ignore /tf_static (GNSS-only trajectory at vehicle frame)",
+    )
+    rn.add_argument(
+        "--mcd-include-tf-dynamic",
+        action="store_true",
+        help="For MCD GNSS seeding, merge /tf into TF map after /tf_static (slower on large bags)",
+    )
+    rn.add_argument(
+        "--mcd-gnss-antenna-offset-enu",
+        nargs=3,
+        type=float,
+        default=None,
+        metavar=("E", "N", "U"),
+        help="Subtract (East, North, Up) meters from each NavSat fix in ENU (approx. base vs antenna)",
+    )
+    rn.add_argument(
+        "--mcd-gnss-antenna-offset-base",
+        nargs=3,
+        type=float,
+        default=None,
+        metavar=("X", "Y", "Z"),
+        help=(
+            "Antenna in base_link (x forward, y left, z up, metres); heading from GNSS motion "
+            "(do not combine with --mcd-gnss-antenna-offset-enu)"
+        ),
+    )
+    rn.add_argument(
+        "--mcd-tf-use-image-stamps",
+        action="store_true",
+        help="Multi-camera GNSS seed: resolve TF at each image time (/tf + /tf_static topology)",
+    )
+    rn.add_argument(
+        "--mcd-lidar-frame",
+        default="",
+        help="For MCD GNSS seeding, LiDAR frame id under base_link (empty = identity T_base_lidar)",
+    )
+    rn.add_argument(
+        "--mcd-skip-lidar-seed",
+        action="store_true",
+        help="For MCD GNSS seeding, skip merging LiDAR frames to world as points3D seed",
+    )
+    rn.add_argument("--trajectory", default=None, help="Trajectory file for --preprocess-method lidar-slam")
+    rn.add_argument(
+        "--trajectory-format",
+        choices=["tum", "kitti", "nmea"],
+        default="tum",
+        help="Trajectory format for --preprocess-method lidar-slam (default: tum)",
+    )
+    rn.add_argument("--pointcloud", default=None, help="Point cloud file for --preprocess-method lidar-slam")
     rn.add_argument("--skip-preprocess", action="store_true", help="Skip COLMAP preprocessing")
     rn.add_argument("--no-viewer", action="store_true", help="Skip launching the viewer")
     rn.add_argument("--port", type=int, default=8080, help="Viewer port (default: 8080)")
+    rn.add_argument(
+        "--skip-data-check",
+        action="store_true",
+        help="Skip COLMAP sparse preflight before gsplat training (not recommended)",
+    )
 
     # demo (end-to-end: images -> splat -> DreamWalker teleop)
     dm = subparsers.add_parser("demo", help="End-to-end demo: images -> 3DGS -> DreamWalker robot teleop")
@@ -143,20 +377,141 @@ def build_parser() -> argparse.ArgumentParser:
     dm.add_argument("--ply", default=None, help="Skip training, stage an existing PLY file directly")
     dm.add_argument("--output", default="outputs", help="Root output directory (default: outputs)")
     dm.add_argument(
+        "--max-frames", type=int, default=100, help="Max frames to extract for dataset-specific preprocessors"
+    )
+    dm.add_argument(
+        "--every-n", type=int, default=1, help="Extract every N-th frame for dataset-specific preprocessors"
+    )
+    dm.add_argument("--colmap-path", default="colmap", help="Path to the COLMAP executable (default: colmap)")
+    dm.add_argument(
+        "--matching",
+        choices=["exhaustive", "sequential"],
+        default="exhaustive",
+        help="COLMAP matching strategy for COLMAP-based preprocessors (default: exhaustive)",
+    )
+    dm.add_argument("--no-gpu", action="store_true", help="Disable GPU for COLMAP-based preprocessing")
+    dm.add_argument(
         "--method",
         choices=["gsplat", "nerfstudio"],
         default="gsplat",
         help="Training method (default: gsplat)",
     )
     dm.add_argument("--iterations", type=int, default=1000, help="Training iterations (default: 1000)")
+    dm.add_argument("--config", default=None, help="Path to training config YAML override")
     dm.add_argument(
         "--preprocess-method",
-        choices=["colmap", "pose-free", "dust3r", "simple"],
+        choices=["colmap", "pose-free", "dust3r", "simple", "waymo", "mcd", "lidar-slam"],
         default="colmap",
         help="Preprocessing method (default: colmap)",
     )
+    dm.add_argument(
+        "--camera",
+        default="FRONT",
+        choices=["FRONT", "FRONT_LEFT", "FRONT_RIGHT", "SIDE_LEFT", "SIDE_RIGHT"],
+        help="Waymo camera for --preprocess-method waymo (default: FRONT)",
+    )
+    dm.add_argument(
+        "--extract-lidar-depth",
+        action="store_true",
+        help="For --preprocess-method waymo, also project TOP lidar into per-frame depth maps",
+    )
+    dm.add_argument(
+        "--extract-dynamic-masks",
+        action="store_true",
+        help="For --preprocess-method waymo, also generate per-frame dynamic-object masks from camera labels",
+    )
+    dm.add_argument("--image-topic", default=None, help="ROS image topic for --preprocess-method mcd")
+    dm.add_argument("--lidar-topic", default=None, help="ROS PointCloud2 topic for --preprocess-method mcd")
+    dm.add_argument("--imu-topic", default=None, help="ROS IMU topic for --preprocess-method mcd")
+    dm.add_argument(
+        "--extract-lidar",
+        action="store_true",
+        help="For --preprocess-method mcd, also export PointCloud2 frames to lidar/*.npy",
+    )
+    dm.add_argument(
+        "--extract-imu",
+        action="store_true",
+        help="For --preprocess-method mcd, also export IMU measurements to imu.csv",
+    )
+    dm.add_argument(
+        "--gnss-topic",
+        default=None,
+        help="For --preprocess-method mcd, NavSatFix topic for --mcd-seed-poses-from-gnss (default: try /gnss/fix)",
+    )
+    dm.add_argument(
+        "--mcd-seed-poses-from-gnss",
+        action="store_true",
+        help="For --preprocess-method mcd, COLMAP sparse from GNSS + images; single --image-topic only",
+    )
+    dm.add_argument(
+        "--mcd-base-frame",
+        default="base_link",
+        help="For MCD GNSS seeding, parent frame for /tf_static lookup (default: base_link)",
+    )
+    dm.add_argument(
+        "--mcd-camera-frame",
+        default=None,
+        help="For MCD GNSS seeding, camera frame id (default: CameraInfo header.frame_id)",
+    )
+    dm.add_argument(
+        "--mcd-disable-tf-extrinsics",
+        action="store_true",
+        help="For MCD GNSS seeding, ignore /tf_static (GNSS-only trajectory at vehicle frame)",
+    )
+    dm.add_argument(
+        "--mcd-include-tf-dynamic",
+        action="store_true",
+        help="For MCD GNSS seeding, merge /tf into TF map after /tf_static (slower on large bags)",
+    )
+    dm.add_argument(
+        "--mcd-gnss-antenna-offset-enu",
+        nargs=3,
+        type=float,
+        default=None,
+        metavar=("E", "N", "U"),
+        help="Subtract (East, North, Up) meters from each NavSat fix in ENU (approx. base vs antenna)",
+    )
+    dm.add_argument(
+        "--mcd-gnss-antenna-offset-base",
+        nargs=3,
+        type=float,
+        default=None,
+        metavar=("X", "Y", "Z"),
+        help=(
+            "Antenna in base_link (x forward, y left, z up, metres); heading from GNSS motion "
+            "(do not combine with --mcd-gnss-antenna-offset-enu)"
+        ),
+    )
+    dm.add_argument(
+        "--mcd-tf-use-image-stamps",
+        action="store_true",
+        help="Multi-camera GNSS seed: resolve TF at each image time (/tf + /tf_static topology)",
+    )
+    dm.add_argument(
+        "--mcd-lidar-frame",
+        default="",
+        help="For MCD GNSS seeding, LiDAR frame id under base_link (empty = identity T_base_lidar)",
+    )
+    dm.add_argument(
+        "--mcd-skip-lidar-seed",
+        action="store_true",
+        help="For MCD GNSS seeding, skip merging LiDAR frames to world as points3D seed",
+    )
+    dm.add_argument("--trajectory", default=None, help="Trajectory file for --preprocess-method lidar-slam")
+    dm.add_argument(
+        "--trajectory-format",
+        choices=["tum", "kitti", "nmea"],
+        default="tum",
+        help="Trajectory format for --preprocess-method lidar-slam (default: tum)",
+    )
+    dm.add_argument("--pointcloud", default=None, help="Point cloud file for --preprocess-method lidar-slam")
     dm.add_argument("--fragment", default="residency", help="DreamWalker fragment name (default: residency)")
     dm.add_argument("--no-launch", action="store_true", help="Skip launching the Vite dev server")
+    dm.add_argument(
+        "--skip-data-check",
+        action="store_true",
+        help="Skip COLMAP sparse preflight before gsplat training (not recommended)",
+    )
 
     # robotics ROS2 node
     rb = subparsers.add_parser("robotics-node", help="Launch the DreamWalker ROS2 bridge node scaffold")
@@ -862,6 +1217,65 @@ def cmd_preprocess(args: argparse.Namespace) -> None:
             print(f"COLMAP sparse model at: {sparse_dir}")
         else:
             print(f"Waymo frames loaded from: {images_out}")
+        if args.extract_lidar_depth:
+            depth_dir = loader.extract_lidar_depth(
+                output_dir=str(output_dir),
+                camera=args.camera,
+                max_frames=args.max_frames,
+                every_n=args.every_n,
+            )
+            print(f"Waymo LiDAR depth extracted to: {depth_dir}")
+        if args.extract_dynamic_masks:
+            masks_dir = loader.extract_dynamic_masks(
+                output_dir=str(output_dir),
+                camera=args.camera,
+                max_frames=args.max_frames,
+                every_n=args.every_n,
+            )
+            print(f"Waymo dynamic masks extracted to: {masks_dir}")
+        return
+
+    if args.method == "mcd":
+        from gs_sim2real.datasets.mcd import MCDLoader
+
+        loader = MCDLoader(data_dir=str(images_path))
+        if args.list_topics:
+            topics = loader.list_topics()
+            if not topics:
+                print(f"No rosbag topics found under: {images_path}")
+                return
+            print("MCD rosbag topics:")
+            for topic in topics:
+                preferred = " default" if topic["is_preferred_default"] else ""
+                print(f"  [{topic['role']}] {topic['topic']} ({topic['msgtype']}, {topic['msgcount']} msgs){preferred}")
+            return
+        image_topics = _parse_topic_arg(args.image_topic)
+        seed_gnss = getattr(args, "mcd_seed_poses_from_gnss", False)
+        images_out = loader.extract_frames(
+            output_dir=str(output_dir),
+            image_topic=image_topics,
+            max_frames=args.max_frames,
+            every_n=args.every_n,
+            save_image_timestamps=seed_gnss,
+        )
+        print(f"MCD frames available at: {images_out}")
+        if args.extract_lidar:
+            lidar_dir = loader.extract_lidar(
+                output_dir=str(output_dir),
+                lidar_topic=args.lidar_topic,
+                max_frames=args.max_frames,
+                every_n=args.every_n,
+                save_timestamps=getattr(args, "mcd_seed_poses_from_gnss", False),
+            )
+            print(f"MCD LiDAR extracted to: {lidar_dir}")
+        if args.extract_imu:
+            imu_path = loader.extract_imu(
+                output_dir=str(output_dir),
+                imu_topic=args.imu_topic,
+            )
+            print(f"MCD IMU extracted to: {imu_path}")
+        if getattr(args, "mcd_seed_poses_from_gnss", False):
+            _mcd_gnss_sparse_import(loader, Path(output_dir), images_out, args)
         return
 
     if args.method == "frames":
@@ -887,6 +1301,20 @@ def cmd_preprocess(args: argparse.Namespace) -> None:
         else:
             print(f"Error: '{images_path}' is not a file or directory.")
             sys.exit(1)
+    elif args.method == "lidar-slam":
+        from gs_sim2real.preprocess.lidar_slam import import_lidar_slam
+
+        if not args.trajectory:
+            print("Error: --trajectory is required for lidar-slam method.")
+            sys.exit(1)
+        sparse_dir = import_lidar_slam(
+            trajectory_path=args.trajectory,
+            image_dir=images_path,
+            output_dir=output_dir,
+            trajectory_format=args.trajectory_format,
+            pointcloud_path=args.pointcloud,
+        )
+        print(f"LiDAR SLAM import complete: {sparse_dir}")
     elif args.method in ("pose-free", "dust3r", "simple"):
         from gs_sim2real.preprocess.pose_free import run_pose_free
 
@@ -905,7 +1333,17 @@ def cmd_preprocess(args: argparse.Namespace) -> None:
             output_dir=output_dir,
             matching=args.matching,
             use_gpu=not args.no_gpu,
+            colmap_path=args.colmap_path,
         )
+
+
+def _preflight_gsplat_train_data(data_dir: Path, skip: bool) -> None:
+    """Fail fast if COLMAP sparse model is missing or incomplete (gsplat)."""
+    if skip:
+        return
+    from gs_sim2real.preprocess.colmap_ready import require_colmap_sparse_model
+
+    require_colmap_sparse_model(data_dir)
 
 
 def cmd_train(args: argparse.Namespace) -> None:
@@ -923,6 +1361,7 @@ def cmd_train(args: argparse.Namespace) -> None:
     if args.method == "gsplat":
         from gs_sim2real.train.gsplat_trainer import train_gsplat
 
+        _preflight_gsplat_train_data(data_dir, getattr(args, "skip_data_check", False))
         ply_path = train_gsplat(
             data_dir=data_dir,
             output_dir=output_dir,
@@ -987,7 +1426,11 @@ def cmd_benchmark(args: argparse.Namespace) -> None:
 
     if args.method in ("gsplat", "both"):
         print("Running gsplat benchmark...")
-        bench.run_gsplat(num_iterations=args.iterations, dataset_name=args.dataset_name)
+        bench.run_gsplat(
+            num_iterations=args.iterations,
+            dataset_name=args.dataset_name,
+            skip_data_check=getattr(args, "skip_data_check", False),
+        )
 
     if args.method in ("nerfstudio", "both"):
         print("Running nerfstudio benchmark...")
@@ -998,6 +1441,393 @@ def cmd_benchmark(args: argparse.Namespace) -> None:
     print(f"\nResults saved to: {Path(args.output) / 'benchmark_results.json'}")
 
 
+def _run_waymo_preprocess(
+    source_dir: Path,
+    colmap_dir: Path,
+    args: argparse.Namespace,
+):
+    """Extract Waymo frames and prepare COLMAP-format inputs for training."""
+    from gs_sim2real.datasets.waymo import WaymoLoader
+    from gs_sim2real.preprocess.colmap import run_colmap
+
+    loader = WaymoLoader(data_dir=str(source_dir))
+    images_out = loader.extract_frames(
+        output_dir=str(colmap_dir),
+        camera=args.camera,
+        max_frames=args.max_frames,
+        every_n=args.every_n,
+    )
+
+    params_path = colmap_dir / "camera_params.json"
+    if params_path.exists():
+        sparse_dir = loader.to_colmap_format(
+            camera_params_path=str(params_path),
+            output_dir=str(colmap_dir),
+        )
+        print(f"Waymo frames extracted to: {images_out}")
+        print(f"COLMAP sparse model at: {sparse_dir}")
+    else:
+        sparse_dir = run_colmap(
+            image_dir=images_out,
+            output_dir=colmap_dir,
+            matching=getattr(args, "matching", "exhaustive"),
+            use_gpu=not getattr(args, "no_gpu", False),
+            colmap_path=getattr(args, "colmap_path", "colmap"),
+        )
+        print(f"Waymo frames loaded from: {images_out}")
+        print(f"COLMAP sparse model at: {sparse_dir}")
+
+    if getattr(args, "extract_lidar_depth", False):
+        depth_dir = loader.extract_lidar_depth(
+            output_dir=str(colmap_dir),
+            camera=args.camera,
+            max_frames=args.max_frames,
+            every_n=args.every_n,
+        )
+        print(f"Waymo LiDAR depth extracted to: {depth_dir}")
+
+    if getattr(args, "extract_dynamic_masks", False):
+        masks_dir = loader.extract_dynamic_masks(
+            output_dir=str(colmap_dir),
+            camera=args.camera,
+            max_frames=args.max_frames,
+            every_n=args.every_n,
+        )
+        print(f"Waymo dynamic masks extracted to: {masks_dir}")
+
+    return sparse_dir
+
+
+def _parse_topic_arg(value: str | None) -> str | list[str] | None:
+    """Parse a CLI topic argument, allowing comma-separated topic lists."""
+    if value is None:
+        return None
+    topics = [topic.strip() for topic in value.split(",") if topic.strip()]
+    if not topics:
+        return None
+    if len(topics) == 1:
+        return topics[0]
+    return topics
+
+
+def _pinhole_tuple_from_json(path: Path) -> tuple[float, float, float, float, int, int]:
+    """Load PINHOLE intrinsics tuple from MCD CameraInfo JSON."""
+    import json
+
+    with open(path) as f:
+        c = json.load(f)
+    return (
+        float(c["fx"]),
+        float(c["fy"]),
+        float(c["cx"]),
+        float(c["cy"]),
+        int(c["width"]),
+        int(c["height"]),
+    )
+
+
+def _mcd_antenna_offset_enu(args: argparse.Namespace) -> tuple[float, float, float] | None:
+    """Return ``(E,N,U)`` antenna offset or None."""
+    v = getattr(args, "mcd_gnss_antenna_offset_enu", None)
+    if not v:
+        return None
+    return (float(v[0]), float(v[1]), float(v[2]))
+
+
+def _mcd_antenna_offset_base(args: argparse.Namespace) -> tuple[float, float, float] | None:
+    """Return ``(x,y,z)`` base_link antenna offset or None."""
+    v = getattr(args, "mcd_gnss_antenna_offset_base", None)
+    if not v:
+        return None
+    return (float(v[0]), float(v[1]), float(v[2]))
+
+
+def _mcd_lidar_world_seed(
+    loader,
+    colmap_dir: Path,
+    lidar_tum_path: str,
+    tf_map,
+    base_frame: str,
+    args: argparse.Namespace,
+) -> str | None:
+    """Merge per-frame LiDAR NPYs into a world-frame ``.npy``; return path or None on failure/skip."""
+    if getattr(args, "mcd_skip_lidar_seed", False):
+        return None
+    lidar_dir = colmap_dir / "lidar"
+    if not lidar_dir.is_dir():
+        return None
+    if not any(lidar_dir.glob("frame_*.npy")):
+        return None
+
+    lidar_frame = (getattr(args, "mcd_lidar_frame", "") or "").strip()
+    T_base_lidar = None
+    if lidar_frame and tf_map is not None and len(tf_map) > 0:
+        T_base_lidar = tf_map.lookup(base_frame, lidar_frame)
+        if T_base_lidar is None:
+            print(
+                f"Warning: no TF path {base_frame!r} -> {lidar_frame!r}; using identity T_base_lidar for LiDAR seed.",
+                file=sys.stderr,
+            )
+
+    merged_npy = colmap_dir / "lidar_world.npy"
+    try:
+        out_path = loader.merge_lidar_frames_to_world(
+            lidar_dir=lidar_dir,
+            trajectory_path=lidar_tum_path,
+            output_path=merged_npy,
+            T_base_lidar=T_base_lidar,
+        )
+    except Exception as exc:
+        print(f"Warning: MCD LiDAR world merge failed ({exc}); falling back to random seed.", file=sys.stderr)
+        return None
+
+    try:
+        import numpy as np
+
+        count = int(np.load(out_path).shape[0])
+    except Exception:
+        count = -1
+    print(f"MCD LiDAR world seed: {count} points -> {out_path}")
+    return out_path
+
+
+def _mcd_gnss_sparse_import(
+    loader,
+    colmap_dir: Path,
+    images_out: str,
+    args: argparse.Namespace,
+) -> str:
+    """Build COLMAP sparse from NavSatFix TUM + CameraInfo JSON (+ optional TF)."""
+    import json
+
+    from gs_sim2real.datasets.ros_tf import HybridTfLookup
+    from gs_sim2real.preprocess.lidar_slam import import_lidar_slam, import_multicam_vehicle_trajectory
+
+    image_topics = _parse_topic_arg(getattr(args, "image_topic", None))
+    it_list: list[str] = []
+    if isinstance(image_topics, list):
+        it_list = image_topics
+    elif image_topics is not None:
+        it_list = [image_topics]
+
+    include_tf_dynamic = getattr(args, "mcd_include_tf_dynamic", False)
+    disable_tf = getattr(args, "mcd_disable_tf_extrinsics", False)
+    base_frame = (getattr(args, "mcd_base_frame", None) or "base_link").strip()
+
+    calib_files: list[str] = []
+    if it_list:
+        calib_files = loader.extract_camera_info(colmap_dir, image_topics=it_list)
+        for p in calib_files:
+            print(f"MCD camera calibration: {p}")
+
+    tf_map = loader.build_tf_map(include_dynamic_tf=include_tf_dynamic)
+
+    # --- Multi-camera: vehicle TUM + per-camera TF + multiview COLMAP ---
+    if len(it_list) > 1:
+        cameras: list[dict] = []
+        for i, topic in enumerate(it_list):
+            label = type(loader)._sanitize_topic_name(topic)
+            calib_path = calib_files[i] if i < len(calib_files) else None
+            frame_id = ""
+            if calib_path:
+                with open(calib_path) as f:
+                    frame_id = str(json.load(f).get("frame_id") or "").strip()
+            if not frame_id:
+                frame_id = (getattr(args, "mcd_camera_frame", None) or "").strip()
+            T_base_cam = None
+            if not disable_tf and frame_id and len(tf_map) > 0:
+                T_base_cam = tf_map.lookup(base_frame, frame_id)
+                if T_base_cam is None:
+                    print(
+                        f"Warning: no TF path {base_frame!r} -> {frame_id!r} for topic {topic}; "
+                        "using identity extrinsics for this camera.",
+                        file=sys.stderr,
+                    )
+            pinhole = _pinhole_tuple_from_json(Path(calib_path)) if calib_path else None
+            cameras.append(
+                {
+                    "subdir": label,
+                    "camera_id": i + 1,
+                    "camera_frame": frame_id,
+                    "T_base_cam": T_base_cam,
+                    "pinhole": pinhole,
+                }
+            )
+        print(
+            f"MCD multi-camera GNSS seed: {len(cameras)} cameras "
+            f"(tf_edges={len(tf_map)}, dynamic_tf={include_tf_dynamic})"
+        )
+
+        tum_path = loader.extract_navsat_trajectory(
+            colmap_dir,
+            gnss_topic=getattr(args, "gnss_topic", None),
+            max_poses=None,
+            T_base_cam=None,
+            vehicle_frame_only=True,
+            antenna_offset_enu=_mcd_antenna_offset_enu(args),
+            antenna_offset_base=_mcd_antenna_offset_base(args),
+        )
+        print(f"MCD vehicle GNSS trajectory (TUM): {tum_path}")
+
+        pointcloud_path: str | Path | None = getattr(args, "pointcloud", None)
+        if not pointcloud_path:
+            seeded = _mcd_lidar_world_seed(loader, colmap_dir, tum_path, tf_map, base_frame, args)
+            if seeded is not None:
+                pointcloud_path = seeded
+
+        hybrid_tf = None
+        use_stamp_tf = getattr(args, "mcd_tf_use_image_stamps", False) and not disable_tf
+        if use_stamp_tf:
+            static_topo = loader.build_tf_map(include_dynamic_tf=False)
+            dyn = loader.collect_tf_dynamic_edges()
+            hybrid_tf = HybridTfLookup(static_topo, dyn if len(dyn) > 0 else None)
+            print("MCD: per-image TF extrinsics (HybridTfLookup: /tf_static topology + /tf samples)")
+
+        sparse_dir = import_multicam_vehicle_trajectory(
+            trajectory_path=tum_path,
+            images_root=images_out,
+            output_dir=str(colmap_dir),
+            cameras=cameras,
+            pointcloud_path=pointcloud_path,
+            hybrid_tf=hybrid_tf,
+            base_frame=base_frame,
+        )
+        print(f"MCD GNSS-seeded COLMAP sparse model at: {sparse_dir}")
+        return sparse_dir
+
+    # --- Single camera ---
+    calib_path: str | None = calib_files[0] if calib_files else None
+
+    camera_frame = (getattr(args, "mcd_camera_frame", None) or "").strip()
+    if not camera_frame and calib_files:
+        with open(calib_files[0]) as f:
+            camera_frame = str(json.load(f).get("frame_id") or "").strip()
+
+    T_base_cam = None
+    if not disable_tf:
+        if camera_frame and len(tf_map) > 0:
+            T_base_cam = tf_map.lookup(base_frame, camera_frame)
+            if T_base_cam is not None:
+                src = "/tf_static + /tf" if include_tf_dynamic else "/tf_static"
+                print(f"MCD TF extrinsics: {base_frame} <- {camera_frame} ({src})")
+            else:
+                print(
+                    f"Warning: no TF path from {base_frame!r} to {camera_frame!r}; "
+                    "using GNSS translation-only trajectory (vehicle frame).",
+                    file=sys.stderr,
+                )
+        elif len(tf_map) == 0:
+            print("Warning: no TF in bag; using GNSS without camera extrinsics.", file=sys.stderr)
+        elif not camera_frame:
+            print(
+                "Warning: no camera frame_id (--mcd-camera-frame or CameraInfo); "
+                "using GNSS without TF camera extrinsics.",
+                file=sys.stderr,
+            )
+
+    pointcloud_path: str | Path | None = getattr(args, "pointcloud", None)
+    lidar_tum_path: str | None = None
+    if not pointcloud_path and not getattr(args, "mcd_skip_lidar_seed", False):
+        try:
+            vehicle_tum = loader.extract_navsat_trajectory(
+                colmap_dir,
+                gnss_topic=getattr(args, "gnss_topic", None),
+                max_poses=None,
+                T_base_cam=None,
+                vehicle_frame_only=True,
+                antenna_offset_enu=_mcd_antenna_offset_enu(args),
+                antenna_offset_base=_mcd_antenna_offset_base(args),
+            )
+            vehicle_path = Path(vehicle_tum)
+            lidar_side = vehicle_path.with_name("gnss_trajectory_vehicle.tum")
+            vehicle_path.replace(lidar_side)
+            lidar_tum_path = str(lidar_side)
+        except Exception as exc:
+            print(
+                f"Warning: could not extract vehicle-frame TUM for LiDAR seed ({exc}); skipping LiDAR seed.",
+                file=sys.stderr,
+            )
+            lidar_tum_path = None
+
+    tum_path = loader.extract_navsat_trajectory(
+        colmap_dir,
+        gnss_topic=getattr(args, "gnss_topic", None),
+        max_poses=None,
+        T_base_cam=T_base_cam,
+        vehicle_frame_only=False,
+        antenna_offset_enu=_mcd_antenna_offset_enu(args),
+        antenna_offset_base=_mcd_antenna_offset_base(args),
+    )
+    print(f"MCD GNSS trajectory (TUM): {tum_path}")
+
+    if lidar_tum_path is not None:
+        seeded = _mcd_lidar_world_seed(loader, colmap_dir, lidar_tum_path, tf_map, base_frame, args)
+        if seeded is not None:
+            pointcloud_path = seeded
+
+    sparse_dir = import_lidar_slam(
+        trajectory_path=tum_path,
+        image_dir=images_out,
+        output_dir=colmap_dir,
+        trajectory_format="tum",
+        pointcloud_path=pointcloud_path,
+        pinhole_calib_path=calib_path,
+    )
+    print(f"MCD GNSS-seeded COLMAP sparse model at: {sparse_dir}")
+    return sparse_dir
+
+
+def _run_mcd_preprocess_to_colmap(
+    source_dir: Path,
+    colmap_dir: Path,
+    args: argparse.Namespace,
+):
+    """Extract MCD bag data to images and run COLMAP on the extracted frames."""
+    from gs_sim2real.datasets.mcd import MCDLoader
+    from gs_sim2real.preprocess.colmap import run_colmap
+
+    loader = MCDLoader(data_dir=str(source_dir))
+    image_topics = _parse_topic_arg(getattr(args, "image_topic", None))
+    seed_gnss = getattr(args, "mcd_seed_poses_from_gnss", False)
+    images_out = loader.extract_frames(
+        output_dir=str(colmap_dir),
+        image_topic=image_topics,
+        max_frames=args.max_frames,
+        every_n=args.every_n,
+        save_image_timestamps=seed_gnss,
+    )
+    print(f"MCD frames available at: {images_out}")
+
+    if getattr(args, "extract_lidar", False):
+        lidar_dir = loader.extract_lidar(
+            output_dir=str(colmap_dir),
+            lidar_topic=getattr(args, "lidar_topic", None),
+            max_frames=args.max_frames,
+            every_n=args.every_n,
+            save_timestamps=True,
+        )
+        print(f"MCD LiDAR extracted to: {lidar_dir}")
+
+    if getattr(args, "extract_imu", False):
+        imu_path = loader.extract_imu(
+            output_dir=str(colmap_dir),
+            imu_topic=getattr(args, "imu_topic", None),
+        )
+        print(f"MCD IMU extracted to: {imu_path}")
+
+    if getattr(args, "mcd_seed_poses_from_gnss", False):
+        return _mcd_gnss_sparse_import(loader, colmap_dir, images_out, args)
+
+    return run_colmap(
+        image_dir=images_out,
+        output_dir=colmap_dir,
+        matching=getattr(args, "matching", "exhaustive"),
+        use_gpu=not getattr(args, "no_gpu", False),
+        colmap_path=getattr(args, "colmap_path", "colmap"),
+        single_camera_per_folder=isinstance(image_topics, list),
+    )
+
+
 def cmd_run(args: argparse.Namespace) -> None:
     """Handle the run subcommand (full pipeline)."""
     images_dir = Path(args.images)
@@ -1005,6 +1835,12 @@ def cmd_run(args: argparse.Namespace) -> None:
 
     colmap_dir = output_dir / "colmap"
     train_dir = output_dir / "train"
+    config = None
+
+    if args.config:
+        from gs_sim2real.common.config import load_config
+
+        config = load_config(args.config)
 
     # Step 1: Preprocess
     if not args.skip_preprocess:
@@ -1013,7 +1849,25 @@ def cmd_run(args: argparse.Namespace) -> None:
         print(f"Step 1: Preprocessing ({preprocess_method})")
         print("=" * 60)
 
-        if preprocess_method in ("pose-free", "dust3r", "simple"):
+        if preprocess_method == "lidar-slam":
+            from gs_sim2real.preprocess.lidar_slam import import_lidar_slam
+
+            trajectory = getattr(args, "trajectory", None)
+            if not trajectory:
+                print("Error: --trajectory is required for lidar-slam method.")
+                sys.exit(1)
+            import_lidar_slam(
+                trajectory_path=trajectory,
+                image_dir=images_dir,
+                output_dir=colmap_dir,
+                trajectory_format=getattr(args, "trajectory_format", "tum"),
+                pointcloud_path=getattr(args, "pointcloud", None),
+            )
+        elif preprocess_method == "waymo":
+            _run_waymo_preprocess(images_dir, colmap_dir, args)
+        elif preprocess_method == "mcd":
+            _run_mcd_preprocess_to_colmap(images_dir, colmap_dir, args)
+        elif preprocess_method in ("pose-free", "dust3r", "simple"):
             from gs_sim2real.preprocess.pose_free import run_pose_free
 
             method_map = {"pose-free": "dust3r", "dust3r": "dust3r", "simple": "simple"}
@@ -1028,6 +1882,9 @@ def cmd_run(args: argparse.Namespace) -> None:
             run_colmap(
                 image_dir=images_dir,
                 output_dir=colmap_dir,
+                matching=args.matching,
+                use_gpu=not args.no_gpu,
+                colmap_path=args.colmap_path,
             )
     else:
         print("Skipping preprocessing (--skip-preprocess)")
@@ -1041,9 +1898,11 @@ def cmd_run(args: argparse.Namespace) -> None:
     if args.method == "gsplat":
         from gs_sim2real.train.gsplat_trainer import train_gsplat
 
+        _preflight_gsplat_train_data(colmap_dir, getattr(args, "skip_data_check", False))
         ply_path = train_gsplat(
             data_dir=colmap_dir,
             output_dir=train_dir,
+            config=config,
             num_iterations=args.iterations,
         )
     else:
@@ -1084,6 +1943,12 @@ def cmd_demo(args: argparse.Namespace) -> None:
         output_dir = Path(args.output)
         colmap_dir = output_dir / "colmap"
         train_dir = output_dir / "train"
+        config = None
+
+        if args.config:
+            from gs_sim2real.common.config import load_config
+
+            config = load_config(args.config)
 
         # Step 1: Preprocess
         preprocess_method = args.preprocess_method
@@ -1091,7 +1956,25 @@ def cmd_demo(args: argparse.Namespace) -> None:
         print(f"Step 1/3: Preprocessing ({preprocess_method})")
         print("=" * 60)
 
-        if preprocess_method in ("pose-free", "dust3r", "simple"):
+        if preprocess_method == "lidar-slam":
+            from gs_sim2real.preprocess.lidar_slam import import_lidar_slam as _slam_import
+
+            trajectory = getattr(args, "trajectory", None)
+            if not trajectory:
+                print("Error: --trajectory is required for lidar-slam method.")
+                sys.exit(1)
+            _slam_import(
+                trajectory_path=trajectory,
+                image_dir=images_dir,
+                output_dir=colmap_dir,
+                trajectory_format=getattr(args, "trajectory_format", "tum"),
+                pointcloud_path=getattr(args, "pointcloud", None),
+            )
+        elif preprocess_method == "waymo":
+            _run_waymo_preprocess(images_dir, colmap_dir, args)
+        elif preprocess_method == "mcd":
+            _run_mcd_preprocess_to_colmap(images_dir, colmap_dir, args)
+        elif preprocess_method in ("pose-free", "dust3r", "simple"):
             from gs_sim2real.preprocess.pose_free import run_pose_free
 
             method_map = {"pose-free": "dust3r", "dust3r": "dust3r", "simple": "simple"}
@@ -1103,7 +1986,13 @@ def cmd_demo(args: argparse.Namespace) -> None:
         else:
             from gs_sim2real.preprocess.colmap import run_colmap as _run_colmap
 
-            _run_colmap(image_dir=images_dir, output_dir=colmap_dir)
+            _run_colmap(
+                image_dir=images_dir,
+                output_dir=colmap_dir,
+                matching=args.matching,
+                use_gpu=not args.no_gpu,
+                colmap_path=args.colmap_path,
+            )
 
         # Step 2: Train
         print("\n" + "=" * 60)
@@ -1113,9 +2002,11 @@ def cmd_demo(args: argparse.Namespace) -> None:
         if args.method == "gsplat":
             from gs_sim2real.train.gsplat_trainer import train_gsplat
 
+            _preflight_gsplat_train_data(colmap_dir, getattr(args, "skip_data_check", False))
             ply_path = train_gsplat(
                 data_dir=colmap_dir,
                 output_dir=train_dir,
+                config=config,
                 num_iterations=args.iterations,
             )
         else:
@@ -1294,7 +2185,7 @@ def cmd_experiment_query_response_build(args: argparse.Namespace) -> None:
 
 
 def main(argv: list[str] | None = None) -> None:
-    """Entry point for the gs-sim2real CLI."""
+    """Entry point for the GS Mapper CLI."""
     parser = build_parser()
     args = parser.parse_args(argv)
 
