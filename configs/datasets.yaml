@@ -88,3 +88,29 @@ mcd:
     - ntu
     - kth
     - tuhh
+
+autoware_leo_drive_bag1:
+  name: Autoware Leo Drive ISUZU — all-sensors-bag1_compressed
+  description: >
+    Public ROS 2 bag from Autoware Foundation (Bus ODD, multi-camera + LiDAR + GNSS/INS).
+    Used in this repo as the known-good outdoor smoke target. Large download (multi-GB).
+  paper_url: "https://autowarefoundation.github.io/autoware-documentation/main/datasets/#leo-drive---isuzu-sensor-data"
+  source_url: "https://autowarefoundation.github.io/autoware-documentation/main/datasets/#leo-drive---isuzu-sensor-data"
+  download_method: aws_s3_sync
+  data_format: rosbag2
+  type: driving
+  aws_s3_sync:
+    uri: "s3://autoware-files/collected_data/2022-08-22_leo_drive_isuzu_bags/all-sensors-bag1_compressed/"
+
+autoware_leo_drive_bag6:
+  name: Autoware Leo Drive ISUZU — all-sensors-bag6_compressed
+  description: >
+    Public ROS 2 bag from Autoware Foundation (Bus ODD, multi-camera + LiDAR + GNSS/INS).
+    Historically failed image-only COLMAP (2 registered images); target for pose-seeded reconstruction.
+  paper_url: "https://autowarefoundation.github.io/autoware-documentation/main/datasets/#leo-drive---isuzu-sensor-data"
+  source_url: "https://autowarefoundation.github.io/autoware-documentation/main/datasets/#leo-drive---isuzu-sensor-data"
+  download_method: aws_s3_sync
+  data_format: rosbag2
+  type: driving
+  aws_s3_sync:
+    uri: "s3://autoware-files/collected_data/2022-08-22_leo_drive_isuzu_bags/all-sensors-bag6_compressed/"

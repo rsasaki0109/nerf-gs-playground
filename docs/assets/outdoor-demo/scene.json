@@ -1,0 +1,41 @@
+{
+  "version": "gs-sim2real-web-scene/v1",
+  "type": "web-scene-manifest",
+  "sceneId": "outdoor-demo",
+  "label": "Outdoor GS Demo",
+  "description": "Autoware Leo Drive ISUZU sensor bag6 (public). GNSS + /tf_static + LiDAR-seeded COLMAP sparse, then gsplat outdoor training. Pose-based import (40 registered frames) vs prior image-only 2-frame failure.",
+  "asset": {
+    "href": "outdoor-demo.points.bin",
+    "format": "binary"
+  },
+  "count": 60000,
+  "bounds": {
+    "min": [
+      -2.252612352371216,
+      -4.010876655578613,
+      -0.06292900443077087
+    ],
+    "max": [
+      3.8397748470306396,
+      2.4499571323394775,
+      0.5363838076591492
+    ]
+  },
+  "camera": {
+    "position": [
+      12.008197784423828,
+      5.227370738983154,
+      11.45134449005127
+    ],
+    "target": [
+      0.7935812473297119,
+      -0.7804597616195679,
+      0.23672740161418915
+    ],
+    "up": [
+      0.0,
+      1.0,
+      0.0
+    ]
+  }
+}
