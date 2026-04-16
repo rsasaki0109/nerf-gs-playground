@@ -218,6 +218,7 @@ class TestReaderCreation:
 
     def test_create_reader_passes_default_typestore_for_rosbag2(self, tmp_path):
         """Should provide a default ROS2 typestore for rosbag2 directories."""
+        pytest.importorskip("rosbags.typesys")
         bag_dir = tmp_path / "session"
         bag_dir.mkdir()
         (bag_dir / "metadata.yaml").write_text("rosbag2_bagfile_information:")

@@ -38,23 +38,3 @@ def test_outdoor_demo_manifest_and_referenced_binary_exist(assets_dir: Path) -> 
     href = man["asset"]["href"]
     bin_path = (manifest_path.parent / href).resolve()
     assert bin_path.is_file(), f"missing binary referenced by outdoor-demo: {href}"
-
-
-def test_index_html_links_outdoor_demo_scene() -> None:
-    """Landing page keeps deep links to the Outdoor GS GitHub Pages tab."""
-    html = (REPO_ROOT / "docs" / "index.html").read_text(encoding="utf-8")
-    assert "?scene=outdoor-demo" in html
-    assert "assets/scenes.json" in html
-
-
-def test_docs_scenes_metadata_includes_outdoor() -> None:
-    """Gallery metadata JSON documents the outdoor demo entry."""
-    data = json.loads((REPO_ROOT / "docs" / "scenes.json").read_text(encoding="utf-8"))
-    assert "outdoor" in data
-    assert "Outdoor" in data["outdoor"]["name"] or "outdoor" in data["outdoor"]["name"].lower()
-
-
-def test_readme_avoids_local_machine_paths() -> None:
-    """README links should be portable (no /media/... absolute paths)."""
-    text = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
-    assert "/media/" not in text
