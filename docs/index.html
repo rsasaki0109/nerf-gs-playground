@@ -792,10 +792,32 @@ footer a:hover { text-decoration: underline; }
   controls.target.set(0, 2, 0);
   controls.update();
 
-  const axesHelper = new THREE.AxesHelper(5);
+  let axesHelper = new THREE.AxesHelper(5);
   scene.add(axesHelper);
-  const gridHelper = new THREE.GridHelper(40, 40, 0x30363d, 0x21262d);
+  let gridHelper = new THREE.GridHelper(40, 40, 0x30363d, 0x21262d);
   scene.add(gridHelper);
+
+  function rescaleHelpersForBounds(bounds) {
+    if (!bounds || !bounds.min || !bounds.max) return;
+    const extent = Math.max(
+      bounds.max[0] - bounds.min[0],
+      bounds.max[2] - bounds.min[2],
+      1e-3,
+    );
+    const gridSize = Math.max(4, Math.min(400, Math.round(extent * 2)));
+    const divisions = Math.max(8, Math.min(80, Math.round(gridSize / 2)));
+    scene.remove(gridHelper);
+    gridHelper = new THREE.GridHelper(gridSize, divisions, 0x30363d, 0x21262d);
+    const cx = (bounds.max[0] + bounds.min[0]) / 2;
+    const cz = (bounds.max[2] + bounds.min[2]) / 2;
+    gridHelper.position.set(cx, bounds.min[1], cz);
+    scene.add(gridHelper);
+
+    scene.remove(axesHelper);
+    axesHelper = new THREE.AxesHelper(Math.max(1, Math.min(20, extent * 0.1)));
+    axesHelper.position.set(cx, bounds.min[1], cz);
+    scene.add(axesHelper);
+  }
 
   const softDiscSprite = (() => {
     const cnv = document.createElement('canvas');
@@ -1495,6 +1517,8 @@ footer a:hover { text-decoration: underline; }
 
     document.getElementById('point-count').textContent = data.count.toLocaleString() + ' points';
     setViewerStatus(`Showing ${data.label} from ${data.source}`, 'ready');
+
+    if (data.bounds) rescaleHelpersForBounds(data.bounds);
 
     // Camera transition
     const cam = data.camera || defaultCameras[name] || cameraFromBounds(data.bounds);
