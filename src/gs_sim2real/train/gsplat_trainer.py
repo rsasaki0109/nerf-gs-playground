@@ -136,6 +136,9 @@ class GsplatTrainer:
         grad_accum = torch.zeros(gaussians.num_gaussians, device=device)
         grad_count = torch.zeros(gaussians.num_gaussians, device=device)
 
+        depth_loss_weight = float(self.config.get("depth_loss_weight", 0.0))
+        use_depth_loss = depth_loss_weight > 0.0 and self._has_gsplat
+
         for iteration in range(1, num_iterations + 1):
             # Pick a random training view
             idx = np.random.randint(len(image_data))
@@ -143,14 +146,24 @@ class GsplatTrainer:
             viewmat = image_data[idx]["viewmat"]  # (4, 4)
             K = image_data[idx]["K"]  # (3, 3)
             H, W = gt_image.shape[:2]
+            gt_depth = image_data[idx].get("depth") if use_depth_loss else None
 
             # Render
-            rendered = self._render(gaussians, viewmat, K, H, W, device)
+            if use_depth_loss and gt_depth is not None:
+                rendered, rendered_depth = self._render_gsplat(gaussians, viewmat, K, H, W, device, want_depth=True)
+            else:
+                rendered = self._render(gaussians, viewmat, K, H, W, device)
+                rendered_depth = None
 
-            # Compute loss: L1 + lambda * (1 - SSIM)
+            # Compute loss: L1 + lambda * (1 - SSIM) [+ depth L1 where LiDAR sees]
             l1_loss = torch.abs(rendered - gt_image).mean()
             ssim_loss = 1.0 - self._simple_ssim(rendered, gt_image)
             loss = (1.0 - lambda_dssim) * l1_loss + lambda_dssim * ssim_loss
+            if rendered_depth is not None:
+                valid = gt_depth > 0
+                if valid.any():
+                    depth_l1 = torch.abs(rendered_depth[valid] - gt_depth[valid]).mean()
+                    loss = loss + depth_loss_weight * depth_l1
 
             # Backprop
             loss.backward()
@@ -452,14 +465,18 @@ class GsplatTrainer:
             tvec = meta["tvec"]  # [tx, ty, tz]
             viewmat = self._quat_tvec_to_viewmat(quat, tvec, device)
 
-            image_data.append(
-                {
-                    "image": img_tensor,
-                    "viewmat": viewmat,
-                    "K": K,
-                    "name": meta["name"],
-                }
-            )
+            entry = {
+                "image": img_tensor,
+                "viewmat": viewmat,
+                "K": K,
+                "name": meta["name"],
+            }
+            depth_path = data_dir / "depth" / (Path(meta["name"]).with_suffix(".npy"))
+            if depth_path.exists():
+                depth_np = np.load(depth_path).astype(np.float32)
+                if depth_np.shape[:2] == (H, W):
+                    entry["depth"] = torch.from_numpy(depth_np).to(device)
+            image_data.append(entry)
 
         return image_data
 
@@ -637,35 +654,41 @@ class GsplatTrainer:
         else:
             return self._render_simple(gaussians, viewmat, K, H, W, device)
 
-    def _render_gsplat(self, gaussians: GaussianModel, viewmat: Any, K: Any, H: int, W: int, device: Any) -> Any:
-        """Render using the gsplat library."""
+    def _render_gsplat(
+        self, gaussians: GaussianModel, viewmat: Any, K: Any, H: int, W: int, device: Any, want_depth: bool = False
+    ) -> Any:
+        """Render using the gsplat library. Returns (RGB) or (RGB, depth)."""
         import torch
         from gsplat import rasterization
 
-        # Prepare parameters
-        means = gaussians.means  # (N, 3)
-        scales = torch.exp(gaussians.scales)  # (N, 3)
-        quats = torch.nn.functional.normalize(gaussians.rotations, dim=-1)  # (N, 4)
-        opacities = torch.sigmoid(gaussians.opacities).squeeze(-1)  # (N,)
+        means = gaussians.means
+        scales = torch.exp(gaussians.scales)
+        quats = torch.nn.functional.normalize(gaussians.rotations, dim=-1)
+        opacities = torch.sigmoid(gaussians.opacities).squeeze(-1)
 
-        # SH to color: use DC component for simplicity
         C0 = 0.28209479177387814
-        colors = gaussians.sh_coeffs[:, 0, :] * C0 + 0.5  # (N, 3)
+        colors = gaussians.sh_coeffs[:, 0, :] * C0 + 0.5
         colors = torch.clamp(colors, 0, 1)
 
-        # gsplat rasterization
+        render_mode = "RGB+D" if want_depth else "RGB"
         rendered, _, _ = rasterization(
             means=means,
             quats=quats,
             scales=scales,
             opacities=opacities,
             colors=colors,
-            viewmats=viewmat.unsqueeze(0),  # (1, 4, 4)
-            Ks=K.unsqueeze(0),  # (1, 3, 3)
+            viewmats=viewmat.unsqueeze(0),
+            Ks=K.unsqueeze(0),
             width=W,
             height=H,
+            render_mode=render_mode,
         )
-        return rendered.squeeze(0)  # (H, W, 3)
+        output = rendered.squeeze(0)  # (H, W, C)
+        if want_depth:
+            rgb = output[..., :3]
+            depth = output[..., 3]
+            return rgb, depth
+        return output
 
     def _render_simple(self, gaussians: GaussianModel, viewmat: Any, K: Any, H: int, W: int, device: Any) -> Any:
         """Simple differentiable point splatting (fallback without gsplat).

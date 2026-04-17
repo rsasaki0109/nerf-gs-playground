@@ -156,6 +156,16 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="For MCD GNSS seeding, skip merging LiDAR frames to world as points3D seed",
     )
+    pp.add_argument(
+        "--mcd-skip-lidar-colorize",
+        action="store_true",
+        help="Skip the image->LiDAR RGB projection that seeds points3D.txt with real colors",
+    )
+    pp.add_argument(
+        "--mcd-export-depth",
+        action="store_true",
+        help="Project the world LiDAR cloud into each training image as sparse depth .npy (for depth_loss_weight > 0)",
+    )
     pp.add_argument("--trajectory", default=None, help="SLAM trajectory file (for lidar-slam method)")
     pp.add_argument(
         "--trajectory-format",
@@ -354,6 +364,16 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="For MCD GNSS seeding, skip merging LiDAR frames to world as points3D seed",
     )
+    rn.add_argument(
+        "--mcd-skip-lidar-colorize",
+        action="store_true",
+        help="Skip the image->LiDAR RGB projection that seeds points3D.txt with real colors",
+    )
+    rn.add_argument(
+        "--mcd-export-depth",
+        action="store_true",
+        help="Project the world LiDAR cloud into each training image as sparse depth .npy",
+    )
     rn.add_argument("--trajectory", default=None, help="Trajectory file for --preprocess-method lidar-slam")
     rn.add_argument(
         "--trajectory-format",
@@ -496,6 +516,16 @@ def build_parser() -> argparse.ArgumentParser:
         "--mcd-skip-lidar-seed",
         action="store_true",
         help="For MCD GNSS seeding, skip merging LiDAR frames to world as points3D seed",
+    )
+    dm.add_argument(
+        "--mcd-skip-lidar-colorize",
+        action="store_true",
+        help="Skip the image->LiDAR RGB projection that seeds points3D.txt with real colors",
+    )
+    dm.add_argument(
+        "--mcd-export-depth",
+        action="store_true",
+        help="Project the world LiDAR cloud into each training image as sparse depth .npy",
     )
     dm.add_argument("--trajectory", default=None, help="Trajectory file for --preprocess-method lidar-slam")
     dm.add_argument(
@@ -1542,6 +1572,41 @@ def _mcd_antenna_offset_base(args: argparse.Namespace) -> tuple[float, float, fl
     return (float(v[0]), float(v[1]), float(v[2]))
 
 
+def _mcd_export_depth_maps(
+    loader,
+    xyz_npy: Path,
+    colmap_dir: Path,
+    images_root: str,
+    trajectory_path: str,
+    cameras: list[dict],
+    hybrid_tf,
+    base_frame: str,
+) -> None:
+    """Project the world LiDAR cloud into each training image and save sparse depth .npy."""
+    import numpy as np
+
+    try:
+        pts = np.load(xyz_npy)
+    except Exception as exc:
+        print(f"Warning: depth export could not load {xyz_npy} ({exc})", file=sys.stderr)
+        return
+    xyz = pts[:, :3].astype(np.float32)
+    depth_dir = colmap_dir / "depth"
+    try:
+        written = loader.export_lidar_depth_per_image(
+            lidar_world_xyz=xyz,
+            images_root=images_root,
+            trajectory_path=trajectory_path,
+            cameras=cameras,
+            output_dir=depth_dir,
+            hybrid_tf=hybrid_tf,
+            base_frame=base_frame,
+        )
+        print(f"MCD per-image LiDAR depth: {written} maps -> {depth_dir}")
+    except Exception as exc:
+        print(f"Warning: per-image depth export failed ({exc})", file=sys.stderr)
+
+
 def _mcd_colorize_seed(
     loader,
     xyz_npy: Path,
@@ -1726,6 +1791,18 @@ def _mcd_gnss_sparse_import(
             pointcloud_path = _mcd_colorize_seed(
                 loader,
                 Path(pointcloud_path),
+                images_out,
+                tum_path,
+                cameras,
+                hybrid_tf,
+                base_frame,
+            )
+
+        if getattr(args, "mcd_export_depth", False) and pointcloud_path:
+            _mcd_export_depth_maps(
+                loader,
+                Path(pointcloud_path),
+                colmap_dir,
                 images_out,
                 tum_path,
                 cameras,
