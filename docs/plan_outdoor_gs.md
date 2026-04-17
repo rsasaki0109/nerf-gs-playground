@@ -125,9 +125,20 @@
 
 ### 優先度 A（残ってる中で最優先）
 
-1. **Waymo real-data E2E**: `tfrecord` を入手 → `gs-mapper run --preprocess-method waymo` で `images + depth + masks + sparse/0 + train/point_cloud.ply` まで確認。
-2. **長時間 bag** 学習 (bag2 (1.2 GB) や複数 bag 連結) で Gaussian あたり viewing constraints を数倍に。
-3. **appearance / sky model の定量評価** (現在は実装あるが未測定)。
+1. **Waymo real-data E2E**: `tfrecord` を入手 → `gs-mapper run --preprocess-method waymo` で `images + depth + masks + sparse/0 + train/point_cloud.ply` まで確認。`scripts/check_waymo_e2e_prereqs.sh` で事前確認。
+2. **Multi-bag fusion**（下記 §7.5 参照）で viewing constraints を更に増強。bag2 + bag4 を共通 ENU 座標で結合し、同じ `sparse/0` で学習する。
+3. **appearance embedding の実装**（plan 旧版に記載されていたが main には未実装）。per-image (scale, bias) を SH DC に掛ける形の最小実装で exposure 差を吸収させる。
+
+### 7.5 Multi-bag fusion（次セッション候補）
+
+現在の pipeline は 1 bag 単位で ENU 座標を立てている（最初の NavSatFix が原点）。bag2 と bag4 を同時学習するには:
+
+1. `MCDLoader.extract_navsat_trajectory()` が ENU 原点の **lat/lon/alt を返す** よう拡張
+2. 複数 bag を preprocess するときは `ref_lat/lon/alt` を共通で渡す（最初の bag の原点を再利用）
+3. `_mcd_gnss_sparse_import` が merged sparse を書き出す。2 bag 分の images が `images/<bag_tag>/<cam>/frame_*.jpg` と副ディレクトリ化
+4. 学習時は COLMAP 形式のまま 1 つの sparse を読ませるだけで済む
+
+難しいのは **lat/lon を preprocess 引数で渡す UX** の設計。`--reference-origin <lat,lon,alt>` or `--reference-bag <path>` など。
 
 ### 優先度 B
 
