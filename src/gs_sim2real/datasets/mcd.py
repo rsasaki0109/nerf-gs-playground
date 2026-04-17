@@ -608,6 +608,121 @@ class MCDLoader:
             rgb_out[covered] = avg
         return rgb_out
 
+    def export_lidar_depth_per_image(
+        self,
+        lidar_world_xyz: np.ndarray,
+        images_root: str | Path,
+        trajectory_path: str | Path,
+        cameras: list[dict],
+        output_dir: str | Path,
+        hybrid_tf: Any | None = None,
+        base_frame: str = "base_link",
+        stamp_tolerance_sec: float = 0.25,
+    ) -> int:
+        """Project world LiDAR points into each training image and save sparse depth maps.
+
+        For each camera frame, computes ``T_cam_world`` (via HybridTfLookup or a
+        constant ``T_base_cam``), projects every world LiDAR point, and keeps
+        the closest depth per pixel. The depth map is stored as float32
+        ``(H, W)`` numpy under ``<output_dir>/<subdir>/<stem>.npy`` with zeros
+        where no LiDAR point projected (i.e. ``depth > 0`` marks valid pixels).
+
+        Returns the number of images that received a valid depth map.
+        """
+        from gs_sim2real.preprocess.lidar_slam import LiDARSLAMProcessor
+
+        xyz = np.asarray(lidar_world_xyz, dtype=np.float64)
+        if xyz.shape[0] == 0:
+            return 0
+
+        images_root_p = Path(images_root)
+        out_root = Path(output_dir)
+        out_root.mkdir(parents=True, exist_ok=True)
+
+        ts_csv = images_root_p / "image_timestamps.csv"
+        if not ts_csv.is_file():
+            logger.warning("No image_timestamps.csv in %s; cannot export per-image depth", images_root_p)
+            return 0
+        stamp_map: dict[str, float] = {}
+        with open(ts_csv, newline="") as f:
+            for row in csv.DictReader(f):
+                stamp_map[row["filename"].strip()] = float(row["timestamp_ns"]) * 1e-9
+
+        proc = LiDARSLAMProcessor()
+        timestamps, poses = proc._load_tum_trajectory(Path(trajectory_path))
+        if not timestamps:
+            return 0
+        rotations = self._infer_trajectory_rotations(np.asarray(timestamps), poses)
+        ts_array = np.asarray(timestamps, dtype=np.float64)
+        poses_arr = [np.asarray(p, dtype=np.float64) for p in poses]
+        xyz_hom = np.concatenate([xyz, np.ones((xyz.shape[0], 1), dtype=np.float64)], axis=1)
+
+        exts = {".jpg", ".jpeg", ".png", ".bmp", ".tiff"}
+        count_written = 0
+        for cam in cameras:
+            subdir = str(cam.get("subdir") or "")
+            pinhole = cam.get("pinhole")
+            if not pinhole:
+                continue
+            fx, fy, cx, cy, w_img, h_img = pinhole
+            w_img = int(w_img)
+            h_img = int(h_img)
+            camera_frame = str(cam.get("camera_frame") or "").strip()
+            T_base_cam_const = cam.get("T_base_cam")
+            if T_base_cam_const is not None:
+                T_base_cam_const = np.asarray(T_base_cam_const, dtype=np.float64)
+
+            folder = images_root_p / subdir if subdir else images_root_p
+            if not folder.is_dir():
+                continue
+            out_sub = out_root / subdir if subdir else out_root
+            out_sub.mkdir(parents=True, exist_ok=True)
+
+            cam_images = sorted(p for p in folder.iterdir() if p.is_file() and p.suffix.lower() in exts)
+            for img_path in cam_images:
+                rel = img_path.relative_to(images_root_p).as_posix()
+                if rel not in stamp_map:
+                    continue
+                img_ts = stamp_map[rel]
+                match_idx = int(np.argmin(np.abs(ts_array - img_ts)))
+                if abs(ts_array[match_idx] - img_ts) > stamp_tolerance_sec:
+                    continue
+                T_world_base = np.eye(4, dtype=np.float64)
+                T_world_base[:3, :3] = rotations[match_idx]
+                T_world_base[:3, 3] = poses_arr[match_idx][:3, 3]
+                T_base_cam = None
+                if hybrid_tf is not None and camera_frame:
+                    T_base_cam = hybrid_tf.lookup(base_frame, camera_frame, int(round(img_ts * 1e9)))
+                if T_base_cam is None:
+                    T_base_cam = T_base_cam_const
+                if T_base_cam is None:
+                    continue
+                T_cam_world = np.linalg.inv(T_world_base @ np.asarray(T_base_cam, dtype=np.float64))
+                cam_pts = xyz_hom @ T_cam_world.T
+                z = cam_pts[:, 2]
+                valid_z = z > 1e-3
+                if not np.any(valid_z):
+                    continue
+                u = fx * cam_pts[:, 0] / np.where(valid_z, z, 1.0) + cx
+                v = fy * cam_pts[:, 1] / np.where(valid_z, z, 1.0) + cy
+                in_bounds = valid_z & (u >= 0) & (u < w_img) & (v >= 0) & (v < h_img)
+                if not np.any(in_bounds):
+                    continue
+                ui = u[in_bounds].astype(np.int32)
+                vi = v[in_bounds].astype(np.int32)
+                zi = z[in_bounds].astype(np.float32)
+                depth = np.zeros((h_img, w_img), dtype=np.float32)
+                # Keep the closest depth per pixel.
+                flat_idx = vi * w_img + ui
+                order = np.argsort(-zi)  # write furthest first so nearest overwrites
+                depth.reshape(-1)[flat_idx[order]] = zi[order]
+                out_path = out_sub / f"{img_path.stem}.npy"
+                np.save(out_path, depth)
+                count_written += 1
+
+        logger.info("export_lidar_depth_per_image: wrote %d depth maps under %s", count_written, out_root)
+        return count_written
+
     def extract_imu(
         self,
         output_dir: str | Path,
