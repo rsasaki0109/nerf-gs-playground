@@ -769,9 +769,15 @@ async function main() {
         ? new Uint8Array(contentLengthHeader)
         : new Uint8Array(64 * 1024 * 1024);
 
-    const downsample =
-        splatData.length / rowLength > 500000 ? 1 : 1 / devicePixelRatio;
-    console.log(splatData.length / rowLength, downsample);
+    // Downsample decision: use the advertised size when available (compressed
+    // responses blow up splatData.length to the 64 MB safety buffer, so only
+    // trust the header-backed path). For anything non-trivial (>=30 k splats)
+    // render at CSS resolution so HiDPI doesn't 4x the shader workload.
+    const advertisedCount = hasReliableLength
+        ? Math.floor(contentLengthHeader / rowLength)
+        : Math.floor(splatData.length / rowLength);
+    const downsample = advertisedCount > 30000 ? 1 : 1 / devicePixelRatio;
+    console.log("splats", advertisedCount, "downsample", downsample);
 
     const worker = new Worker(
         URL.createObjectURL(
