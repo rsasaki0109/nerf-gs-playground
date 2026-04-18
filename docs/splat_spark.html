@@ -69,16 +69,35 @@
 
     statusEl.textContent = `loading ${splatUrl}…`;
     const splat = new SplatMesh({ url: splatUrl });
-    // Spark splats are Y-up in storage but THREE.js is Y-up with opposite Z;
-    // the README example uses quat(1, 0, 0, 0) to flip them right-side-up.
-    splat.quaternion.set(1, 0, 0, 0);
+    // Spark's README example flips splats via quat(1,0,0,0). Our .splat already
+    // writes positions in the same axis convention as our antimatter15 viewer,
+    // so skip the flip here.
     splat.position.set(0, 0, 0);
     scene.add(splat);
+
+    function frameSplat() {
+      try {
+        const box = new THREE.Box3().setFromObject(splat);
+        if (!isFinite(box.min.x)) return;
+        const center = new THREE.Vector3();
+        box.getCenter(center);
+        const size = new THREE.Vector3();
+        box.getSize(size);
+        const radius = Math.max(size.x, size.y, size.z) * 0.75 + 5;
+        camera.position.copy(center).add(new THREE.Vector3(radius, radius * 0.6, radius));
+        controls.target.copy(center);
+        controls.update();
+        statusEl.textContent = `framed ${splatUrl} (extent ${size.x.toFixed(1)} x ${size.y.toFixed(1)} x ${size.z.toFixed(1)})`;
+      } catch (err) {
+        console.warn("frameSplat failed", err);
+      }
+    }
 
     if (splat.initialized && typeof splat.initialized.then === "function") {
       splat.initialized
         .then(() => {
           statusEl.textContent = `loaded ${splatUrl}`;
+          setTimeout(frameSplat, 200);
         })
         .catch((err) => {
           statusEl.textContent = `load error: ${err && err.message ? err.message : err}`;
@@ -86,6 +105,7 @@
         });
     } else {
       statusEl.textContent = `loaded (no init promise) ${splatUrl}`;
+      setTimeout(frameSplat, 1000);
     }
 
     window.addEventListener("resize", () => {
