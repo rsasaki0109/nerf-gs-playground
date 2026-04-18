@@ -31,18 +31,22 @@ ggrt:
 covla:
   name: CoVLA
   description: >
-    Large-scale driving scene dataset with front camera images.
-    Contains diverse driving scenarios for autonomous driving research.
+    Large-scale driving scene dataset with front camera images. Gated:
+    request access on the HuggingFace page (manual approval, usually
+    instant), then `huggingface-cli login` before downloading. A
+    smaller -Mini variant (305 files, ~50 sessions) is also gated.
   paper_url: "https://arxiv.org/abs/2408.10680"
-  source_url: "https://huggingface.co/datasets/tier4/CoVLA_Dataset"
-  repository: "https://github.com/tier4/CoVLA"
-  huggingface: "tier4/CoVLA_Dataset"
+  source_url: "https://huggingface.co/datasets/turing-motors/CoVLA-Dataset"
+  repository: "https://github.com/turingmotors/CoVLA"
+  huggingface: "turing-motors/CoVLA-Dataset"
+  huggingface_mini: "turing-motors/CoVLA-Dataset-Mini"
   download_method: huggingface_hub
   data_format: images_jpg
   sample_url: null
   camera: front
   type: driving
   image_format: jpg
+  gated: manual_request
 
 waymo:
   name: Waymo Open Dataset
