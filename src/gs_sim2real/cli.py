@@ -194,6 +194,12 @@ def build_parser() -> argparse.ArgumentParser:
         default="tum",
         help="Trajectory format (default: tum)",
     )
+    pp.add_argument(
+        "--nmea-time-offset-sec",
+        type=float,
+        default=0.0,
+        help="Fixed seconds added to NMEA-derived timestamps to realign against a drifted logger clock.",
+    )
     pp.add_argument("--pointcloud", default=None, help="Point cloud file for lidar-slam (.ply/.npy/.pcd)")
 
     # train
@@ -1404,6 +1410,7 @@ def cmd_preprocess(args: argparse.Namespace) -> None:
             output_dir=output_dir,
             trajectory_format=args.trajectory_format,
             pointcloud_path=args.pointcloud,
+            nmea_time_offset_sec=getattr(args, "nmea_time_offset_sec", 0.0),
         )
         print(f"LiDAR SLAM import complete: {sparse_dir}")
     elif args.method in ("pose-free", "dust3r", "simple"):
