@@ -39,6 +39,7 @@ class LiDARSLAMProcessor:
         lidar_to_camera: np.ndarray | None = None,
         max_points: int = 100000,
         pinhole_calib_path: str | Path | None = None,
+        nmea_time_offset_sec: float = 0.0,
     ) -> str:
         """Import a SLAM trajectory and optional point cloud.
 
@@ -68,7 +69,7 @@ class LiDARSLAMProcessor:
         elif trajectory_format == "kitti":
             timestamps, poses = self._load_kitti_trajectory(trajectory_path)
         elif trajectory_format == "nmea":
-            timestamps, poses = self._load_nmea_trajectory(trajectory_path)
+            timestamps, poses = self._load_nmea_trajectory(trajectory_path, time_offset_sec=nmea_time_offset_sec)
         else:
             raise ValueError(f"Unknown trajectory format: {trajectory_format}. Use 'tum', 'kitti', or 'nmea'.")
 
@@ -291,11 +292,30 @@ class LiDARSLAMProcessor:
 
         return timestamps, poses
 
-    def _load_nmea_trajectory(self, path: Path) -> tuple[list[float], list[np.ndarray]]:
-        """Load an NMEA trajectory and convert GNSS fixes into ENU poses."""
-        fixes_by_time: dict[float, dict[str, float]] = {}
-        dates_by_time: dict[float, tuple[int, int, int]] = {}
-        courses_by_time: dict[float, float] = {}
+    def _load_nmea_trajectory(
+        self,
+        path: Path,
+        time_offset_sec: float = 0.0,
+    ) -> tuple[list[float], list[np.ndarray]]:
+        """Load an NMEA trajectory and convert GNSS fixes into ENU poses.
+
+        Handles:
+
+        - **Mixed GGA / RMC sentences** sharing the same "seconds since
+          midnight" key: each key accumulates ``lat / lon / alt`` from GGA
+          and ``course_deg / date`` from RMC.
+        - **Day-crossing recordings**: if the seconds-since-midnight value
+          jumps backwards between consecutive lines (e.g. 86398 -> 2), we
+          promote subsequent samples by +86400 per rollover so the final
+          ordering is correct. Date fields from RMC, when present, anchor
+          the wall-clock epoch on top of that.
+        - **Logger clock drift**: ``time_offset_sec`` is added to every
+          emitted timestamp. Use this to realign NMEA UTC against a logger
+          clock that is known to be shifted by a fixed amount.
+        """
+        samples: list[dict[str, float]] = []  # one entry per line, in parse order
+        last_seconds: float | None = None
+        day_offset = 0.0
 
         with open(path, encoding="utf-8-sig") as f:
             for raw_line in f:
@@ -308,34 +328,69 @@ class LiDARSLAMProcessor:
                     continue
 
                 sentence_type = fields[0][-3:]
+                parsed: dict | None
                 if sentence_type == "GGA":
                     parsed = self._parse_nmea_gga(fields)
-                    if parsed is None:
-                        continue
-                    fixes_by_time[parsed["seconds"]] = parsed
                 elif sentence_type == "RMC":
                     parsed = self._parse_nmea_rmc(fields)
-                    if parsed is None:
-                        continue
+                else:
+                    parsed = None
+                if parsed is None:
+                    continue
+
+                raw_sec = float(parsed["seconds"])
+                if last_seconds is not None and raw_sec + 60.0 < last_seconds:
+                    # Seconds wrapped past midnight. Advance the epoch.
+                    day_offset += 86400.0
+                last_seconds = raw_sec
+                abs_sec = raw_sec + day_offset
+
+                record: dict[str, float] = {"seconds": abs_sec}
+                if sentence_type == "GGA":
+                    record.update(
+                        {
+                            "lat": float(parsed["lat"]),
+                            "lon": float(parsed["lon"]),
+                            "alt": float(parsed.get("alt", 0.0)),
+                        }
+                    )
+                else:  # RMC
                     if "lat" in parsed and "lon" in parsed:
-                        fixes_by_time.setdefault(parsed["seconds"], {}).update(
+                        record.update(
                             {
-                                "seconds": float(parsed["seconds"]),
                                 "lat": float(parsed["lat"]),
                                 "lon": float(parsed["lon"]),
                                 "alt": float(parsed.get("alt", 0.0)),
                             }
                         )
                     if "course_deg" in parsed:
-                        courses_by_time[float(parsed["seconds"])] = float(parsed["course_deg"])
+                        record["course_deg"] = float(parsed["course_deg"])
                     if "date" in parsed:
-                        dates_by_time[float(parsed["seconds"])] = parsed["date"]  # type: ignore[assignment]
+                        record["date"] = parsed["date"]  # type: ignore[assignment]
+                samples.append(record)
 
-        ordered_times = sorted(fixes_by_time)
+        # Merge samples sharing the same absolute-seconds key so a GGA + RMC
+        # pair fills in both position and course.
+        fixes_by_abs: dict[float, dict[str, float]] = {}
+        dates_by_abs: dict[float, tuple[int, int, int]] = {}
+        courses_by_abs: dict[float, float] = {}
+        for rec in samples:
+            key = float(rec["seconds"])
+            merged = fixes_by_abs.setdefault(key, {"seconds": key})
+            if "lat" in rec:
+                merged["lat"] = rec["lat"]
+                merged["lon"] = rec["lon"]
+                merged.setdefault("alt", rec.get("alt", 0.0))
+            if "course_deg" in rec:
+                courses_by_abs[key] = rec["course_deg"]
+            if "date" in rec:
+                dates_by_abs[key] = rec["date"]  # type: ignore[assignment]
+
+        ordered_times = sorted(k for k, fix in fixes_by_abs.items() if "lat" in fix)
         if not ordered_times:
             raise ValueError(f"No valid NMEA fixes found in {path}")
 
-        ref_fix = fixes_by_time[ordered_times[0]]
+        ref_fix = fixes_by_abs[ordered_times[0]]
         ref_lat = ref_fix["lat"]
         ref_lon = ref_fix["lon"]
         ref_alt = ref_fix.get("alt", 0.0)
@@ -347,7 +402,7 @@ class LiDARSLAMProcessor:
         second_origin = ordered_times[0]
 
         for seconds in ordered_times:
-            fix = fixes_by_time[seconds]
+            fix = fixes_by_abs[seconds]
             east, north, up = self._wgs84_to_enu(
                 lat=fix["lat"],
                 lon=fix["lon"],
@@ -357,7 +412,7 @@ class LiDARSLAMProcessor:
                 ref_alt=ref_alt,
             )
 
-            course_deg = courses_by_time.get(seconds)
+            course_deg = courses_by_abs.get(seconds)
             if course_deg is not None:
                 latest_yaw = np.deg2rad(90.0 - course_deg)
 
@@ -367,9 +422,10 @@ class LiDARSLAMProcessor:
             pose[:3, 3] = [east, north, up]
             poses.append(pose)
 
-            if seconds in dates_by_time:
-                year, month, day = dates_by_time[seconds]
-                dt = datetime(year, month, day, tzinfo=timezone.utc) + timedelta(seconds=float(seconds))
+            if seconds in dates_by_abs:
+                year, month, day = dates_by_abs[seconds]
+                raw_sec = float(seconds) - float(int(seconds // 86400.0)) * 86400.0
+                dt = datetime(year, month, day, tzinfo=timezone.utc) + timedelta(seconds=raw_sec)
                 timestamp = dt.timestamp()
                 if unix_origin is None:
                     unix_origin = timestamp - (seconds - second_origin)
@@ -378,7 +434,7 @@ class LiDARSLAMProcessor:
             else:
                 timestamp = seconds - second_origin
 
-            timestamps.append(timestamp)
+            timestamps.append(timestamp + time_offset_sec)
 
         return timestamps, poses
 
@@ -818,6 +874,7 @@ def import_lidar_slam(
     pointcloud_path: str | Path | None = None,
     lidar_to_camera: np.ndarray | None = None,
     pinhole_calib_path: str | Path | None = None,
+    nmea_time_offset_sec: float = 0.0,
 ) -> str:
     """Convenience function to import a LiDAR SLAM trajectory.
 
@@ -842,6 +899,7 @@ def import_lidar_slam(
         pointcloud_path=pointcloud_path,
         lidar_to_camera=lidar_to_camera,
         pinhole_calib_path=pinhole_calib_path,
+        nmea_time_offset_sec=nmea_time_offset_sec,
     )
 
 
