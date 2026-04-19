@@ -63,6 +63,22 @@ def test_mcd_tuhh_day04_dust3r_splat_present(assets_dir: Path) -> None:
     assert "mcd-tuhh-day04.splat" in html
 
 
+def test_splat_html_has_scene_picker_with_all_bundled_splats(assets_dir: Path) -> None:
+    """The <select id="sceneSelect"> must list every bundled .splat."""
+    html = (REPO_ROOT / "docs" / "splat.html").read_text(encoding="utf-8")
+    assert 'id="sceneSelect"' in html, "scene picker <select> is missing"
+    assert 'data-testid="scene-picker"' in html
+    # Each bundled splat under docs/assets/outdoor-demo/ should appear as an <option value=...>.
+    bundled = sorted(p.name for p in (assets_dir / "outdoor-demo").glob("*.splat"))
+    assert bundled, "no bundled .splat files found — test fixture is wrong"
+    for name in bundled:
+        assert f'value="assets/outdoor-demo/{name}"' in html, (
+            f"scene picker does not expose {name}; add an <option> under #sceneSelect"
+        )
+    # Picker needs JS that swaps location.search; enforce the known hook.
+    assert "sceneSelect" in html and "location.assign" in html
+
+
 def test_webgpu_viewer_bundle_present() -> None:
     """shrekshao WebGPU viewer bundle must be present alongside the wrapper page."""
     docs_dir = REPO_ROOT / "docs"
