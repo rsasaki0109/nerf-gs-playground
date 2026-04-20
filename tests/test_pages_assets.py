@@ -128,6 +128,21 @@ def test_splat_spark_has_scene_picker_and_spark_wiring(assets_dir: Path) -> None
     assert all(int(v) >= 179 for v in version_matches), f"Spark 2.0 requires three >= r179; found {version_matches}"
 
 
+def test_splat_spark_exposes_lod_url_param() -> None:
+    """?lod=auto|high|low must map onto SparkRenderer LoD knobs, not just be doc-only."""
+    html = (REPO_ROOT / "docs" / "splat_spark.html").read_text(encoding="utf-8")
+    # Preset names must be readable in the page source so the URL param is real.
+    assert "LOD_PRESETS" in html, "splat_spark.html should define a LOD_PRESETS lookup"
+    for preset in ("auto", "high", "low"):
+        assert preset in html, f"LOD preset {preset!r} missing from splat_spark.html"
+    # The preset object must actually be passed to SparkRenderer, not just declared.
+    assert "new SparkRenderer({ renderer, ...lodPreset })" in html, (
+        "splat_spark.html must spread the selected LoD preset into SparkRenderer"
+    )
+    # The info pane should document the knob so visitors know it exists.
+    assert "?lod=" in html, "splat_spark.html info pane should document the ?lod= URL param"
+
+
 def test_webgpu_viewer_bundle_present() -> None:
     """shrekshao WebGPU viewer bundle must be present alongside the wrapper page."""
     docs_dir = REPO_ROOT / "docs"
