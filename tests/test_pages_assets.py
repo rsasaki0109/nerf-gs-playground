@@ -115,15 +115,13 @@ def test_splat_spark_has_scene_picker_and_spark_wiring(assets_dir: Path) -> None
     # Spark 2.0 needs SparkRenderer added to the scene and three >= r179, otherwise
     # the canvas renders blank. Enforce both at the source level.
     assert "SparkRenderer" in html, "splat_spark.html must instantiate SparkRenderer"
-    assert 'scene.add(spark)' in html, "SparkRenderer instance must be added to the scene"
+    assert "scene.add(spark)" in html, "SparkRenderer instance must be added to the scene"
     # three version pin (any patch of r179 / r180 / higher is fine).
     import re
 
     version_matches = re.findall(r"three@0\.(\d+)\.\d+", html)
     assert version_matches, "splat_spark.html should import a pinned three.js version"
-    assert all(int(v) >= 179 for v in version_matches), (
-        f"Spark 2.0 requires three >= r179; found {version_matches}"
-    )
+    assert all(int(v) >= 179 for v in version_matches), f"Spark 2.0 requires three >= r179; found {version_matches}"
 
 
 def test_webgpu_viewer_bundle_present() -> None:
