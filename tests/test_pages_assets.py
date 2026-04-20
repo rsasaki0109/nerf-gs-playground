@@ -140,3 +140,16 @@ def test_webgpu_viewer_bundle_present() -> None:
     assert "./assets/index.css" in inner_text
     # Bundle should not be empty.
     assert js.stat().st_size > 10_000
+
+
+def test_splat_webgpu_has_scene_picker(assets_dir: Path) -> None:
+    """WebGPU wrapper ships the same picker as splat.html / splat_spark.html."""
+    html = (REPO_ROOT / "docs" / "splat_webgpu.html").read_text(encoding="utf-8")
+    assert 'id="sceneSelect"' in html, "WebGPU viewer is missing the scene picker"
+    assert 'data-testid="scene-picker"' in html
+    bundled = sorted(p.name for p in (assets_dir / "outdoor-demo").glob("*.splat"))
+    for name in bundled:
+        assert f'value="assets/outdoor-demo/{name}"' in html, (
+            f"WebGPU picker does not expose {name}; add an <option> under #sceneSelect"
+        )
+    assert "location.assign" in html
