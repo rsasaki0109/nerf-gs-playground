@@ -10,6 +10,9 @@ import sys
 from gs_sim2real.experiments.mcd_quality_plan import (
     MCDQualityPlanContext,
     build_mcd_quality_plan,
+    collect_mcd_quality_results,
+    render_quality_report_json,
+    render_quality_report_markdown,
     render_plan_json,
     render_plan_markdown,
     render_plan_shell,
@@ -98,3 +101,88 @@ def test_plan_mcd_quality_runs_script_can_emit_single_profile_json() -> None:
 
     assert [run["name"] for run in payload["runs"]] == ["ntu_day02_single_800_ba"]
     assert payload["runs"][0]["iterations"] == 50000
+
+
+def test_collect_mcd_quality_results_reads_artifacts_and_train_log(tmp_path) -> None:
+    context = MCDQualityPlanContext(output_root=str(tmp_path / "runs"), asset_dir=str(tmp_path / "assets"))
+    plan = build_mcd_quality_plan(context)
+    run = plan.runs[0]
+    preprocess = tmp_path / "runs" / run.profile.name / "preprocess"
+    train = tmp_path / "runs" / run.profile.name / "train"
+    export = tmp_path / "assets" / f"{run.profile.name}.splat"
+
+    (preprocess / "images").mkdir(parents=True)
+    (preprocess / "images" / "frame_000000.jpg").write_bytes(b"jpg")
+    (preprocess / "images" / "image_timestamps.csv").write_text("filename,timestamp_ns\nframe_000000.jpg,1\n")
+    (preprocess / "lidar").mkdir()
+    (preprocess / "lidar" / "frame_000000.npy").write_bytes(b"npy")
+    (preprocess / "depth").mkdir()
+    (preprocess / "depth" / "frame_000000.npy").write_bytes(b"npy")
+    (preprocess / "pose").mkdir()
+    (preprocess / "pose" / "origin_wgs84.json").write_text("{}\n")
+    (preprocess / "lidar_world_rgb.npy").write_bytes(b"npy")
+    sparse = preprocess / "sparse" / "0"
+    sparse.mkdir(parents=True)
+    (sparse / "cameras.txt").write_text("# camera list\n1 PINHOLE 640 480 1 1 1 1\n")
+    (sparse / "images.txt").write_text("# image list\n1 1 0 0 0 0 0 0 1 frame_000000.jpg\n\n")
+    (sparse / "points3D.txt").write_text("# points\n1 0 0 0 255 255 255 0\n2 1 0 0 255 0 0 0\n")
+    train.mkdir(parents=True)
+    (train / "point_cloud.ply").write_text("ply\nformat ascii 1.0\nelement vertex 123\nend_header\n")
+    (train / "train.log").write_text(
+        "  [Iter  30000/30000] loss=6.1367 l1=0.1951 ssim_loss=0.5354 n_gaussians=123\n"
+        "Training complete in 500.3s\n"
+        "Final Gaussians: 123\n"
+    )
+    export.parent.mkdir(parents=True)
+    export.write_bytes(b"\0" * 64)
+
+    report = collect_mcd_quality_results(plan)
+    baseline = report["runs"][0]
+
+    assert report["completeCount"] == 1
+    assert baseline["complete"] is True
+    assert baseline["preprocess"]["imageCount"] == 1
+    assert baseline["preprocess"]["depthMapCount"] == 1
+    assert baseline["preprocess"]["points3DCount"] == 2
+    assert baseline["train"]["trainedGaussians"] == 123
+    assert baseline["train"]["finalL1"] == 0.1951
+    assert baseline["train"]["trainingSeconds"] == 500.3
+    assert baseline["export"]["splatBytes"] == 64
+    assert baseline["export"]["splatGaussians"] == 2
+
+
+def test_collect_mcd_quality_results_renders_markdown_and_json_for_missing_runs(tmp_path) -> None:
+    plan = build_mcd_quality_plan(MCDQualityPlanContext(output_root=str(tmp_path / "missing")))
+
+    report = collect_mcd_quality_results(plan)
+    markdown = render_quality_report_markdown(report)
+    payload = json.loads(render_quality_report_json(report))
+
+    assert report["completeCount"] == 0
+    assert "0/3 complete" in markdown
+    assert "Single D455B 400 Depth Long" in markdown
+    assert payload["type"] == "mcd-quality-results-report"
+
+
+def test_collect_mcd_quality_runs_script_can_emit_markdown(tmp_path) -> None:
+    env = dict(os.environ)
+    env["PYTHONPATH"] = "src"
+    result = subprocess.run(
+        [
+            sys.executable,
+            "scripts/collect_mcd_quality_runs.py",
+            "--output-root",
+            str(tmp_path / "missing"),
+            "--format",
+            "markdown",
+            "--profile",
+            "ntu_day02_single_400_depth_long",
+        ],
+        check=True,
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+
+    assert "# MCD Quality Results" in result.stdout
+    assert "Single D455B 400 Depth Long" in result.stdout

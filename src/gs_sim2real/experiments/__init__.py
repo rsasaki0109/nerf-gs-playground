@@ -18,6 +18,7 @@ from .localization_review_bundle_import_lab import (
 from .mcd_quality_plan import (
     MCDQualityPlanContext,
     build_mcd_quality_plan,
+    collect_mcd_quality_results,
 )
 from .outdoor_training_features_lab import (
     EXPERIMENT_OUTDOOR_TRAINING_PROFILES,
@@ -105,6 +106,7 @@ __all__ = [
     "EXPERIMENT_ROUTE_CAPTURE_BUNDLE_IMPORT_POLICIES",
     "MCDQualityPlanContext",
     "build_mcd_quality_plan",
+    "collect_mcd_quality_results",
     "build_localization_alignment_experiment_report",
     "build_localization_alignment_process_section",
     "build_localization_estimate_import_experiment_report",

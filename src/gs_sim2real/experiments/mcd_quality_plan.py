@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import shlex
 from dataclasses import dataclass
 from pathlib import Path
@@ -349,14 +350,233 @@ def _format_number(value: float) -> str:
     return f"{float(value):g}"
 
 
+def collect_mcd_quality_results(plan: MCDQualityPlan) -> dict[str, Any]:
+    """Collect artifact and metric summaries for a quality-run matrix."""
+    run_reports = [collect_mcd_quality_run_result(run) for run in plan.runs]
+    complete_count = sum(1 for run in run_reports if run["complete"])
+    return {
+        "type": "mcd-quality-results-report",
+        "context": plan.context.__dict__,
+        "runCount": len(run_reports),
+        "completeCount": complete_count,
+        "runs": run_reports,
+    }
+
+
+def collect_mcd_quality_run_result(run: MCDQualityRunPlan) -> dict[str, Any]:
+    """Collect artifact presence and lightweight metrics for one quality run."""
+    preprocess_dir = Path(run.preprocess_dir)
+    train_dir = Path(run.train_dir)
+    export_path = Path(run.export_path)
+    sparse_dir = preprocess_dir / "sparse" / "0"
+    artifact_status = {path: _artifact_exists(Path(path)) for path in run.expected_artifacts}
+    missing_artifacts = [path for path, exists in artifact_status.items() if not exists]
+    train_log_path = _find_train_log_path(train_dir)
+    train_log_metrics = _parse_train_log(train_log_path) if train_log_path else {}
+    ply_path = train_dir / "point_cloud.ply"
+    trained_gaussians = _read_ply_vertex_count(ply_path)
+    if trained_gaussians is None:
+        trained_gaussians = train_log_metrics.get("finalGaussians")
+
+    splat_bytes = export_path.stat().st_size if export_path.is_file() else None
+    splat_gaussians = None
+    if splat_bytes is not None and splat_bytes % 32 == 0:
+        splat_gaussians = splat_bytes // 32
+
+    return {
+        "name": run.profile.name,
+        "label": run.profile.label,
+        "complete": not missing_artifacts,
+        "missingArtifacts": missing_artifacts,
+        "artifactStatus": artifact_status,
+        "preprocess": {
+            "imageCount": _count_images(preprocess_dir / "images"),
+            "lidarFrameCount": _count_files(preprocess_dir / "lidar", "frame_*.npy"),
+            "depthMapCount": _count_files(preprocess_dir / "depth", "*.npy"),
+            "cameraCount": _count_colmap_rows(sparse_dir / "cameras.txt"),
+            "registeredImageCount": _count_colmap_image_rows(sparse_dir / "images.txt"),
+            "points3DCount": _count_colmap_rows(sparse_dir / "points3D.txt"),
+        },
+        "train": {
+            "pointCloudPath": str(ply_path),
+            "pointCloudExists": ply_path.is_file(),
+            "trainedGaussians": trained_gaussians,
+            "logPath": str(train_log_path) if train_log_path else None,
+            "finalLoss": train_log_metrics.get("finalLoss"),
+            "finalL1": train_log_metrics.get("finalL1"),
+            "finalSsimLoss": train_log_metrics.get("finalSsimLoss"),
+            "trainingSeconds": train_log_metrics.get("trainingSeconds"),
+        },
+        "export": {
+            "splatPath": run.export_path,
+            "splatExists": export_path.is_file(),
+            "splatBytes": splat_bytes,
+            "splatGaussians": splat_gaussians,
+        },
+    }
+
+
+def render_quality_report_json(report: dict[str, Any]) -> str:
+    """Render collected quality results as stable JSON."""
+    return json.dumps(report, indent=2, sort_keys=True) + "\n"
+
+
+def render_quality_report_markdown(report: dict[str, Any]) -> str:
+    """Render collected quality results as a compact Markdown table."""
+    lines = [
+        "# MCD Quality Results",
+        "",
+        f"Runs: {report['completeCount']}/{report['runCount']} complete",
+        "",
+        "| Run | Complete | Images | Depth | Sparse Pts | Gaussians | L1 | Splat | Missing |",
+        "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |",
+    ]
+    for run in report["runs"]:
+        preprocess = run["preprocess"]
+        train = run["train"]
+        export = run["export"]
+        missing = ", ".join(f"`{Path(path).name}`" for path in run["missingArtifacts"]) or "none"
+        lines.append(
+            "| "
+            + " | ".join(
+                [
+                    run["label"],
+                    "yes" if run["complete"] else "no",
+                    _format_optional_int(preprocess["imageCount"]),
+                    _format_optional_int(preprocess["depthMapCount"]),
+                    _format_optional_int(preprocess["points3DCount"]),
+                    _format_optional_int(train["trainedGaussians"]),
+                    _format_optional_float(train["finalL1"], digits=4),
+                    _format_optional_bytes(export["splatBytes"]),
+                    missing,
+                ]
+            )
+            + " |"
+        )
+    return "\n".join(lines) + "\n"
+
+
+def _artifact_exists(path: Path) -> bool:
+    if path.is_dir():
+        return any(path.iterdir())
+    return path.is_file()
+
+
+def _count_files(path: Path, pattern: str) -> int | None:
+    if not path.is_dir():
+        return None
+    return sum(1 for item in path.rglob(pattern) if item.is_file())
+
+
+def _count_images(path: Path) -> int | None:
+    if not path.is_dir():
+        return None
+    suffixes = {".jpg", ".jpeg", ".png"}
+    return sum(1 for item in path.rglob("*") if item.is_file() and item.suffix.lower() in suffixes)
+
+
+def _count_colmap_rows(path: Path) -> int | None:
+    if not path.is_file():
+        return None
+    count = 0
+    with open(path, encoding="utf-8") as f:
+        for line in f:
+            text = line.strip()
+            if text and not text.startswith("#"):
+                count += 1
+    return count
+
+
+def _count_colmap_image_rows(path: Path) -> int | None:
+    if not path.is_file():
+        return None
+    count = 0
+    with open(path, encoding="utf-8") as f:
+        for line in f:
+            text = line.strip()
+            if not text or text.startswith("#"):
+                continue
+            parts = text.split()
+            if len(parts) >= 10:
+                count += 1
+    return count
+
+
+def _find_train_log_path(train_dir: Path) -> Path | None:
+    for name in ("train.log", "training.log", "gsplat_train.log", "stdout.log"):
+        path = train_dir / name
+        if path.is_file():
+            return path
+    logs = sorted(train_dir.glob("*.log")) if train_dir.is_dir() else []
+    return logs[0] if logs else None
+
+
+def _parse_train_log(path: Path) -> dict[str, Any]:
+    metrics: dict[str, Any] = {}
+    text = path.read_text(encoding="utf-8", errors="replace")
+    iter_matches = re.findall(
+        r"loss=(?P<loss>[0-9.]+)\s+l1=(?P<l1>[0-9.]+)\s+ssim_loss=(?P<ssim>[0-9.]+)",
+        text,
+    )
+    if iter_matches:
+        loss, l1, ssim = iter_matches[-1]
+        metrics["finalLoss"] = float(loss)
+        metrics["finalL1"] = float(l1)
+        metrics["finalSsimLoss"] = float(ssim)
+    time_match = re.search(r"Training complete in\s+([0-9.]+)s", text)
+    if time_match:
+        metrics["trainingSeconds"] = float(time_match.group(1))
+    gaussian_match = re.search(r"Final Gaussians:\s+([0-9,]+)", text)
+    if gaussian_match:
+        metrics["finalGaussians"] = int(gaussian_match.group(1).replace(",", ""))
+    return metrics
+
+
+def _read_ply_vertex_count(path: Path) -> int | None:
+    if not path.is_file():
+        return None
+    try:
+        with open(path, "rb") as f:
+            for _ in range(256):
+                raw = f.readline()
+                if not raw:
+                    break
+                line = raw.decode("ascii", errors="ignore").strip()
+                if line.startswith("element vertex "):
+                    return int(line.split()[-1])
+                if line == "end_header":
+                    break
+    except (OSError, ValueError):
+        return None
+    return None
+
+
+def _format_optional_int(value: Any) -> str:
+    return "n/a" if value is None else f"{int(value):,}"
+
+
+def _format_optional_float(value: Any, *, digits: int) -> str:
+    return "n/a" if value is None else f"{float(value):.{digits}f}"
+
+
+def _format_optional_bytes(value: Any) -> str:
+    if value is None:
+        return "n/a"
+    return f"{int(value):,} B"
+
+
 __all__ = [
     "MCDQualityPlan",
     "MCDQualityPlanContext",
     "MCDQualityRunPlan",
     "MCDQualityRunProfile",
     "build_mcd_quality_plan",
+    "collect_mcd_quality_results",
+    "collect_mcd_quality_run_result",
     "default_mcd_quality_profiles",
     "plan_to_dict",
+    "render_quality_report_json",
+    "render_quality_report_markdown",
     "render_plan_json",
     "render_plan_markdown",
     "render_plan_shell",
