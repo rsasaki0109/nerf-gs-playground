@@ -1,6 +1,6 @@
 # 屋外 3D Gaussian Splatting 開発計画 / 引継ぎメモ
 
-更新日: 2026-04-21（MCD `tuhh_day_04` supervised 検証の訂正、`ntu_day_02` supervised bundle 追加、zero-GNSS guard、COLMAP images parser 修正、external SLAM artifact import 追加）
+更新日: 2026-04-21（MCD `tuhh_day_04` supervised 検証の訂正、`ntu_day_02` supervised bundle 追加、zero-GNSS guard、COLMAP images parser 修正、external SLAM artifact import 追加、MASt3R-SLAM smoke 実走）
 
 この文書は、`GS Mapper` リポジトリにおける屋外 3D Gaussian Splatting 対応の現在地を、**Claude / Codex / Copilot / その他のコーディングエージェント**がそのまま引き継げる粒度でまとめた handoff 文書です。リポジトリ直下の `CLAUDE.md` は開発コマンド早見、本書は **屋外パイプラインの文脈・判断・失敗の履歴**に重きを置きます。
 
@@ -453,7 +453,35 @@ PYTHONPATH=src python3 -m gs_sim2real.cli preprocess \
   --external-slam-output outputs/loger_smoke/artifacts
 ```
 
-MASt3R-SLAM は 2026-04-21 時点では source/output contract まで確認済み。公式 `main.py` は dataset の `save_results` が有効な経路で `logs/<save-as>/<sequence>.txt` trajectory と `<sequence>.ply` reconstruction を保存するため、repo 側は `--external-slam-system mast3r-slam --external-slam-output logs/<save-as>` で受けられる。full smoke は未実行。手元 clone には checkpoint がなく、現在の Python 環境では `pyrealsense2`、`lietorch`、`mast3r`、`in3d` が未充足。依存は repo へ入れず、MASt3R-SLAM 専用 venv + checkpoint 3点を揃えてから外部artifactだけ戻す方針。
+MASt3R-SLAM official repo でも smoke 済み。`/tmp/ext_slam_probe/MASt3R-SLAM` を repo 外に置き、`/tmp/mast3r-slam-venv` (Python 3.11, torch 2.5.1+cu121) に `thirdparty/mast3r` / `thirdparty/in3d` / root package を editable install した。`thirdparty/eigen` と `thirdparty/in3d/thirdparty/pyimgui` は submodule update が必要。`curope` と root backend は上流 setup が古い arch を広くコンパイルするので、外部 clone 側だけ `TORCH_CUDA_ARCH_LIST=8.9` を読む薄いパッチを当てた。`pyimgui` は `Cython>=0.24,<0.30` を venv に入れないと `core.h` 不足で build 失敗する。checkpoint は公式 README の 3 点:
+
+- `MASt3R_ViTLarge_BaseDecoder_512_catmlpdpt_metric.pth` (2.6GB)
+- `MASt3R_ViTLarge_BaseDecoder_512_catmlpdpt_metric_retrieval_trainingfree.pth` (8.1MB)
+- `MASt3R_ViTLarge_BaseDecoder_512_catmlpdpt_metric_retrieval_codebook.pkl` (257MB)
+
+5枚 smoke は、bag6 の既存 `outputs/bag6_mast3r/images` 先頭5枚だと frame 間隔が大きく、2 keyframes で relocalize 失敗が出た。連番 `outputs/autoware_bag6_e1_sequential/images` から stride 5 で `[0,5,10,15,20]` を PNG 化すると追跡が安定し、`logs/bag6-e1-stride5-smoke/images.txt` に 4 keyframes、`images.ply` に 339,042 vertices を保存した。trajectory extent は `[0.856, 0.322, 1.056]`。`external-slam` import は MASt3R-SLAM の `.ply` を 100,000 points に subsample し、4 images / 100000 points の COLMAP sparse を生成。`gsplat --iterations 10` も `outputs/mast3r_slam_smoke_e1_stride5/train_smoke/point_cloud.ply` まで成功した。
+
+```bash
+cd /tmp/ext_slam_probe/MASt3R-SLAM
+PYTHONUNBUFFERED=1 CUDA_VISIBLE_DEVICES=0 /tmp/mast3r-slam-venv/bin/python main.py \
+  --dataset "$GS_MAPPER_ROOT/outputs/mast3r_slam_smoke_e1_stride5/images" \
+  --no-viz \
+  --save-as bag6-e1-stride5-smoke \
+  --config config/smoke_no_calib.yaml
+
+cd "$GS_MAPPER_ROOT"
+PYTHONPATH=src python3 -m gs_sim2real.cli preprocess \
+  --images outputs/mast3r_slam_smoke_e1_stride5/images \
+  --output outputs/mast3r_slam_smoke_e1_stride5/imported_colmap \
+  --method external-slam \
+  --external-slam-system mast3r-slam \
+  --external-slam-output /tmp/ext_slam_probe/MASt3R-SLAM/logs/bag6-e1-stride5-smoke
+
+PYTHONPATH=src python3 -m gs_sim2real.cli train \
+  --data outputs/mast3r_slam_smoke_e1_stride5/imported_colmap \
+  --output outputs/mast3r_slam_smoke_e1_stride5/train_smoke \
+  --method gsplat --iterations 10
+```
 
 VGGT-SLAM 2.0 smoke も同日実走済み。`/tmp/ext_slam_probe/VGGT-SLAM` を Python 3.11 の隔離 venv (`/tmp/vggt-slam-venv`) に入れ、`requirements.txt` + `third_party/salad` + `MIT-SPARK/VGGT_SPARK` + `vggt-slam` editable install で import まで通った。上流 `main.py` は `--max_loops 0` でも SALAD checkpoint と Viewer を初期化するため、ローカルclone側だけ `VGGT_SLAM_NO_RETRIEVAL=1` / `VGGT_SLAM_NO_VIEWER=1` で無効化する薄いパッチを当てた。
 
