@@ -494,6 +494,25 @@ PYTHONPATH=src python3 -m gs_sim2real.cli train \
   --iterations 10
 ```
 
+さらに同じ 20-frame sparse から `gsplat --iterations 3000` も実走済み。25.5 s で完了し、Final Gaussians は 61,710。`gs-mapper export --format splat` で 52,043 gaussians / 1.6 MB の `outputs/vggt_slam_20/vggt-slam-20-3k.splat` を生成した。
+
+```bash
+PYTHONPATH=src python3 -m gs_sim2real.cli train \
+  --data outputs/vggt_slam_20/imported_colmap \
+  --output outputs/vggt_slam_20/train_3k \
+  --method gsplat \
+  --iterations 3000
+
+PYTHONPATH=src python3 -m gs_sim2real.cli export \
+  --model outputs/vggt_slam_20/train_3k/point_cloud.ply \
+  --format splat \
+  --output outputs/vggt_slam_20/vggt-slam-20-3k.splat \
+  --max-points 100000 \
+  --splat-normalize-extent 17.0 \
+  --splat-min-opacity 0.02 \
+  --splat-max-scale 2.0
+```
+
 ### 9.4 PLY → .splat → Pages デプロイ
 
 ```python
