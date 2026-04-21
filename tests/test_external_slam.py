@@ -10,6 +10,7 @@ import pytest
 
 from gs_sim2real.preprocess.external_slam import (
     import_external_slam,
+    materialize_pose_tensor_trajectory,
     normalize_system,
     resolve_external_slam_artifacts,
 )
@@ -66,6 +67,45 @@ def test_pi3_pointcloud_only_still_requires_trajectory(tmp_path: Path) -> None:
 
     with pytest.raises(FileNotFoundError, match="Pi3/Pi3X trajectory"):
         resolve_external_slam_artifacts(system="pi3", artifact_dir=artifact_dir)
+
+
+def test_materialize_npz_camera_poses_to_tum(tmp_path: Path) -> None:
+    poses = np.repeat(np.eye(4)[None, ...], 2, axis=0)
+    poses[1, 0, 3] = 1.5
+    pose_file = tmp_path / "camera_poses.npz"
+    np.savez(pose_file, camera_poses=poses, timestamps=np.array([10.0, 11.0]))
+
+    tum_path = materialize_pose_tensor_trajectory(pose_file, tmp_path / "converted")
+
+    lines = [line for line in tum_path.read_text().splitlines() if line and not line.startswith("#")]
+    assert (
+        lines[0] == "10.000000000 0.000000000 0.000000000 0.000000000 0.000000000 0.000000000 0.000000000 1.000000000"
+    )
+    assert lines[1].startswith("11.000000000 1.500000000 0.000000000 0.000000000")
+
+
+def test_import_external_slam_writes_colmap_from_npz_pose_container(tmp_path: Path) -> None:
+    image_dir = tmp_path / "images"
+    _write_dummy_images(image_dir)
+    artifact_dir = tmp_path / "pi3_out"
+    artifact_dir.mkdir()
+    poses = np.repeat(np.eye(4)[None, ...], 2, axis=0)
+    poses[1, 0, 3] = 1.0
+    np.savez(artifact_dir / "camera_poses.npz", camera_poses=poses)
+    output_dir = tmp_path / "colmap"
+
+    sparse_dir = import_external_slam(
+        image_dir=image_dir,
+        output_dir=output_dir,
+        system="pi3",
+        artifact_dir=artifact_dir,
+    )
+
+    assert Path(sparse_dir) == output_dir / "sparse" / "0"
+    assert (output_dir / "external_slam" / "camera_poses_trajectory.tum").exists()
+    images_txt = (output_dir / "sparse" / "0" / "images.txt").read_text()
+    assert "frame_000000.jpg" in images_txt
+    assert "frame_000001.jpg" in images_txt
 
 
 def test_import_external_slam_writes_colmap_from_tum_trajectory(tmp_path: Path) -> None:

@@ -404,7 +404,7 @@ gs-mapper preprocess \
   --pinhole-calib camera.json
 ```
 
-`--external-slam-output` 配下から `poses.txt` / `trajectory.txt` / `*.tum` と `*.ply` / `*.npy` / `*.pcd` を自動探索する。Pi3/Pi3X は標準 example が点群 PLY 中心なので、3DGS training へ進むには別途 camera trajectory を `--trajectory` で渡す。
+`--external-slam-output` 配下から `poses.txt` / `trajectory.txt` / `*.tum` と `*.ply` / `*.npy` / `*.pcd` を自動探索する。Pi3/Pi3X は標準 example が点群 PLY 中心なので、3DGS training へ進むには別途 camera trajectory を `--trajectory` で渡す。Pi3 / Pi3X / LoGeR などの Python 出力が `camera_poses` または `poses` の camera-to-world 行列を `.npy` / `.npz` / `.pt` / `.pth` に保存している場合は、そのファイル自体を `--trajectory` に渡せる。`external-slam` 側で一時TUMへ materialize してから既存 importer に流す。
 
 2026-04-21 Codex smoke: `outputs/bag6_mast3r/poses.npy` を TUM `trajectory.txt` に変換し、`pts3d.npy` を外部点群 artifact として `outputs/external_slam_smoke/mast3r_artifacts/` に置いた。次のコマンドで `trajectory.txt` / `pts3d.npy` の自動探索が通り、`outputs/external_slam_smoke/mast3r_import/sparse/0` に `cameras.txt` / `images.txt` / `points3D.txt` を生成。結果は 20 images / 1000 points で、`require_colmap_sparse_model()` も通過した。
 
@@ -415,6 +415,18 @@ PYTHONPATH=src python3 -m gs_sim2real.cli preprocess \
   --method external-slam \
   --external-slam-system mast3r-slam \
   --external-slam-output outputs/external_slam_smoke/mast3r_artifacts
+```
+
+同日追記: pose tensor 経路も `outputs/bag6_mast3r/poses.npy` + `pts3d.npy` で smoke 済み。次のコマンドで `external_slam/poses_trajectory.tum` を生成し、20 images / 100000 points の COLMAP sparse ができた。
+
+```bash
+PYTHONPATH=src python3 -m gs_sim2real.cli preprocess \
+  --images outputs/bag6_mast3r/images \
+  --output outputs/external_slam_smoke/pose_tensor_import \
+  --method external-slam \
+  --external-slam-system pi3 \
+  --trajectory outputs/bag6_mast3r/poses.npy \
+  --pointcloud outputs/bag6_mast3r/pts3d.npy
 ```
 
 ### 9.4 PLY → .splat → Pages デプロイ
