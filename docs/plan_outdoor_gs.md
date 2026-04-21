@@ -54,7 +54,7 @@
 | MCD calibration / static TF | `src/gs_sim2real/datasets/ros_tf.py`, `scripts/download_mcd_calibration.sh` | MCDVIRAL official calibration YAML を downloader 経由で取得。YAML は CC BY-NC-SA なので repo に commit しない。 |
 | MCD supervised sparse import | `src/gs_sim2real/cli.py`, `src/gs_sim2real/datasets/mcd.py` | `--mcd-static-calibration`、single-camera colorize/depth、CameraInfo 欠落時の PINHOLE 合成、zero-GNSS guard、IMU orientation CSV normalization、angular-velocity yaw fallback。 |
 | MCD quality run planning | `src/gs_sim2real/experiments/mcd_quality_plan.py`, `scripts/plan_mcd_quality_runs.py`, `scripts/collect_mcd_quality_runs.py` | `ntu_day_02` の baseline / single-camera BA / multi-camera BA の preprocess→train→export commands、expected artifacts、実走後 summary を生成。 |
-| External SLAM import | `src/gs_sim2real/preprocess/external_slam.py`, `src/gs_sim2real/preprocess/external_slam_artifacts/` | facade + profile/resolver/materializer/importer 分割済み。VGGT-SLAM / MASt3R-SLAM 実走済み、Pi3 / LoGeR 候補追加済み。 |
+| External SLAM import | `src/gs_sim2real/preprocess/external_slam.py`, `src/gs_sim2real/preprocess/external_slam_artifacts/` | facade + profile/resolver/materializer/importer/manifest 分割済み。VGGT-SLAM / MASt3R-SLAM 実走済み、Pi3 / LoGeR 候補追加済み。 |
 | Outdoor feature comparison | `src/gs_sim2real/experiments/outdoor_training_features_lab.py` | depth supervision、appearance embedding、pose refinement、sky-mask profile を同一 fixture で比較。real metric run 前の planning harness。 |
 | Pages scene contract | `docs/scenes-list.json`, `scripts/pages_scene_manifest.py`, `tests/test_pages_assets.py` | README table、preview capture、hero GIF、3 viewer picker を manifest に揃える。 |
 | README preview capture | `scripts/capture_readme_splat_previews.py` | WebGL は headed Chromium 推奨。`--out-dir` で smoke capture を一時出力可能。 |
@@ -87,6 +87,14 @@ Viewer assets だけなら:
 
 ```bash
 PYTHONPATH=src pytest tests/test_pages_assets.py tests/test_viewer.py -q
+```
+
+External SLAM output を COLMAP 化する前に artifact 解決だけ確認する場合:
+
+```bash
+gs-mapper preprocess --method external-slam --images <images-dir> \
+  --external-slam-system vggt-slam --external-slam-output <slam-output-dir> \
+  --external-slam-dry-run --external-slam-manifest-format json
 ```
 
 README preview PNG を再生成する場合:

@@ -58,6 +58,18 @@ def _add_external_slam_args(parser: argparse.ArgumentParser, *, context: str) ->
         default=None,
         help=f"Optional PINHOLE calibration JSON for {context} trajectory import",
     )
+    if context == "preprocess":
+        parser.add_argument(
+            "--external-slam-dry-run",
+            action="store_true",
+            help="Resolve external SLAM artifacts and print an import manifest without writing COLMAP files",
+        )
+        parser.add_argument(
+            "--external-slam-manifest-format",
+            choices=["text", "json"],
+            default="text",
+            help="Manifest format for --external-slam-dry-run (default: text)",
+        )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -1280,7 +1292,11 @@ def cmd_preprocess(args: argparse.Namespace) -> None:
         print(f"LiDAR SLAM import complete: {sparse_dir}")
     elif args.method == "external-slam":
         sparse_dir = _run_external_slam_preprocess_to_colmap(images_path, Path(output_dir), args)
-        print(f"External SLAM import complete: {sparse_dir}")
+        if sparse_dir is None:
+            if getattr(args, "external_slam_manifest_format", "text") != "json":
+                print("External SLAM dry run complete.")
+        else:
+            print(f"External SLAM import complete: {sparse_dir}")
     elif args.method in ("pose-free", "dust3r", "simple"):
         from gs_sim2real.preprocess.pose_free import run_pose_free
 
@@ -1603,10 +1619,24 @@ def _run_external_slam_preprocess_to_colmap(
     args: argparse.Namespace,
 ):
     """Import artifacts exported by MASt3R-SLAM/VGGT-SLAM/LoGeR/Pi3-like front-ends."""
-    from gs_sim2real.preprocess.external_slam import import_external_slam
+    from gs_sim2real.preprocess import external_slam as external_slam_module
 
     try:
-        return import_external_slam(
+        if getattr(args, "external_slam_dry_run", False):
+            manifest = external_slam_module.build_external_slam_artifact_manifest(
+                system=getattr(args, "external_slam_system", "generic"),
+                artifact_dir=getattr(args, "external_slam_output", None),
+                trajectory_path=getattr(args, "trajectory", None),
+                trajectory_format=getattr(args, "trajectory_format", None),
+                pointcloud_path=getattr(args, "pointcloud", None),
+                pinhole_calib_path=getattr(args, "pinhole_calib", None),
+            )
+            if getattr(args, "external_slam_manifest_format", "text") == "json":
+                print(external_slam_module.render_external_slam_artifact_manifest_json(manifest), end="")
+            else:
+                print(external_slam_module.render_external_slam_artifact_manifest_text(manifest), end="")
+            return None
+        return external_slam_module.import_external_slam(
             image_dir=images_dir,
             output_dir=colmap_dir,
             system=getattr(args, "external_slam_system", "generic"),

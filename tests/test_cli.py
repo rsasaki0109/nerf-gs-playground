@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -625,6 +626,9 @@ class TestCLIHelp:
                 "points.ply",
                 "--pinhole-calib",
                 "camera.json",
+                "--external-slam-dry-run",
+                "--external-slam-manifest-format",
+                "json",
             ]
         )
         assert args.method == "external-slam"
@@ -633,6 +637,8 @@ class TestCLIHelp:
         assert args.trajectory == "trajectory.txt"
         assert args.pointcloud == "points.ply"
         assert args.pinhole_calib == "camera.json"
+        assert args.external_slam_dry_run is True
+        assert args.external_slam_manifest_format == "json"
 
     def test_cli_run_lidar_slam_flags(self) -> None:
         """run parser accepts lidar-slam trajectory settings."""
@@ -1115,6 +1121,72 @@ class TestCLIHelp:
             }
         ]
         assert "External SLAM import complete:" in capsys.readouterr().out
+
+    def test_cmd_preprocess_external_slam_dry_run_prints_manifest(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """external-slam dry-run should resolve artifacts without importing them."""
+        from gs_sim2real import cli
+        from gs_sim2real.preprocess import external_slam as external_slam_module
+
+        def forbidden_import_external_slam(**kwargs):
+            raise AssertionError(f"dry-run should not import artifacts: {kwargs}")
+
+        monkeypatch.setattr(external_slam_module, "import_external_slam", forbidden_import_external_slam)
+
+        artifact_dir = tmp_path / "mast3r_out"
+        artifact_dir.mkdir()
+        (artifact_dir / "poses.txt").write_text("0 0 0 0 0 0 0 1\n1 1 0 0 0 0 0 1\n")
+        (artifact_dir / "reconstruction.ply").write_text("ply\n")
+
+        args = build_parser().parse_args(
+            [
+                "preprocess",
+                "--images",
+                str(tmp_path / "images"),
+                "--output",
+                str(tmp_path / "out"),
+                "--method",
+                "external-slam",
+                "--external-slam-system",
+                "mast3r-slam",
+                "--external-slam-output",
+                str(artifact_dir),
+                "--external-slam-dry-run",
+            ]
+        )
+
+        cli.cmd_preprocess(args)
+
+        out = capsys.readouterr().out
+        assert "External SLAM artifacts: MASt3R-SLAM (mast3r-slam)" in out
+        assert "materialization=direct" in out
+        assert "External SLAM dry run complete." in out
+
+        json_args = build_parser().parse_args(
+            [
+                "preprocess",
+                "--images",
+                str(tmp_path / "images"),
+                "--output",
+                str(tmp_path / "out"),
+                "--method",
+                "external-slam",
+                "--external-slam-system",
+                "mast3r-slam",
+                "--external-slam-output",
+                str(artifact_dir),
+                "--external-slam-dry-run",
+                "--external-slam-manifest-format",
+                "json",
+            ]
+        )
+
+        cli.cmd_preprocess(json_args)
+
+        payload = json.loads(capsys.readouterr().out)
+        assert payload["type"] == "external-slam-artifact-manifest"
+        assert payload["system"] == "mast3r-slam"
 
     def test_cmd_preprocess_mcd_list_topics_mode(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path, capsys: pytest.CaptureFixture[str]

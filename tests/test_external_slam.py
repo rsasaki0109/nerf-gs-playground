@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -10,9 +11,12 @@ import numpy as np
 import pytest
 
 from gs_sim2real.preprocess.external_slam import (
+    build_external_slam_artifact_manifest,
     import_external_slam,
     materialize_pose_tensor_trajectory,
     normalize_system,
+    render_external_slam_artifact_manifest_json,
+    render_external_slam_artifact_manifest_text,
     resolve_external_slam_artifacts,
 )
 
@@ -81,6 +85,38 @@ def test_resolve_pi3_camera_pose_tensor_from_output_directory(tmp_path: Path) ->
 
     assert artifacts.trajectory_path == artifact_dir / "camera_poses.npy"
     assert artifacts.pointcloud_path == artifact_dir / "result.ply"
+
+
+def test_build_external_slam_manifest_marks_tensor_materialization(tmp_path: Path) -> None:
+    artifact_dir = tmp_path / "pi3_out"
+    artifact_dir.mkdir()
+    poses = np.repeat(np.eye(4)[None, ...], 2, axis=0)
+    np.savez(artifact_dir / "camera_poses.npz", camera_poses=poses)
+    np.savez(
+        artifact_dir / "points.npz",
+        points=np.zeros((2, 2, 3), dtype=np.float32),
+        conf=np.ones((2, 2), dtype=np.float32),
+        images=np.ones((2, 2, 3), dtype=np.float32),
+    )
+
+    manifest = build_external_slam_artifact_manifest(
+        system="pi3",
+        artifact_dir=artifact_dir,
+        trajectory_path="camera_poses.npz",
+        pointcloud_path="points.npz",
+    )
+    text = render_external_slam_artifact_manifest_text(manifest)
+    payload = json.loads(render_external_slam_artifact_manifest_json(manifest))
+
+    assert manifest["type"] == "external-slam-artifact-manifest"
+    assert manifest["system"] == "pi3"
+    assert manifest["displayName"] == "Pi3/Pi3X"
+    assert manifest["trajectory"]["materialization"] == "pose_tensor_to_tum"
+    assert manifest["pointcloud"]["materialization"] == "point_tensor_to_npy"
+    assert manifest["trajectory"]["bytes"] > 0
+    assert "External SLAM artifacts: Pi3/Pi3X (pi3)" in text
+    assert "materialization=pose_tensor_to_tum" in text
+    assert payload["pointcloud"]["path"].endswith("points.npz")
 
 
 def test_materialize_npz_camera_poses_to_tum(tmp_path: Path) -> None:
