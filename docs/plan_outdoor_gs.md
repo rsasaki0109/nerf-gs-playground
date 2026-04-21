@@ -1,6 +1,6 @@
 # 屋外 3D Gaussian Splatting 開発計画 / 引継ぎメモ
 
-更新日: 2026-04-21（MCD `tuhh_day_04` supervised 検証の訂正、`ntu_day_02` supervised bundle 追加、zero-GNSS guard、COLMAP images parser 修正、external SLAM artifact import 追加、MASt3R-SLAM smoke / 20-frame bundle 実走、binary PLY loader 修正）
+更新日: 2026-04-21（MCD `tuhh_day_04` supervised 検証の訂正、`ntu_day_02` supervised bundle 追加、zero-GNSS guard、COLMAP images parser 修正、external SLAM artifact import 追加、VGGT-SLAM / MASt3R-SLAM comparison bundle 実走、binary PLY loader 修正、8-scene viewer smoke）
 
 この文書は、`GS Mapper` リポジトリにおける屋外 3D Gaussian Splatting 対応の現在地を、**Claude / Codex / Copilot / その他のコーディングエージェント**がそのまま引き継げる粒度でまとめた handoff 文書です。リポジトリ直下の `CLAUDE.md` は開発コマンド早見、本書は **屋外パイプラインの文脈・判断・失敗の履歴**に重きを置きます。
 
@@ -22,6 +22,7 @@
 - **2026-04-20 セッションで MCDVIRAL calibration YAML を公式 Download page 本体で発見**（Drive ID は §4.3.3.c / §15.1 参照）。**2026-04-21 時点の本 worktree** では `scripts/download_mcd_calibration.sh` + `ros_tf.load_static_calibration_yaml` / `merge_static_tf_maps` + CLI `--mcd-static-calibration`（`preprocess` / `run` / `demo`）+ 単眼 MCD の colorize/depth 経路 + テストまで **ローカル実装済み**（upstream `main` との差分は `git log` / PR 状態で要確認）。
 - **2026-04-21 Codex 追検証**: `tuhh_day_04` supervised 成功扱いは **撤回**。`/vn200/GPS` は 75,173 件すべて `latitude=longitude=altitude=0.0` で、既存 `outputs/tuhh_day04_sup` は静止 GNSS trajectory だった。さらに trainer の `images.txt` parser が空の 2D points 行を捨てて 400 entries 中 200 images しか読んでいなかった。修正内容は **§15.4**。
 - **2026-04-21 Codex 追実走**: valid GNSS の `ntu_day_02` を 35 s trim + altitude flatten + ATV calibration + LiDAR seed/depth supervision で preprocess/train/export し、`docs/assets/outdoor-demo/mcd-ntu-day02-supervised.splat` を production viewer / README に追加済み（詳細は **§15.5**）。`tuhh_day_04` の zero-GNSS artifact は production picker から除外。
+- **2026-04-21 Codex external-SLAM 比較**: VGGT-SLAM 2.0 と MASt3R-SLAM の artifact import / gsplat 15k / `.splat` bundle まで実走し、production picker は **8 scenes**（2 supervised + 4 pose-free + 2 external-SLAM comparison）になった。`scripts/record_demo_gif.py` は `docs/scenes-list.json` を source of truth として読む。
 
 直近の最大の残課題は以下。
 
@@ -71,8 +72,8 @@
 | **2026-04-21** `_mcd_write_pinhole_from_calibration_yaml` | `cli.py` | bag に **`sensor_msgs/CameraInfo` が無い** MCD セッション（例: `tuhh_day_04` の `*_d455b.bag`）向け。YAML の `intrinsics` + `resolution` + `rostopic` 照合で `calibration/<topic_sanitized>.json` を合成し `extract_camera_info` 失敗分を埋める |
 | **2026-04-21** 単眼 `_mcd_gnss_sparse_import` の colorize + depth | `cli.py` | 従来はマルチカメラ分岐にしか `_mcd_colorize_seed` / `_mcd_export_depth_maps` が無く、**単眼 supervised で depth supervision が空振り**していた。単眼でも LiDAR seed 後に同 API を呼ぶ。**`extract_frames` が単 topic のとき画像は `images/frame_*.jpg`（サブディレクトリ無し）**なので、`cameras[]` の `subdir` は **`""`**（`colorize_lidar_world_from_images` / `export_lidar_depth_per_image` のパス規約に合わせる） |
 | **2026-04-21** `scripts/download_mcd_calibration.sh` | `scripts/` | `handheld` / `atv` の Drive ID を引くシェル（CC BY-NC-SA — **repo に YAML を commit しない**）。`data/` は `.gitignore` |
-| **2026-04-21** `scripts/capture_readme_splat_previews.py` | `scripts/` | `docs/splat.html` を **headed Playwright + CDP `Page.captureScreenshot`** でキャンバスクリップ。README 表用 `docs/images/demo-sweep/0{1-6}_*.png` 再生。headless だと WebGL が真っ黒になりがち → **デフォルト headed**、`DISPLAY=:0` 推奨 |
-| **2026-04-21** README / hero 訂正 | `README.md`, `scripts/record_demo_gif.py` | MCD `tuhh_day_04` supervised 成功表記を撤回。valid GNSS の `ntu_day_02` supervised を追加し、Benchmark / scene picker / README thumbnails は production 6 splats 扱い。`mcd-tuhh-day04-supervised.splat` は zero-GNSS diagnostic asset として残すが production picker から除外 |
+| **2026-04-21** `scripts/capture_readme_splat_previews.py` | `scripts/` | `docs/splat.html` を **headed Playwright + CDP `Page.captureScreenshot`** でキャンバスクリップ。README 表用 `docs/images/demo-sweep/01`〜`08` を再生。`--out-dir` で一時 capture smoke も可能。headless だと WebGL が真っ黒になりがち → **デフォルト headed**、`DISPLAY=:0` 推奨 |
+| **2026-04-21** README / hero 訂正 | `README.md`, `scripts/record_demo_gif.py` | MCD `tuhh_day_04` supervised 成功表記を撤回。valid GNSS の `ntu_day_02` supervised と VGGT-SLAM / MASt3R-SLAM comparison scenes を追加し、Benchmark / scene picker / README thumbnails は production 8 splats 扱い。`record_demo_gif.py` は `scenes-list.json` を読む。`mcd-tuhh-day04-supervised.splat` は zero-GNSS diagnostic asset として残すが production picker から除外 |
 
 ## 3. Public data で「実際に verified された」もの
 
@@ -302,14 +303,15 @@ gs-mapper export \
 
 ### 優先度 A（残り）
 
-1. **WebGPU 版 viewer**: 調査したところ script tag 単体で使える WebGPU GS 実装は現時点で皆無（Spark は ESM import、PlayCanvas Web Components は GS 非対応、cvlab/epfl 版も bundler 必須）。vite 等のビルドステップを導入するか、antimatter15/splat WebGL2 で継続するかの判断が要る。
-2. **MCD (mcdviral.github.io)**: 公開・登録不要だが 1 セッション 3.5〜51 GB と巨大。downloader は `aws s3 sync --no-sign-request` ではなく Google Drive 経由なので `configs/datasets.yaml` に入れられない。rosbag 形式が rosbag1 or 2 不明なので `MCDLoader` の AnyReader 互換を実データで確認する必要あり。
-3. **NMEA/GNSS/IMU robustness**: IMU quaternion 融合、logger 時刻ずれ、日跨ぎ RMC を堅牢化。
+1. **公開 docs prune**: `docs/experiments.md` と古い引き継ぎ節を、公開向け / 内部履歴 / 失敗ログに分ける。実装ではなく情報設計の判断が必要。
+2. **8-scene viewer smoke の運用化**: `docs/scenes-list.json` を source of truth にして、README thumbnails / hero GIF / viewer picker がズレないことを pre-PR で確認する。
+3. **BYO photos / CoVLA mini**: ユーザ写真または HF access 承認後に、`photos-to-splat --preprocess mast3r` の自己実証デモを作る。
 
 ### 優先度 B
 
 1. Waymo real-data E2E（ユーザが Waymo Open Dataset の Terms of Use に同意し、Python 3.10/3.11 環境を立てられる場合のみ）。プロジェクト方針として Autoware 系が主軸のため後回し。
-2. Waymo dynamic mask / depth の実使用評価。
+2. NMEA / GNSS / IMU robustness: IMU quaternion 融合、logger 時刻ずれ、日跨ぎ RMC を堅牢化。
+3. Waymo dynamic mask / depth の実使用評価。
 
 ### 既に対応済み（refactor の余地はあるが動く）
 
@@ -778,13 +780,13 @@ Claude Opus 4.7 で PR #77〜#80 の 4 本。OSS 顔の残り整備 + §4.3.3.a 
 | バンドル splat（スレッド時点） | `docs/assets/outdoor-demo/mcd-tuhh-day04-supervised.splat`（**30k** 系 PLY から export、400k cap / ~12.8 MB と記録） |
 | 単眼 flat images | `_mcd_gnss_sparse_import` で LiDAR colorize + depth は **`subdir: ""`**（`images/frame_*.jpg`） |
 | d455b bag | **CameraInfo なし** → `_mcd_write_pinhole_from_calibration_yaml` 必須（§4.3.3.c Pitfalls 4） |
-| README / viewer | §15.5 後は production 6 scenes（`ntu_day_02` supervised 追加）。`tuhh_day_04` zero-GNSS artifact は diagnostic asset としてのみ残し、scene picker / Benchmark / hero script から除外 |
+| README / viewer | 現行は production 8 scenes（2 supervised + 4 pose-free + 2 external-SLAM comparison）。`tuhh_day_04` zero-GNSS artifact は diagnostic asset としてのみ残し、scene picker / Benchmark / hero script から除外 |
 
 ### 実装タッチポイント（worktree）
 
 - `src/gs_sim2real/datasets/ros_tf.py` — `merge_static_tf_maps`, `load_static_calibration_yaml`
 - `src/gs_sim2real/cli.py` — `--mcd-static-calibration`、`_mcd_write_pinhole_from_calibration_yaml`、単眼 `subdir: ""`
-- `scripts/download_mcd_calibration.sh`, `scripts/capture_readme_splat_previews.py`, `scripts/record_demo_gif.py`（6 splats）
+- `scripts/download_mcd_calibration.sh`, `scripts/capture_readme_splat_previews.py`, `scripts/record_demo_gif.py`（現行は `scenes-list.json` ベースの 8 production splats）
 - テスト: `tests/test_ros_tf.py`, `tests/test_cli.py`, `tests/test_pages_assets.py`
 
 ### 未確認 / 要調査
@@ -845,11 +847,13 @@ pytest tests/ -q --ignore=tests/e2e
 export DISPLAY=:0   # 環境に合わせる
 python3 scripts/capture_readme_splat_previews.py
 
-# hero GIF（6 シーン）
+# hero GIF（scenes-list.json の production scenes 全件）
 python3 scripts/record_demo_gif.py
 ```
 
 **Headless 注意**: `capture_readme_splat_previews.py` はデフォルト headed。headless のままだとキャンバスが真っ黒・PNG が極小になりうる → CI ではスキップ or 別 job で headed 実行する運用を想定。
+
+2026-04-21 Codex smoke: `DISPLAY=:1 python3 scripts/capture_readme_splat_previews.py --out-dir /tmp/gsmapper-8scene-smoke --wait-ms 8000` で production 8 scenes を全件 capture。各 PNG は 1280×720、最小サイズ 94 KB、最小 nonblack ratio 0.045 で、`splat.html` の WebGL load / scene URL / bundled asset path は全件通った。
 
 ### 実装の読みどころ（コードダイブ順）
 
@@ -887,7 +891,7 @@ python3 scripts/record_demo_gif.py
 - `src/gs_sim2real/datasets/mcd.py::extract_navsat_trajectory` は `lat == 0 && lon == 0` の placeholder NavSatFix を skip する。`tuhh_day_04` は now fail-fast: `Need at least 2 NavSatFix samples ... got 0 from /vn200/GPS`。
 - `src/gs_sim2real/train/gsplat_trainer.py::_load_images_txt` は空の 2D points 行を保持したまま metadata 行を parse する。修正後は `outputs/tuhh_day04_sup` を `1 camera / 400 images / 100000 points` と読める。
 - `scripts/check_mcd_gnss.py` を追加。NavSatFix の valid / zero-placeholder / invalid-status 件数、ENU translation extent、任意の `image_timestamps.csv` との時刻 overlap を training 前に判定する。
-- `README.md` / viewer labels は `mcd-tuhh-day04-supervised.splat` を **zero-GNSS diagnostic** に relabel し、Benchmark から外した。その後 §15.5 で `mcd-ntu-day02-supervised.splat` に置き換え、production picker / README / hero script は production 6 splats を周回する。
+- `README.md` / viewer labels は `mcd-tuhh-day04-supervised.splat` を **zero-GNSS diagnostic** に relabel し、Benchmark から外した。その後 §15.5 で `mcd-ntu-day02-supervised.splat` に置き換え、さらに VGGT-SLAM / MASt3R-SLAM comparison scenes を足して production picker / README / hero script は production 8 splats を周回する。
 - Tests: `tests/test_mcd.py::test_extract_navsat_trajectory_rejects_zero_placeholder_fixes`, `tests/test_gsplat_trainer.py::test_load_images_txt_preserves_entries_with_blank_points_lines`, `tests/test_check_mcd_gnss_script.py`。
 
 **Preflight command**:
@@ -1079,8 +1083,8 @@ PYTHONPATH=src python3 -m gs_sim2real.cli export \
 Viewer / README wiring:
 
 - `docs/scenes-list.json`, `docs/splat.html`, `docs/splat_spark.html`, `docs/splat_webgpu.html` expose `MCD ntu_day_02 — supervised` as the second supervised MCD production scene.
-- `README.md` now documents **six** production bundled scenes and uses `docs/images/demo-sweep/06_mcd-ntu-day02-supervised.png`.
-- `scripts/record_demo_gif.py` and `scripts/capture_readme_splat_previews.py` include `mcd-ntu-day02-supervised.splat`; the old `mcd-tuhh-day04-supervised.splat` remains only as a rejected zero-GNSS diagnostic asset and is not listed in the production picker.
+- `README.md` now documents **eight** production bundled scenes: 2 supervised, 4 pose-free, and 2 external-SLAM comparison scenes.
+- `scripts/record_demo_gif.py` reads `docs/scenes-list.json`; `scripts/capture_readme_splat_previews.py` covers the same production URL set and supports `--out-dir` for smoke captures. The old `mcd-tuhh-day04-supervised.splat` remains only as a rejected zero-GNSS diagnostic asset and is not listed in the production picker.
 
 Verification after wiring:
 

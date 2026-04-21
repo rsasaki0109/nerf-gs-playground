@@ -60,6 +60,18 @@ def main() -> int:
         action="store_true",
         help="Headless Chromium (frequently yields empty WebGL for splat.html; prefer headed).",
     )
+    parser.add_argument(
+        "--out-dir",
+        type=Path,
+        default=OUT_DIR,
+        help="Directory for PNG captures (default: docs/images/demo-sweep).",
+    )
+    parser.add_argument(
+        "--wait-ms",
+        type=int,
+        default=8000,
+        help="Milliseconds to wait after each scene load before capturing (default: 8000).",
+    )
     args = parser.parse_args()
     use_headless = args.headless or os.environ.get("PLAYWRIGHT_HEADLESS", "").lower() in ("1", "true", "yes")
 
@@ -75,7 +87,8 @@ def main() -> int:
         if not scenes:
             return 1
 
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    out_dir = args.out_dir
+    out_dir.mkdir(parents=True, exist_ok=True)
     port = _free_port()
     srv = subprocess.Popen(
         [sys.executable, "-m", "http.server", str(port), "--bind", "127.0.0.1"],
@@ -110,8 +123,8 @@ def main() -> int:
                 url = f"http://127.0.0.1:{port}/splat.html?url={rel}"
                 page.goto(url, wait_until="commit", timeout=120_000)
                 page.add_style_tag(content=hide_ui)
-                page.wait_for_timeout(8000)
-                out = OUT_DIR / f"{stem}.png"
+                page.wait_for_timeout(args.wait_ms)
+                out = out_dir / f"{stem}.png"
                 box = page.locator("#canvas").bounding_box()
                 if not box:
                     print(f"skip {stem}: no #canvas bbox", file=sys.stderr)

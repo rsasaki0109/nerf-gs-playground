@@ -15,7 +15,7 @@ gs-mapper photos-to-splat --images ./my_photos --output outputs/my_splat
 
 [![Scene picker cycling through bundled splats on github.io](docs/images/demo-sweep/hero.gif)](https://rsasaki0109.github.io/gs-mapper/splat.html)
 
-DUSt3R or MAST3R for pose-free preprocessing, gsplat for training, and an antimatter15/splat-compatible `.splat` binary out the other end. **Seven** production bundled demo scenes A/B-compare pose-free / external-SLAM outputs against supervised GNSS + LiDAR baselines — pick any from the scene dropdown on the [live viewer](https://rsasaki0109.github.io/gs-mapper/splat.html). The old MCD `tuhh_day_04` zero-GNSS artifact is retained only as a diagnostic file in this branch, not as a production picker item.
+DUSt3R or MAST3R for pose-free preprocessing, gsplat for training, and an antimatter15/splat-compatible `.splat` binary out the other end. **Eight** production bundled demo scenes A/B-compare pose-free / external-SLAM outputs against supervised GNSS + LiDAR baselines — pick any from the scene dropdown on the [live viewer](https://rsasaki0109.github.io/gs-mapper/splat.html). The old MCD `tuhh_day_04` zero-GNSS artifact is retained only as a diagnostic file in this branch, not as a production picker item.
 
 Table thumbnails are **full-canvas grabs** from `splat.html` (UI chrome hidden) so they stay readable when GitHub scales them down. Regenerate with `DISPLAY=:0 python3 scripts/capture_readme_splat_previews.py` after adding or changing a `.splat` (requires Playwright + GPU-backed WebGL).
 

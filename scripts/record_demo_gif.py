@@ -13,6 +13,7 @@ script sets ``DISPLAY=:1`` by default; override via the env var).
 
 from __future__ import annotations
 
+import json
 import os
 import socket
 import subprocess
@@ -23,7 +24,11 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 DOCS = REPO / "docs"
 OUT_DIR = REPO / "artifacts" / "readme-hero"
-OUT_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def _scene_urls() -> list[str]:
+    data = json.loads((DOCS / "scenes-list.json").read_text(encoding="utf-8"))
+    return [scene["url"] for scene in data.get("scenes", [])]
 
 
 def _free_port() -> int:
@@ -37,7 +42,8 @@ def _free_port() -> int:
 def main() -> int:
     from playwright.sync_api import sync_playwright
 
-    os.environ["DISPLAY"] = ":1"
+    os.environ.setdefault("DISPLAY", ":1")
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
     port = _free_port()
     srv = subprocess.Popen(
         [sys.executable, "-m", "http.server", str(port), "--bind", "127.0.0.1"],
@@ -48,14 +54,7 @@ def main() -> int:
     try:
         time.sleep(0.8)
         url = f"http://127.0.0.1:{port}/splat.html"
-        scenes = [
-            "assets/outdoor-demo/outdoor-demo.splat",
-            "assets/outdoor-demo/outdoor-demo-dust3r.splat",
-            "assets/outdoor-demo/bag6-mast3r.splat",
-            "assets/outdoor-demo/mcd-tuhh-day04.splat",
-            "assets/outdoor-demo/mcd-tuhh-day04-mast3r.splat",
-            "assets/outdoor-demo/mcd-ntu-day02-supervised.splat",
-        ]
+        scenes = _scene_urls()
         with sync_playwright() as pw:
             browser = pw.chromium.launch(
                 headless=False,

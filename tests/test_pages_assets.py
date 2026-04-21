@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import importlib.util
 import json
 from pathlib import Path
+from types import ModuleType
 
 import pytest
 
@@ -18,6 +20,15 @@ def assets_dir() -> Path:
 def _scene_picker_urls() -> list[str]:
     data = json.loads((REPO_ROOT / "docs" / "scenes-list.json").read_text(encoding="utf-8"))
     return [scene["url"] for scene in data.get("scenes", [])]
+
+
+def _load_script_module(path: Path) -> ModuleType:
+    spec = importlib.util.spec_from_file_location(path.stem, path)
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def test_scenes_index_json_parses(assets_dir: Path) -> None:
@@ -217,3 +228,21 @@ def test_shared_scene_picker_assets_present(assets_dir: Path) -> None:
     assert indexed, "scenes-list.json has no production scenes"
     for url in indexed:
         assert (REPO_ROOT / "docs" / url).is_file(), f"scenes-list.json points at missing asset {url}"
+
+
+def test_scene_count_matches_documented_production_bundle() -> None:
+    """The public demo currently ships 8 production scenes."""
+    assert len(_scene_picker_urls()) == 8
+
+
+def test_readme_preview_script_covers_every_production_scene() -> None:
+    """README thumbnail capture should not silently omit a picker scene."""
+    module = _load_script_module(REPO_ROOT / "scripts" / "capture_readme_splat_previews.py")
+    preview_urls = [url for _, url in module.SCENES]
+    assert set(preview_urls) == set(_scene_picker_urls())
+
+
+def test_hero_gif_script_uses_shared_scene_list() -> None:
+    """Hero GIF recording should follow docs/scenes-list.json instead of a stale hard-coded subset."""
+    module = _load_script_module(REPO_ROOT / "scripts" / "record_demo_gif.py")
+    assert module._scene_urls() == _scene_picker_urls()
