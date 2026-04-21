@@ -1,6 +1,6 @@
 # 屋外 3D Gaussian Splatting 開発計画 / 引継ぎメモ
 
-更新日: 2026-04-21（MCD `tuhh_day_04` supervised 検証の訂正、`ntu_day_02` supervised bundle 追加、zero-GNSS guard、COLMAP images parser 修正、external SLAM artifact import 追加、VGGT-SLAM / MASt3R-SLAM comparison bundle 実走、binary PLY loader 修正、8-scene viewer smoke）
+更新日: 2026-04-21（MCD `tuhh_day_04` supervised 検証の訂正、`ntu_day_02` supervised bundle 追加、zero-GNSS guard、COLMAP images parser 修正、external SLAM artifact import 追加、VGGT-SLAM / MASt3R-SLAM comparison bundle 実走、binary PLY loader 修正、8-scene viewer smoke、experiment docs prune）
 
 この文書は、`GS Mapper` リポジトリにおける屋外 3D Gaussian Splatting 対応の現在地を、**Claude / Codex / Copilot / その他のコーディングエージェント**がそのまま引き継げる粒度でまとめた handoff 文書です。リポジトリ直下の `CLAUDE.md` は開発コマンド早見、本書は **屋外パイプラインの文脈・判断・失敗の履歴**に重きを置きます。
 
@@ -27,8 +27,9 @@
 直近の最大の残課題は以下。
 
 1. Priority B: **Waymo 実データ E2E が未検証**
-2. Priority C: NMEA / GNSS / IMU robustness、depth / appearance / sky の比較評価
-3. Priority D: MCD `ntu_day_02` supervised は production bundle 化済みだが、屋外シーン品質を上げるにはより長い valid-GNSS session / multi-camera / training budget 比較が必要。
+2. Priority B: **BYO photos / CoVLA mini は外部入力待ち**
+3. Priority C: NMEA / GNSS / IMU robustness、depth / appearance / sky の比較評価
+4. Priority D: MCD `ntu_day_02` supervised は production bundle 化済みだが、屋外シーン品質を上げるにはより長い valid-GNSS session / multi-camera / training budget 比較が必要。
 
 ## 1. リポジトリの現在の識別子
 
@@ -303,9 +304,9 @@ gs-mapper export \
 
 ### 優先度 A（残り）
 
-1. **公開 docs prune**: `docs/experiments.md` と古い引き継ぎ節を、公開向け / 内部履歴 / 失敗ログに分ける。実装ではなく情報設計の判断が必要。
-2. **8-scene viewer smoke の運用化**: `docs/scenes-list.json` を source of truth にして、README thumbnails / hero GIF / viewer picker がズレないことを pre-PR で確認する。
-3. **BYO photos / CoVLA mini**: ユーザ写真または HF access 承認後に、`photos-to-splat --preprocess mast3r` の自己実証デモを作る。
+1. **8-scene viewer smoke の運用化**: `docs/scenes-list.json` を source of truth にして、README thumbnails / hero GIF / viewer picker がズレないことを pre-PR で確認する。
+2. **BYO photos / CoVLA mini**: ユーザ写真または HF access 承認後に、`photos-to-splat --preprocess mast3r` の自己実証デモを作る。
+3. **公開 docs の継続整理**: `docs/experiments.md` は index 化済み。残りは `docs/plan_outdoor_gs.md` の古いセッション履歴を必要に応じて archive 化する。
 
 ### 優先度 B
 
@@ -741,7 +742,7 @@ Claude Opus 4.7 で PR #77〜#80 の 4 本。OSS 顔の残り整備 + §4.3.3.a 
 - PR #77 の dependabot が 2026-04-21 月曜に初回発火する。最初の週は pip 側で `urllib3` / `certifi` 等の patch bump が数本出る想定、GHA 側は `actions/setup-python` / `actions/checkout` の最新 minor があれば 1-2 本。マージ前に `ci.yml` / `pages.yml` / `publish.yml` が通ることを必ず確認。
 
 **本セッションで明らかに touch しなかった / あえて残した判断**:
-- `docs/experiments.md` (911 行) の prune は「公開 vs 内部 note の線引き」という価値判断が要るので auto mode では踏み込まなかった。次セッションでユーザと目線合わせしてから。
+- `docs/experiments.md` (911 行) の prune は当時未着手だったが、2026-04-21 Codex 追作業で公開 index 化し、詳細表は `docs/experiments.generated.md` に移した。
 - BYO photos / CoVLA demo は外部依存 (ユーザの写真 / HF access 承認) 待ちで auto 環境で完結しない。
 - `--renderer gsplat` の CUDA path は GPU smoke が要るので保留。
 
@@ -750,7 +751,7 @@ Claude Opus 4.7 で PR #77〜#80 の 4 本。OSS 顔の残り整備 + §4.3.3.a 
 **Priority A (ship できる最短経路)**:
 
 1. ~~**`mcd-tuhh-day04-supervised.splat` を bundle の 6 本目に**~~ — **§15.4 で撤回**。`tuhh_day_04` の `/vn200/GPS` は all-zero。代替として `ntu_day_02` を valid GNSS session として採用し、§15.5 で `mcd-ntu-day02-supervised.splat` を production bundle 化済み。
-2. **`docs/experiments.md` の prune** — ユーザ合意後。公開 vs 内部 note の線引き方針を先に決める (前セッションで ROI 低判定、次セッションで議論)。
+2. ~~**`docs/experiments.md` の prune**~~ — 2026-04-21 Codex で対応。`docs/experiments.md` は公開 index、`docs/experiments.generated.md` は詳細比較表。
 
 **Priority B (blocker あり or ROI 中)**:
 
@@ -820,7 +821,7 @@ Claude Opus 4.7 で PR #77〜#80 の 4 本。OSS 顔の残り整備 + §4.3.3.a 
 ### §15.2 との整合（2026-04-21 時点）
 
 - §15.2 の **Priority A #1**（`mcd-tuhh-day04-supervised.splat` を 6 本目に）— **§15.4 で撤回**。現 worktree では diagnostic asset としてのみ残す。
-- §15.2 の Priority A #2（`docs/experiments.md` prune）— **未着手のまま**。
+- §15.2 の Priority A #2（`docs/experiments.md` prune）— **対応済み**。公開入口は短い index、詳細比較は `docs/experiments.generated.md`。
 
 ### Codex 着任時チェックリスト（推奨順）
 

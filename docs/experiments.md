@@ -1,911 +1,171 @@
 # Experiments
 
-Updated: 2026-04-02T09:43:15.585Z
+Updated: 2026-04-21T12:27:09.436Z
 
 This repository treats design as an evolving comparison space.
 Stable code stays in `core`; competing implementations stay in `experiments` until comparison makes part of them worth keeping.
 
+This page is the public index. Full generated comparison tables live in
+[docs/experiments.generated.md](experiments.generated.md); accepted/deferred
+decisions live in [docs/decisions.md](decisions.md); stable production
+surfaces live in [docs/interfaces.md](interfaces.md).
+
+## Current Seams
+
+| Seam | Stable Decision | Deferred Strategies | Detail |
+| --- | --- | --- | --- |
+| Localization Alignment | Stable code uses `gs_sim2real.core.localization_alignment.align_pose_samples()` as the only contract that production callers should depend on. | 2 deferred | [tables](experiments.generated.md#localization-alignment) |
+| Render Backend Selection | Stable code uses `select_render_backend(RenderBackendRequest(...))` as the only backend-selection contract. | 2 deferred | [tables](experiments.generated.md#render-backend-selection) |
+| Localization Estimate Import | Stable code uses `import_localization_estimate_document(LocalizationEstimateImportRequest(...))` as the importer contract. | 2 deferred | [tables](experiments.generated.md#localization-estimate-import) |
+| Localization Review Bundle Import | Stable web code uses `importLocalizationReviewBundleDocument(rawDocument, policy?)` as the only review-bundle import contract. | 2 deferred | [tables](experiments.generated.md#localization-review-bundle-import) |
+| Query Cancellation Policy | Stable transport code uses `resolve_query_cancellation_decision(QueryCancellationRequest(...))` as the only cancellation surface. | 2 deferred | [tables](experiments.generated.md#query-cancellation-policy) |
+| Query Coalescing Policy | Stable queue code uses `resolve_query_coalescing_decision(QueryCoalescingRequest(...))` as the only dedupe/coalescing surface. | 2 deferred | [tables](experiments.generated.md#query-coalescing-policy) |
+| Query Error Mapping | Stable transport code uses `resolve_query_error_mapping(QueryErrorMappingRequest(...))` as the only error-mapping surface. | 2 deferred | [tables](experiments.generated.md#query-error-mapping) |
+| Query Transport Selection | Stable code uses `select_query_transport(QueryTransportRequest(...))` as the only transport-selection contract. | 2 deferred | [tables](experiments.generated.md#query-transport-selection) |
+| Query Request Import | Stable code uses `import_query_request(QueryRequestImportRequest(...))` as the only query payload import contract. | 2 deferred | [tables](experiments.generated.md#query-request-import) |
+| Query Queue Policy | Stable server code uses `admit_query_queue_item(...)` and `dispatch_query_queue_item(...)` as the only queue policy surface. | 2 deferred | [tables](experiments.generated.md#query-queue-policy) |
+| Query Source Identity | Stable transport code uses `resolve_query_source_identity(QuerySourceIdentityRequest(...))` as the only source-identity surface. | 2 deferred | [tables](experiments.generated.md#query-source-identity) |
+| Query Timeout Policy | Stable server/client code uses `resolve_query_timeout_plan(QueryTimeoutPolicyRequest(...))` as the only timeout-policy surface. | 2 deferred | [tables](experiments.generated.md#query-timeout-policy) |
+| Query Response Build | Stable server code uses `build_render_result_response_document(...)`, `build_query_ready_response_document(...)`, and `build_query_error_response_document(...)` as the only response-build surface. | 2 deferred | [tables](experiments.generated.md#query-response-build) |
+| Live Localization Stream Import | Stable web code uses `importLiveLocalizationStreamMessage(previousEstimate, rawMessage, options, policy?)` as the only live-stream import contract. | 2 deferred | [tables](experiments.generated.md#live-localization-stream-import) |
+| Route Capture Bundle Import | Stable code uses `import_route_capture_bundle(RouteCaptureBundleImportRequest(...))` as the only ground-truth bundle import contract. | 2 deferred | [tables](experiments.generated.md#route-capture-bundle-import) |
+| Sim2Real Websocket Protocol | Stable web code uses `importSim2realWebsocketMessage(rawMessage, policy?)` as the only websocket response import contract. | 2 deferred | [tables](experiments.generated.md#sim2real-websocket-protocol) |
+
 ## Localization Alignment
 
-Align ground-truth route captures and estimated localization poses without committing to a single universal algorithm too early.
+Stable: Stable code uses `gs_sim2real.core.localization_alignment.align_pose_samples()` as the only contract that production callers should depend on.
 
-### Current Comparison
+Deferred strategies: 2
 
-| Strategy | Tier | Style | Success | Coverage | Pos Err (m) | Yaw Err (deg) | Time Δ (s) | Runtime (ms) | Readability | Extensibility |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Sequential Index | core | zip-sequential | 1.00 | 0.89 | 0.611 | 6.111 | 0.917 | 0.003 | 10.0 | 2.0 |
-| Greedy Nearest Timestamp | experiment | cursor-nearest | 0.67 | 1.00 | 0.167 | 1.667 | 0.167 | 0.013 | 6.0 | 5.0 |
-| Timeline Interpolation | core | timeline-interpolated | 0.67 | 1.00 | 0.000 | 0.000 | 0.000 | 0.014 | 10.0 | 8.0 |
-
-### Ordered Poses Without Timestamps
-
-Keep a zero-assumption path for logs that only preserve capture order.
-
-| Strategy | Status | Matched | Coverage | Pos Err (m) | Interpolation |
-| --- | --- | --- | --- | --- | --- |
-| Sequential Index | ok | 3 | 1.00 | 0.000 | 0 |
-| Greedy Nearest Timestamp | error | n/a | n/a | n/a | n/a |
-| Timeline Interpolation | error | n/a | n/a | n/a | n/a |
-
-### Reordered Timestamped Trajectory
-
-Penalize implementations that over-trust array order when timestamps are available.
-
-| Strategy | Status | Matched | Coverage | Pos Err (m) | Interpolation |
-| --- | --- | --- | --- | --- | --- |
-| Sequential Index | ok | 3 | 1.00 | 1.333 | 0 |
-| Greedy Nearest Timestamp | ok | 3 | 1.00 | 0.000 | 0 |
-| Timeline Interpolation | ok | 3 | 1.00 | 0.000 | 0 |
-
-### Sparse Timestamped Trajectory
-
-Expose whether an aligner can bridge missing estimate samples without discarding the middle frame.
-
-| Strategy | Status | Matched | Coverage | Pos Err (m) | Interpolation |
-| --- | --- | --- | --- | --- | --- |
-| Sequential Index | ok | 2 | 0.67 | 0.500 | 0 |
-| Greedy Nearest Timestamp | ok | 3 | 1.00 | 0.333 | 0 |
-| Timeline Interpolation | ok | 3 | 1.00 | 0.000 | 1 |
-
-### Highlights
-
-- Best spatial fidelity: `Timeline Interpolation`
-- Fastest median runtime: `Sequential Index`
-- Most readable implementation: `Sequential Index`
-- Broadest extension surface: `Timeline Interpolation`
+Detailed comparison: [experiments.generated.md#localization-alignment](experiments.generated.md#localization-alignment)
 
 ## Render Backend Selection
 
-Select a render backend for sim2real workloads without freezing one universal policy for interactive preview, offline benchmarking, and degraded runtimes.
+Stable: Stable code uses `select_render_backend(RenderBackendRequest(...))` as the only backend-selection contract.
 
-### Current Comparison
+Deferred strategies: 2
 
-| Policy | Tier | Style | Success | Match | Fitness | Runtime (ms) | Readability | Extensibility |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Conservative Simple | experiment | fallback-first | 1.00 | 0.75 | 0.863 | 0.000 | 4.2 | 7.0 |
-| Balanced Capability Gate | core | capability-gated | 1.00 | 1.00 | 0.963 | 0.001 | 10.0 | 10.0 |
-| Fidelity First | experiment | quality-priority | 1.00 | 0.75 | 0.863 | 0.001 | 8.4 | 5.0 |
-
-### Plain Point Cloud
-
-Keep a path that works when the PLY lacks Gaussian parameters.
-
-| Policy | Status | Selected | Preferred | Match | Fitness |
-| --- | --- | --- | --- | --- | --- |
-| Conservative Simple | ok | simple | simple | yes | 1.000 |
-| Balanced Capability Gate | ok | simple | simple | yes | 1.000 |
-| Fidelity First | ok | simple | simple | yes | 1.000 |
-
-### Interactive Browser Preview
-
-Bias toward quick startup for teleop and browser reconnection loops.
-
-| Policy | Status | Selected | Preferred | Match | Fitness |
-| --- | --- | --- | --- | --- | --- |
-| Conservative Simple | ok | simple | simple | yes | 0.950 |
-| Balanced Capability Gate | ok | simple | simple | yes | 0.950 |
-| Fidelity First | ok | gsplat | simple | no | 0.550 |
-
-### Offline Benchmark Capture
-
-Prefer the highest-fidelity backend when precomputing benchmark evidence.
-
-| Policy | Status | Selected | Preferred | Match | Fitness |
-| --- | --- | --- | --- | --- | --- |
-| Conservative Simple | ok | simple | gsplat | no | 0.600 |
-| Balanced Capability Gate | ok | gsplat | gsplat | yes | 1.000 |
-| Fidelity First | ok | gsplat | gsplat | yes | 1.000 |
-
-### No CUDA Fallback
-
-Define graceful behavior when the optional high-fidelity path is unavailable at runtime.
-
-| Policy | Status | Selected | Preferred | Match | Fitness |
-| --- | --- | --- | --- | --- | --- |
-| Conservative Simple | ok | simple | simple | yes | 0.900 |
-| Balanced Capability Gate | ok | simple | simple | yes | 0.900 |
-| Fidelity First | ok | simple | simple | yes | 0.900 |
-
-### Highlights
-
-- Best policy fit: `Balanced Capability Gate`
-- Fastest median runtime: `Conservative Simple`
-- Most readable implementation: `Balanced Capability Gate`
-- Broadest extension surface: `Balanced Capability Gate`
+Detailed comparison: [experiments.generated.md#render-backend-selection](experiments.generated.md#render-backend-selection)
 
 ## Localization Estimate Import
 
-Import localization estimate documents without freezing one parser path for normalized JSON, line-oriented trajectories, and lightly corrupted experiment exports.
+Stable: Stable code uses `import_localization_estimate_document(LocalizationEstimateImportRequest(...))` as the importer contract.
 
-### Current Comparison
+Deferred strategies: 2
 
-| Policy | Tier | Style | Success | Schema | Source | Label | Runtime (ms) | Readability | Extensibility |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Strict Content Gate | experiment | single-branch | 0.50 | 1.00 | 1.00 | 1.00 | 0.023 | 10.0 | 0.0 |
-| Fallback Cascade | experiment | json-then-text | 0.75 | 1.00 | 1.00 | 1.00 | 0.023 | 7.6 | 3.0 |
-| Suffix-Aware Repair | core | hinted-repairing | 1.00 | 1.00 | 1.00 | 1.00 | 0.027 | 2.0 | 9.0 |
-
-### Canonical JSON Estimate
-
-Preserve already-normalized localization estimates without reinterpreting them.
-
-| Policy | Status | Source | Poses | Label Match | Schema Score |
-| --- | --- | --- | --- | --- | --- |
-| Strict Content Gate | ok | poses | 2 | yes | 1.00 |
-| Fallback Cascade | ok | poses | 2 | yes | 1.00 |
-| Suffix-Aware Repair | ok | poses | 2 | yes | 1.00 |
-
-### TUM Trajectory Text
-
-Keep a low-friction path for line-oriented trajectory logs.
-
-| Policy | Status | Source | Poses | Label Match | Schema Score |
-| --- | --- | --- | --- | --- | --- |
-| Strict Content Gate | ok | tum-trajectory-text | 2 | yes | 1.00 |
-| Fallback Cascade | ok | tum-trajectory-text | 2 | yes | 1.00 |
-| Suffix-Aware Repair | ok | tum-trajectory-text | 2 | yes | 1.00 |
-
-### Commented JSON Export
-
-Repair leading metadata comments emitted by experiment tooling without misclassifying the document as a trajectory.
-
-| Policy | Status | Source | Poses | Label Match | Schema Score |
-| --- | --- | --- | --- | --- | --- |
-| Strict Content Gate | error | n/a | n/a | no | n/a |
-| Fallback Cascade | error | n/a | n/a | no | n/a |
-| Suffix-Aware Repair | ok | poses | 1 | yes | 1.00 |
-
-### Bracketed Text Log
-
-Recover from text logs that are wrapped in lightweight brackets but are still line-oriented trajectories.
-
-| Policy | Status | Source | Poses | Label Match | Schema Score |
-| --- | --- | --- | --- | --- | --- |
-| Strict Content Gate | error | n/a | n/a | no | n/a |
-| Fallback Cascade | ok | tum-trajectory-text | 2 | yes | 1.00 |
-| Suffix-Aware Repair | ok | tum-trajectory-text | 2 | yes | 1.00 |
-
-### Highlights
-
-- Best schema preservation: `Suffix-Aware Repair`
-- Fastest median runtime: `Strict Content Gate`
-- Most readable implementation: `Strict Content Gate`
-- Broadest extension surface: `Suffix-Aware Repair`
+Detailed comparison: [experiments.generated.md#localization-estimate-import](experiments.generated.md#localization-estimate-import)
 
 ## Localization Review Bundle Import
 
-Import localization review bundles without freezing one document shape for canonical exports, linked-capture fallback, and wrapper-friendly sharing flows.
+Stable: Stable web code uses `importLocalizationReviewBundleDocument(rawDocument, policy?)` as the only review-bundle import contract.
 
-### Current Comparison
+Deferred strategies: 2
 
-| Policy | Tier | Style | Success | Exact | Shape | Runtime (ms) | Readability | Extensibility |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Strict Canonical | experiment | exact-contract | 0.33 | 1.00 | 1.000 | 0.029 | 10.0 | 2.0 |
-| Linked Capture Fallback | experiment | capture-aware | 0.67 | 1.00 | 1.000 | 0.022 | 10.0 | 5.0 |
-| Alias Friendly | core | compatibility-first | 1.00 | 1.00 | 1.000 | 0.019 | 10.0 | 10.0 |
-
-### Canonical Embedded Snapshot
-
-Keep the current exported review bundle shape stable when snapshots already embed ground truth bundles.
-
-| Policy | Status | Runs | Match | Exact |
-| --- | --- | --- | --- | --- |
-| Strict Canonical | ok | 1 | 1.000 | yes |
-| Linked Capture Fallback | ok | 1 | 1.000 | yes |
-| Alias Friendly | ok | 1 | 1.000 | yes |
-
-### Linked Capture Fallback
-
-Recover snapshot ground truth bundles from linked captures when portable snapshots omit the embedded bundle.
-
-| Policy | Status | Runs | Match | Exact |
-| --- | --- | --- | --- | --- |
-| Strict Canonical | error | n/a | n/a | no |
-| Linked Capture Fallback | ok | 1 | 1.000 | yes |
-| Alias Friendly | ok | 1 | 1.000 | yes |
-
-### Alias Wrapper
-
-Accept review-bundle wrappers that rename runs, compare report, capture bundle fields, and snapshot keys.
-
-| Policy | Status | Runs | Match | Exact |
-| --- | --- | --- | --- | --- |
-| Strict Canonical | error | n/a | n/a | no |
-| Linked Capture Fallback | error | n/a | n/a | no |
-| Alias Friendly | ok | 1 | 1.000 | yes |
-
-### Highlights
-
-- Best policy fit: `Alias Friendly`
-- Fastest median runtime: `Alias Friendly`
-- Most readable implementation: `Strict Canonical`
-- Broadest extension surface: `Alias Friendly`
+Detailed comparison: [experiments.generated.md#localization-review-bundle-import](experiments.generated.md#localization-review-bundle-import)
 
 ## Query Cancellation Policy
 
-Cancel orphaned queued sim2real work intentionally instead of scattering timeout and disconnect rules across transport code.
+Stable: Stable transport code uses `resolve_query_cancellation_decision(QueryCancellationRequest(...))` as the only cancellation surface.
 
-### Current Comparison
+Deferred strategies: 2
 
-| Policy | Tier | Style | Success | Exact | Shape | Runtime (ms) | Readability | Extensibility |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Ignore Orphaned | experimental | minimal | 1.00 | 0.33 | 0.333 | 0.001 | 10.0 | 2.0 |
-| Cancel Requested Only | experimental | targeted | 1.00 | 0.67 | 0.667 | 0.001 | 9.4 | 4.5 |
-| Cancel Source Backlog | core | source_scoped | 1.00 | 1.00 | 1.000 | 0.001 | 5.2 | 7.5 |
-
-### Timeout Target Only
-
-A timed-out queued render should be removed instead of lingering forever.
-
-| Policy | Status | Match | Exact | Canceled |
-| --- | --- | --- | --- | --- |
-| Ignore Orphaned | ok | 0.000 | no | none |
-| Cancel Requested Only | ok | 1.000 | yes | render-1 |
-| Cancel Source Backlog | ok | 1.000 | yes | render-1 |
-
-### Disconnect Clears Source Backlog
-
-A disconnected source should not leave its whole queued backlog behind.
-
-| Policy | Status | Match | Exact | Canceled |
-| --- | --- | --- | --- | --- |
-| Ignore Orphaned | ok | 0.000 | no | none |
-| Cancel Requested Only | ok | 0.000 | no | render-1 |
-| Cancel Source Backlog | ok | 1.000 | yes | render-1,benchmark-1 |
-
-### Shutdown Drains Everything
-
-Server shutdown must drain every queued request regardless of source.
-
-| Policy | Status | Match | Exact | Canceled |
-| --- | --- | --- | --- | --- |
-| Ignore Orphaned | ok | 1.000 | yes | render-1,benchmark-1 |
-| Cancel Requested Only | ok | 1.000 | yes | render-1,benchmark-1 |
-| Cancel Source Backlog | ok | 1.000 | yes | render-1,benchmark-1 |
-
-### Highlights
-
-- Best policy fit: `Cancel Source Backlog`
-- Fastest median runtime: `Ignore Orphaned`
-- Most readable implementation: `Ignore Orphaned`
-- Broadest extension surface: `Cancel Source Backlog`
+Detailed comparison: [experiments.generated.md#query-cancellation-policy](experiments.generated.md#query-cancellation-policy)
 
 ## Query Coalescing Policy
 
-Coalesce duplicate interactive render requests intentionally instead of letting queues fill with obsolete previews.
+Stable: Stable queue code uses `resolve_query_coalescing_decision(QueryCoalescingRequest(...))` as the only dedupe/coalescing surface.
 
-### Current Comparison
+Deferred strategies: 2
 
-| Policy | Tier | Style | Success | Exact | Shape | Runtime (ms) | Readability | Extensibility |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Keep All | experimental | append_only | 1.00 | 0.33 | 0.556 | 0.001 | 10.0 | 2.0 |
-| Exact Render Drop New | experimental | exact_dedupe | 1.00 | 0.33 | 0.444 | 0.002 | 7.8 | 4.5 |
-| Latest Render Per Source | core | latest_render | 1.00 | 1.00 | 1.000 | 0.002 | 6.6 | 7.5 |
-
-### Benchmark Plus Render
-
-A render should coexist with queued background benchmark work.
-
-| Policy | Status | Match | Exact | Evicted |
-| --- | --- | --- | --- | --- |
-| Keep All | ok | 1.000 | yes | none |
-| Exact Render Drop New | ok | 1.000 | yes | none |
-| Latest Render Per Source | ok | 1.000 | yes | none |
-
-### Duplicate Render Same Source
-
-If the same source repeats a render, the latest request should replace the older pending one.
-
-| Policy | Status | Match | Exact | Evicted |
-| --- | --- | --- | --- | --- |
-| Keep All | ok | 0.333 | no | none |
-| Exact Render Drop New | ok | 0.000 | no | none |
-| Latest Render Per Source | ok | 1.000 | yes | render-1 |
-
-### Latest Render Replaces Older Same Source
-
-A newer render from the same source should replace older pending renders even when the pose changed.
-
-| Policy | Status | Match | Exact | Evicted |
-| --- | --- | --- | --- | --- |
-| Keep All | ok | 0.333 | no | none |
-| Exact Render Drop New | ok | 0.333 | no | none |
-| Latest Render Per Source | ok | 1.000 | yes | render-1 |
-
-### Highlights
-
-- Best policy fit: `Latest Render Per Source`
-- Fastest median runtime: `Keep All`
-- Most readable implementation: `Keep All`
-- Broadest extension surface: `Latest Render Per Source`
+Detailed comparison: [experiments.generated.md#query-coalescing-policy](experiments.generated.md#query-coalescing-policy)
 
 ## Query Error Mapping
 
-Map queue, timeout, parse, and shutdown failures intentionally instead of scattering ad hoc error strings across websocket transport code.
+Stable: Stable transport code uses `resolve_query_error_mapping(QueryErrorMappingRequest(...))` as the only error-mapping surface.
 
-### Current Comparison
+Deferred strategies: 2
 
-| Policy | Tier | Style | Success | Exact | Shape | Runtime (ms) | Readability | Extensibility |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Literal Passthrough | experimental | literal | 1.00 | 0.40 | 0.800 | 0.001 | 10.0 | 5.5 |
-| Structured Codes | core | canonical | 1.00 | 1.00 | 1.000 | 0.001 | 7.8 | 5.5 |
-| Action Hint | experimental | actionable | 1.00 | 0.00 | 0.667 | 0.001 | 3.1 | 5.0 |
-
-### Invalid JSON
-
-Malformed websocket payloads should get a canonical parse error without transport-specific branching.
-
-| Policy | Status | Match | Exact | Error Code |
-| --- | --- | --- | --- | --- |
-| Literal Passthrough | ok | 0.667 | no | invalid_json_request |
-| Structured Codes | ok | 1.000 | yes | invalid_json_request |
-| Action Hint | ok | 0.667 | no | invalid_json_request |
-
-### Queue Rejected
-
-Rejected requests should report both the canonical failure and the policy reason.
-
-| Policy | Status | Match | Exact | Error Code |
-| --- | --- | --- | --- | --- |
-| Literal Passthrough | ok | 0.667 | no | query_queue_rejected |
-| Structured Codes | ok | 1.000 | yes | query_queue_rejected |
-| Action Hint | ok | 0.667 | no | query_queue_rejected |
-
-### Queue Dropped
-
-Evicted queued work should explain that it was superseded instead of silently disappearing.
-
-| Policy | Status | Match | Exact | Error Code |
-| --- | --- | --- | --- | --- |
-| Literal Passthrough | ok | 0.667 | no | query_queue_dropped |
-| Structured Codes | ok | 1.000 | yes | query_queue_dropped |
-| Action Hint | ok | 0.667 | no | query_queue_dropped |
-
-### Timeout
-
-Queue wait timeouts should stay transport-safe and deterministic.
-
-| Policy | Status | Match | Exact | Error Code |
-| --- | --- | --- | --- | --- |
-| Literal Passthrough | ok | 1.000 | yes | query_timeout |
-| Structured Codes | ok | 1.000 | yes | query_timeout |
-| Action Hint | ok | 0.667 | no | query_timeout |
-
-### Server Shutdown
-
-Transport shutdown should surface a stable reconnect-safe error.
-
-| Policy | Status | Match | Exact | Error Code |
-| --- | --- | --- | --- | --- |
-| Literal Passthrough | ok | 1.000 | yes | query_server_shutdown |
-| Structured Codes | ok | 1.000 | yes | query_server_shutdown |
-| Action Hint | ok | 0.667 | no | query_server_shutdown |
-
-### Highlights
-
-- Best policy fit: `Structured Codes`
-- Fastest median runtime: `Literal Passthrough`
-- Most readable implementation: `Literal Passthrough`
-- Broadest extension surface: `Literal Passthrough`
+Detailed comparison: [experiments.generated.md#query-error-mapping](experiments.generated.md#query-error-mapping)
 
 ## Query Transport Selection
 
-Select a sim2real query transport without freezing one universal choice for browser-facing interactive queries, local CLI tooling, and publish-only deployments.
+Stable: Stable code uses `select_query_transport(QueryTransportRequest(...))` as the only transport-selection contract.
 
-### Current Comparison
+Deferred strategies: 2
 
-| Policy | Tier | Style | Success | Match | Fitness | Runtime (ms) | Readability | Extensibility |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Explicit Only | experiment | manual-first | 1.00 | 0.80 | 0.910 | 0.001 | 1.0 | 5.0 |
-| Balanced Interactive Transport | core | workload-aware | 1.00 | 1.00 | 1.000 | 0.001 | 10.0 | 10.0 |
-| Browser First | experiment | browser-priority | 1.00 | 0.80 | 0.910 | 0.001 | 2.0 | 7.0 |
-
-### Publish-Only Static Server
-
-Keep non-interactive deployments free from unused query sockets.
-
-| Policy | Status | Selected | Preferred | Match | Fitness |
-| --- | --- | --- | --- | --- | --- |
-| Explicit Only | ok | none | none | yes | 1.000 |
-| Balanced Interactive Transport | ok | none | none | yes | 1.000 |
-| Browser First | ok | none | none | yes | 1.000 |
-
-### Browser Query Mode
-
-Prefer websocket transport for browser-driven simulator requests.
-
-| Policy | Status | Selected | Preferred | Match | Fitness |
-| --- | --- | --- | --- | --- | --- |
-| Explicit Only | ok | zmq | ws | no | 0.550 |
-| Balanced Interactive Transport | ok | ws | ws | yes | 1.000 |
-| Browser First | ok | ws | ws | yes | 1.000 |
-
-### Local CLI Query Mode
-
-Prefer zmq for local tooling when the workload is not browser-facing.
-
-| Policy | Status | Selected | Preferred | Match | Fitness |
-| --- | --- | --- | --- | --- | --- |
-| Explicit Only | ok | zmq | zmq | yes | 1.000 |
-| Balanced Interactive Transport | ok | zmq | zmq | yes | 1.000 |
-| Browser First | ok | ws | zmq | no | 0.550 |
-
-### WebSocket Dependency Missing
-
-Fallback cleanly to zmq when browser transport dependencies are absent.
-
-| Policy | Status | Selected | Preferred | Match | Fitness |
-| --- | --- | --- | --- | --- | --- |
-| Explicit Only | ok | zmq | zmq | yes | 1.000 |
-| Balanced Interactive Transport | ok | zmq | zmq | yes | 1.000 |
-| Browser First | ok | zmq | zmq | yes | 1.000 |
-
-### Explicit WebSocket Override
-
-Respect hard operator choices even when other transports are also viable.
-
-| Policy | Status | Selected | Preferred | Match | Fitness |
-| --- | --- | --- | --- | --- | --- |
-| Explicit Only | ok | ws | ws | yes | 1.000 |
-| Balanced Interactive Transport | ok | ws | ws | yes | 1.000 |
-| Browser First | ok | ws | ws | yes | 1.000 |
-
-### Highlights
-
-- Best policy fit: `Balanced Interactive Transport`
-- Fastest median runtime: `Browser First`
-- Most readable implementation: `Balanced Interactive Transport`
-- Broadest extension surface: `Balanced Interactive Transport`
+Detailed comparison: [experiments.generated.md#query-transport-selection](experiments.generated.md#query-transport-selection)
 
 ## Query Request Import
 
-Import sim2real render and image benchmark query payloads without freezing one JSON envelope shape for browser panels, CLI tools, and lightweight clients.
+Stable: Stable code uses `import_query_request(QueryRequestImportRequest(...))` as the only query payload import contract.
 
-### Current Comparison
+Deferred strategies: 2
 
-| Policy | Tier | Style | Success | Exact | Shape | Runtime (ms) | Readability | Extensibility |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Strict Schema | experiment | exact-contract | 0.40 | 1.00 | 1.000 | 0.009 | 4.6 | 2.0 |
-| Envelope First | experiment | wrapper-oriented | 0.80 | 1.00 | 1.000 | 0.010 | 1.4 | 7.5 |
-| Alias Friendly | core | compatibility-first | 1.00 | 1.00 | 1.000 | 0.011 | 1.4 | 10.0 |
-
-### Canonical Render Payload
-
-Preserve the current explicit render contract without reinterpretation.
-
-| Policy | Status | Type | Match | Exact |
-| --- | --- | --- | --- | --- |
-| Strict Schema | ok | render | 1.000 | yes |
-| Envelope First | ok | render | 1.000 | yes |
-| Alias Friendly | ok | render | 1.000 | yes |
-
-### Enveloped Render Aliases
-
-Accept thin request wrappers from browser or SDK clients without changing the normalized output.
-
-| Policy | Status | Type | Match | Exact |
-| --- | --- | --- | --- | --- |
-| Strict Schema | error | n/a | n/a | no |
-| Envelope First | ok | render | 1.000 | yes |
-| Alias Friendly | ok | render | 1.000 | yes |
-
-### Pose Shortcut Render
-
-Support low-friction local tooling that sends position/orientation directly at the top level.
-
-| Policy | Status | Type | Match | Exact |
-| --- | --- | --- | --- | --- |
-| Strict Schema | error | n/a | n/a | no |
-| Envelope First | error | n/a | n/a | no |
-| Alias Friendly | ok | render | 1.000 | yes |
-
-### Canonical Image Benchmark
-
-Keep the existing localization image benchmark request schema stable.
-
-| Policy | Status | Type | Match | Exact |
-| --- | --- | --- | --- | --- |
-| Strict Schema | ok | localization-image-benchmark | 1.000 | yes |
-| Envelope First | ok | localization-image-benchmark | 1.000 | yes |
-| Alias Friendly | ok | localization-image-benchmark | 1.000 | yes |
-
-### Wrapped Benchmark Aliases
-
-Accept benchmark wrappers and alias keys from heterogeneous clients without forcing one envelope shape.
-
-| Policy | Status | Type | Match | Exact |
-| --- | --- | --- | --- | --- |
-| Strict Schema | error | n/a | n/a | no |
-| Envelope First | ok | localization-image-benchmark | 1.000 | yes |
-| Alias Friendly | ok | localization-image-benchmark | 1.000 | yes |
-
-### Highlights
-
-- Best policy fit: `Alias Friendly`
-- Fastest median runtime: `Strict Schema`
-- Most readable implementation: `Strict Schema`
-- Broadest extension surface: `Alias Friendly`
+Detailed comparison: [experiments.generated.md#query-request-import](experiments.generated.md#query-request-import)
 
 ## Query Queue Policy
 
-Manage interactive sim2real query backlogs without assuming that every pending request deserves strict FIFO treatment.
+Stable: Stable server code uses `admit_query_queue_item(...)` and `dispatch_query_queue_item(...)` as the only queue policy surface.
 
-### Current Comparison
+Deferred strategies: 2
 
-| Policy | Tier | Style | Success | Exact | Shape | Runtime (ms) | Readability | Extensibility |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| FIFO Unbounded | experimental | fifo | 1.00 | 0.33 | 0.533 | 0.004 | 9.1 | 0.0 |
-| Bounded FIFO | experimental | fifo_bounded | 1.00 | 0.33 | 0.467 | 0.004 | 9.1 | 2.5 |
-| Interactive First | core | priority_bounded | 1.00 | 1.00 | 1.000 | 0.005 | 5.7 | 8.0 |
-
-### Single Render
-
-A single render request should be admitted and dispatched immediately.
-
-| Policy | Status | Match | Exact | Dispatch |
-| --- | --- | --- | --- | --- |
-| FIFO Unbounded | ok | 1.000 | yes | render-1 |
-| Bounded FIFO | ok | 1.000 | yes | render-1 |
-| Interactive First | ok | 1.000 | yes | render-1 |
-
-### Benchmark Then Render
-
-Interactive render work should leap ahead of queued background benchmark work.
-
-| Policy | Status | Match | Exact | Dispatch |
-| --- | --- | --- | --- | --- |
-| FIFO Unbounded | ok | 0.400 | no | benchmark-1 |
-| Bounded FIFO | ok | 0.400 | no | benchmark-1 |
-| Interactive First | ok | 1.000 | yes | render-1 |
-
-### Evict Background Under Pressure
-
-When the queue is full, interactive render work should evict the worst background benchmark instead of being rejected.
-
-| Policy | Status | Match | Exact | Dispatch |
-| --- | --- | --- | --- | --- |
-| FIFO Unbounded | ok | 0.200 | no | benchmark-1 |
-| Bounded FIFO | ok | 0.000 | no | None |
-| Interactive First | ok | 1.000 | yes | render-1 |
-
-### Highlights
-
-- Best policy fit: `Interactive First`
-- Fastest median runtime: `Bounded FIFO`
-- Most readable implementation: `FIFO Unbounded`
-- Broadest extension surface: `Interactive First`
+Detailed comparison: [experiments.generated.md#query-queue-policy](experiments.generated.md#query-queue-policy)
 
 ## Query Source Identity
 
-Assign interactive query source ids intentionally instead of hard-coding opaque transport counters inside websocket server code.
+Stable: Stable transport code uses `resolve_query_source_identity(QuerySourceIdentityRequest(...))` as the only source-identity surface.
 
-### Current Comparison
+Deferred strategies: 2
 
-| Policy | Tier | Style | Success | Exact | Shape | Runtime (ms) | Readability | Extensibility |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Serial Only | experimental | opaque | 1.00 | 0.00 | 0.000 | 0.001 | 10.0 | 0.0 |
-| Endpoint Scoped | experimental | endpoint_scoped | 1.00 | 0.33 | 0.333 | 0.006 | 10.0 | 2.5 |
-| Remote Observable | core | connection_observable | 1.00 | 1.00 | 1.000 | 0.002 | 7.8 | 7.5 |
-
-### WebSocket Remote Address
-
-Browser websocket sessions should use the observable remote socket address when it exists.
-
-| Policy | Status | Match | Exact | Source Id |
-| --- | --- | --- | --- | --- |
-| Serial Only | ok | 0.000 | no | ws-client-7 |
-| Endpoint Scoped | ok | 0.000 | no | ws-127.0.0.1-8781-sim2real-client-7 |
-| Remote Observable | ok | 1.000 | yes | ws-127.0.0.1-50123 |
-
-### Client Hint Fallback
-
-When the transport cannot expose a remote address, a client hint should stay human-readable but collision-safe.
-
-| Policy | Status | Match | Exact | Source Id |
-| --- | --- | --- | --- | --- |
-| Serial Only | ok | 0.000 | no | ws-client-8 |
-| Endpoint Scoped | ok | 0.000 | no | ws-127.0.0.1-8781-sim2real-client-8 |
-| Remote Observable | ok | 1.000 | yes | ws-route-replay-panel-client-8 |
-
-### Endpoint Fallback
-
-When neither remote address nor client hint exists, the endpoint should still scope the source identity.
-
-| Policy | Status | Match | Exact | Source Id |
-| --- | --- | --- | --- | --- |
-| Serial Only | ok | 0.000 | no | zmq-client-3 |
-| Endpoint Scoped | ok | 1.000 | yes | zmq-127.0.0.1-5588-client-3 |
-| Remote Observable | ok | 1.000 | yes | zmq-127.0.0.1-5588-client-3 |
-
-### Highlights
-
-- Best policy fit: `Remote Observable`
-- Fastest median runtime: `Serial Only`
-- Most readable implementation: `Serial Only`
-- Broadest extension surface: `Remote Observable`
+Detailed comparison: [experiments.generated.md#query-source-identity](experiments.generated.md#query-source-identity)
 
 ## Query Timeout Policy
 
-Resolve sim2real query timeouts and retry budgets without hard-coding one fixed deadline for browser renders, CLI renders, and image benchmark workloads.
+Stable: Stable server/client code uses `resolve_query_timeout_plan(QueryTimeoutPolicyRequest(...))` as the only timeout-policy surface.
 
-### Current Comparison
+Deferred strategies: 2
 
-| Policy | Tier | Style | Success | Exact | Shape | Runtime (ms) | Readability | Extensibility |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Fixed Deadline | experimental | fixed | 1.00 | 0.00 | 0.533 | 0.002 | 8.8 | 0.0 |
-| Hint Bounded | experimental | hint_driven | 1.00 | 0.33 | 0.600 | 0.002 | 7.6 | 2.5 |
-| Workload Aware Retry | core | adaptive | 1.00 | 1.00 | 1.000 | 0.003 | 2.0 | 8.0 |
-
-### Render Default WebSocket
-
-Keep normal render requests responsive while allowing one retry budget for transient browser transport stalls.
-
-| Policy | Status | Match | Exact | Attempts |
-| --- | --- | --- | --- | --- |
-| Fixed Deadline | ok | 0.400 | no | 1 |
-| Hint Bounded | ok | 0.400 | no | 1 |
-| Workload Aware Retry | ok | 1.000 | yes | 2 |
-
-### Benchmark Workload Floor
-
-Raise long image benchmark deadlines when the declared workload would outgrow a small explicit hint.
-
-| Policy | Status | Match | Exact | Attempts |
-| --- | --- | --- | --- | --- |
-| Fixed Deadline | ok | 0.400 | no | 1 |
-| Hint Bounded | ok | 0.400 | no | 1 |
-| Workload Aware Retry | ok | 1.000 | yes | 1 |
-
-### Bounded Explicit Render Hint
-
-Clamp large explicit server hints while preserving an intentionally short CLI-side render timeout.
-
-| Policy | Status | Match | Exact | Attempts |
-| --- | --- | --- | --- | --- |
-| Fixed Deadline | ok | 0.800 | no | 1 |
-| Hint Bounded | ok | 1.000 | yes | 1 |
-| Workload Aware Retry | ok | 1.000 | yes | 1 |
-
-### Highlights
-
-- Best policy fit: `Workload Aware Retry`
-- Fastest median runtime: `Hint Bounded`
-- Most readable implementation: `Fixed Deadline`
-- Broadest extension surface: `Workload Aware Retry`
+Detailed comparison: [experiments.generated.md#query-timeout-policy](experiments.generated.md#query-timeout-policy)
 
 ## Query Response Build
 
-Build sim2real query responses in a way that stays comparable across websocket, browser, and CLI clients without hard-wiring one monolithic server helper.
+Stable: Stable server code uses `build_render_result_response_document(...)`, `build_query_ready_response_document(...)`, and `build_query_error_response_document(...)` as the only response-build surface.
 
-### Current Comparison
+Deferred strategies: 2
 
-| Policy | Tier | Style | Success | Exact | Shape | Runtime (ms) | Readability | Extensibility |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Minimal Envelope | experimental | minimal | 1.00 | 0.33 | 0.712 | 0.000 | 7.6 | 2.0 |
-| Browser Observable | core | canonical | 1.00 | 1.00 | 1.000 | 0.001 | 4.8 | 7.0 |
-| Diagnostic Meta | experimental | telemetry_rich | 1.00 | 0.00 | 0.739 | 0.001 | 8.1 | 10.0 |
-
-### Canonical Render Result
-
-Preserve the browser-facing render-result payload without losing explicit render settings.
-
-| Policy | Status | Kind | Match | Exact |
-| --- | --- | --- | --- | --- |
-| Minimal Envelope | ok | render-result | 0.636 | no |
-| Browser Observable | ok | render-result | 1.000 | yes |
-| Diagnostic Meta | ok | render-result | 0.818 | no |
-
-### Canonical Query Ready
-
-Keep the websocket handshake explicit enough for browser clients to discover defaults and request types.
-
-| Policy | Status | Kind | Match | Exact |
-| --- | --- | --- | --- | --- |
-| Minimal Envelope | ok | query-ready | 0.500 | no |
-| Browser Observable | ok | query-ready | 1.000 | yes |
-| Diagnostic Meta | ok | query-ready | 0.800 | no |
-
-### Canonical Error Payload
-
-Keep transport errors safe for clients while avoiding protocol drift.
-
-| Policy | Status | Kind | Match | Exact |
-| --- | --- | --- | --- | --- |
-| Minimal Envelope | ok | error | 1.000 | yes |
-| Browser Observable | ok | error | 1.000 | yes |
-| Diagnostic Meta | ok | error | 0.600 | no |
-
-### Highlights
-
-- Best policy fit: `Browser Observable`
-- Fastest median runtime: `Minimal Envelope`
-- Most readable implementation: `Diagnostic Meta`
-- Broadest extension surface: `Diagnostic Meta`
+Detailed comparison: [experiments.generated.md#query-response-build](experiments.generated.md#query-response-build)
 
 ## Live Localization Stream Import
 
-Import live localization websocket messages without freezing one message envelope for browser, SDK, and quick local tooling clients.
+Stable: Stable web code uses `importLiveLocalizationStreamMessage(previousEstimate, rawMessage, options, policy?)` as the only live-stream import contract.
 
-### Current Comparison
+Deferred strategies: 2
 
-| Policy | Tier | Style | Success | Exact | Shape | Runtime (ms) | Readability | Extensibility |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Strict Canonical | experiment | exact-contract | 0.40 | 1.00 | 1.000 | 0.018 | 4.4 | 2.0 |
-| Wrapped Pose | experiment | wrapper-oriented | 0.60 | 1.00 | 1.000 | 0.012 | 1.0 | 4.5 |
-| Alias Friendly | core | compatibility-first | 1.00 | 1.00 | 1.000 | 0.009 | 1.0 | 10.0 |
-
-### Canonical Reset And Append
-
-Keep the current pose-estimate stream format stable for the live monitor.
-
-| Policy | Status | Kind | Match | Exact |
-| --- | --- | --- | --- | --- |
-| Strict Canonical | ok | append | 1.000 | yes |
-| Wrapped Pose | ok | append | 1.000 | yes |
-| Alias Friendly | ok | append | 1.000 | yes |
-
-### Snapshot Estimate
-
-Allow a full localization-estimate snapshot to replace the live trajectory in one message.
-
-| Policy | Status | Kind | Match | Exact |
-| --- | --- | --- | --- | --- |
-| Strict Canonical | ok | snapshot | 1.000 | yes |
-| Wrapped Pose | ok | snapshot | 1.000 | yes |
-| Alias Friendly | ok | snapshot | 1.000 | yes |
-
-### Wrapped CameraPose Alias
-
-Accept SDK-style pose wrappers without forcing clients to flatten cameraPose by hand.
-
-| Policy | Status | Kind | Match | Exact |
-| --- | --- | --- | --- | --- |
-| Strict Canonical | error | n/a | n/a | no |
-| Wrapped Pose | ok | append | 1.000 | yes |
-| Alias Friendly | ok | append | 1.000 | yes |
-
-### Top-Level Pose Shortcut
-
-Support quick local tools that send append messages without a nested pose object.
-
-| Policy | Status | Kind | Match | Exact |
-| --- | --- | --- | --- | --- |
-| Strict Canonical | error | n/a | n/a | no |
-| Wrapped Pose | error | n/a | n/a | no |
-| Alias Friendly | ok | append | 1.000 | yes |
-
-### Clear Alias
-
-Let live monitor tooling clear state with alias messages instead of one hard-coded string.
-
-| Policy | Status | Kind | Match | Exact |
-| --- | --- | --- | --- | --- |
-| Strict Canonical | error | n/a | n/a | no |
-| Wrapped Pose | error | n/a | n/a | no |
-| Alias Friendly | ok | clear | 1.000 | yes |
-
-### Highlights
-
-- Best policy fit: `Alias Friendly`
-- Fastest median runtime: `Alias Friendly`
-- Most readable implementation: `Strict Canonical`
-- Broadest extension surface: `Alias Friendly`
+Detailed comparison: [experiments.generated.md#live-localization-stream-import](experiments.generated.md#live-localization-stream-import)
 
 ## Route Capture Bundle Import
 
-Import ground-truth route capture bundles without freezing one bundle shape for canonical exports, response-pose recovery, and route-aware recovery flows.
+Stable: Stable code uses `import_route_capture_bundle(RouteCaptureBundleImportRequest(...))` as the only ground-truth bundle import contract.
 
-### Current Comparison
+Deferred strategies: 2
 
-| Policy | Tier | Style | Success | Schema | Label | Runtime (ms) | Readability | Extensibility |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Strict Canonical | experiment | exact-contract | 0.33 | 1.00 | 1.00 | 0.005 | 8.6 | 2.0 |
-| Response Pose Fallback | experiment | response-oriented | 1.00 | 0.89 | 1.00 | 0.006 | 8.6 | 5.0 |
-| Route Aware | core | bundle-aware | 1.00 | 1.00 | 1.00 | 0.006 | 8.2 | 8.0 |
-
-### Canonical Bundle
-
-Preserve current capture bundles with explicit capture poses.
-
-| Policy | Status | Captures | Label Match | Schema Match |
-| --- | --- | --- | --- | --- |
-| Strict Canonical | ok | 2 | yes | 1.000 |
-| Response Pose Fallback | ok | 2 | yes | 1.000 |
-| Route Aware | ok | 2 | yes | 1.000 |
-
-### Response Pose Fallback
-
-Recover bundle poses from render-result responses when capture.pose is missing.
-
-| Policy | Status | Captures | Label Match | Schema Match |
-| --- | --- | --- | --- | --- |
-| Strict Canonical | error | n/a | no | n/a |
-| Response Pose Fallback | ok | 1 | yes | 1.000 |
-| Route Aware | ok | 1 | yes | 1.000 |
-
-### Route Pose Fallback
-
-Recover capture poses from bundle.route when neither capture.pose nor response pose should define ground truth.
-
-| Policy | Status | Captures | Label Match | Schema Match |
-| --- | --- | --- | --- | --- |
-| Strict Canonical | error | n/a | no | n/a |
-| Response Pose Fallback | ok | 2 | yes | 0.667 |
-| Route Aware | ok | 2 | yes | 1.000 |
-
-### Highlights
-
-- Best policy fit: `Route Aware`
-- Fastest median runtime: `Strict Canonical`
-- Most readable implementation: `Strict Canonical`
-- Broadest extension surface: `Route Aware`
+Detailed comparison: [experiments.generated.md#route-capture-bundle-import](experiments.generated.md#route-capture-bundle-import)
 
 ## Sim2Real Websocket Protocol
 
-Import sim2real websocket envelopes without freezing one message shape for canonical server responses, wrapped browser adapters, and thin tooling aliases.
+Stable: Stable web code uses `importSim2realWebsocketMessage(rawMessage, policy?)` as the only websocket response import contract.
 
-### Current Comparison
+Deferred strategies: 2
 
-| Policy | Tier | Style | Success | Exact | Shape | Runtime (ms) | Readability | Extensibility |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Strict Canonical | experiment | exact-contract | 0.40 | 0.50 | 0.667 | 0.004 | 9.6 | 2.0 |
-| Envelope First | experiment | wrapper-oriented | 0.60 | 1.00 | 1.000 | 0.004 | 8.2 | 4.5 |
-| Alias Friendly | core | compatibility-first | 1.00 | 1.00 | 1.000 | 0.002 | 6.0 | 10.0 |
+Detailed comparison: [experiments.generated.md#sim2real-websocket-protocol](experiments.generated.md#sim2real-websocket-protocol)
 
-### Canonical Query Ready
+## Regeneration
 
-Keep the current websocket handshake stable for browser clients.
+Run one experiment lab with `--write-docs` to refresh this index,
+`experiments.generated.md`, `decisions.md`, and `interfaces.md`:
 
-| Policy | Status | Type | Match | Exact |
-| --- | --- | --- | --- | --- |
-| Strict Canonical | ok | query-ready | 1.000 | yes |
-| Envelope First | ok | query-ready | 1.000 | yes |
-| Alias Friendly | ok | query-ready | 1.000 | yes |
+```bash
+gs-mapper experiment render-backend-selection --write-docs --output outputs/render-backend-selection-experiment-report.json
+```
 
-### Wrapped Render Result
-
-Accept envelope wrappers that keep canonical render-result fields inside result payloads.
-
-| Policy | Status | Type | Match | Exact |
-| --- | --- | --- | --- | --- |
-| Strict Canonical | error | n/a | n/a | no |
-| Envelope First | ok | render-result | 1.000 | yes |
-| Alias Friendly | ok | render-result | 1.000 | yes |
-
-### Alias Ready Wrapper
-
-Support SDK-style ready messages that rename type and defaults fields.
-
-| Policy | Status | Type | Match | Exact |
-| --- | --- | --- | --- | --- |
-| Strict Canonical | error | n/a | n/a | no |
-| Envelope First | error | n/a | n/a | no |
-| Alias Friendly | ok | query-ready | 1.000 | yes |
-
-### Wrapped Benchmark Report
-
-Allow benchmark responses to live under report wrappers while keeping the canonical report body.
-
-| Policy | Status | Type | Match | Exact |
-| --- | --- | --- | --- | --- |
-| Strict Canonical | ok | localization-image-benchmark-report | 0.333 | no |
-| Envelope First | ok | localization-image-benchmark-report | 1.000 | yes |
-| Alias Friendly | ok | localization-image-benchmark-report | 1.000 | yes |
-
-### Error Alias
-
-Accept thin-tooling error messages that use kind/detail instead of the canonical error envelope.
-
-| Policy | Status | Type | Match | Exact |
-| --- | --- | --- | --- | --- |
-| Strict Canonical | error | n/a | n/a | no |
-| Envelope First | error | n/a | n/a | no |
-| Alias Friendly | ok | error | 1.000 | yes |
-
-### Highlights
-
-- Best policy fit: `Alias Friendly`
-- Fastest median runtime: `Alias Friendly`
-- Most readable implementation: `Strict Canonical`
-- Broadest extension surface: `Alias Friendly`
-
+Use `gs-mapper experiment --help` for the full lab list.

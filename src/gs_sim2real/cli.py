@@ -1096,7 +1096,7 @@ def build_parser() -> argparse.ArgumentParser:
         p.add_argument(
             "--write-docs",
             action="store_true",
-            help="Refresh docs/experiments.md, docs/decisions.md, and docs/interfaces.md",
+            help="Refresh docs/experiments.md, docs/experiments.generated.md, docs/decisions.md, and docs/interfaces.md",
         )
         p.add_argument(
             "--docs-dir",
