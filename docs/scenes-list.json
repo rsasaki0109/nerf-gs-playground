@@ -1,44 +1,52 @@
 {
   "version": "gs-mapper-scene-picker/v1",
-  "description": "List of bundled splats that every in-repo viewer (splat.html, splat_spark.html, splat_webgpu.html) exposes via the <select id=\"sceneSelect\"> picker. Adding a splat here makes it show up in all three viewers.",
+  "description": "Production bundled splats shared by the README table, README preview capture script, hero GIF script, and every in-repo viewer picker.",
   "scenes": [
     {
       "url": "assets/outdoor-demo/outdoor-demo.splat",
+      "preview": "images/demo-sweep/01_outdoor-demo.png",
       "label": "Autoware 6-bag fused (supervised default)",
       "summary": "Autoware Leo Drive 6-bag fused — supervised (GNSS + LiDAR + appearance + BA)"
     },
     {
       "url": "assets/outdoor-demo/outdoor-demo-dust3r.splat",
+      "preview": "images/demo-sweep/02_outdoor-demo-dust3r.png",
       "label": "bag6 cam0 \u2014 DUSt3R pose-free",
       "summary": "Autoware bag6 cam0, 20 DUSt3R frames, no GNSS/LiDAR \u2014 pose-free"
     },
     {
       "url": "assets/outdoor-demo/mcd-tuhh-day04.splat",
+      "preview": "images/demo-sweep/03_mcd-tuhh-day04.png",
       "label": "MCD tuhh_day_04 \u2014 DUSt3R pose-free",
       "summary": "MCD tuhh_day_04 handheld day session, 20 DUSt3R frames \u2014 non-Autoware"
     },
     {
       "url": "assets/outdoor-demo/bag6-mast3r.splat",
+      "preview": "images/demo-sweep/04_bag6-mast3r.png",
       "label": "bag6 cam0 \u2014 MAST3R pose-free (metric)",
       "summary": "Autoware bag6 cam0, 20 MAST3R frames \u2014 metric-aware pose-free"
     },
     {
       "url": "assets/outdoor-demo/bag6-vggt-slam-20-15k.splat",
+      "preview": "images/demo-sweep/07_bag6-vggt-slam.png",
       "label": "bag6 cam0 \u2014 VGGT-SLAM 2.0 (15k)",
       "summary": "Autoware bag6 cam0, 20 VGGT-SLAM 2.0 frames, external artifact import \u2014 comparison-quality"
     },
     {
       "url": "assets/outdoor-demo/bag6-mast3r-slam-20-15k.splat",
+      "preview": "images/demo-sweep/08_bag6-mast3r-slam.png",
       "label": "bag6 cam0 \u2014 MASt3R-SLAM (15k)",
       "summary": "Autoware bag6 cam0, 20 MASt3R-SLAM candidates, external artifact import \u2014 comparison-quality"
     },
     {
       "url": "assets/outdoor-demo/mcd-tuhh-day04-mast3r.splat",
+      "preview": "images/demo-sweep/05_mcd-tuhh-day04-mast3r.png",
       "label": "MCD tuhh_day_04 \u2014 MAST3R pose-free (metric)",
       "summary": "MCD tuhh_day_04 handheld day session, 20 MAST3R frames \u2014 metric-aware pose-free"
     },
     {
       "url": "assets/outdoor-demo/mcd-ntu-day02-supervised.splat",
+      "preview": "images/demo-sweep/06_mcd-ntu-day02-supervised.png",
       "label": "MCD ntu_day_02 \u2014 supervised",
       "summary": "MCD ntu_day_02 ATV session, GNSS + ATV calibration + LiDAR-seeded depth-supervised gsplat."
     }

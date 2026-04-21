@@ -1,7 +1,8 @@
 """Capture README table thumbnails from local ``docs/splat.html`` (Playwright).
 
 Hides the info blurb and scene picker so the canvas fills the shot — reads
-clearer at small GitHub-rendered sizes than a full-page crop.
+clearer at small GitHub-rendered sizes than a full-page crop. The production
+scene list and output filenames come from ``docs/scenes-list.json``.
 
   # WebGL splats need a real GPU context — headed mode (default) is reliable on Linux:
   DISPLAY=:0 python3 scripts/capture_readme_splat_previews.py
@@ -25,18 +26,14 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 DOCS = REPO / "docs"
 OUT_DIR = DOCS / "images" / "demo-sweep"
+SCRIPT_DIR = Path(__file__).resolve().parent
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
 
-# (output filename stem, splat path under docs/)
-SCENES: list[tuple[str, str]] = [
-    ("01_outdoor-demo", "assets/outdoor-demo/outdoor-demo.splat"),
-    ("02_outdoor-demo-dust3r", "assets/outdoor-demo/outdoor-demo-dust3r.splat"),
-    ("04_bag6-mast3r", "assets/outdoor-demo/bag6-mast3r.splat"),
-    ("03_mcd-tuhh-day04", "assets/outdoor-demo/mcd-tuhh-day04.splat"),
-    ("05_mcd-tuhh-day04-mast3r", "assets/outdoor-demo/mcd-tuhh-day04-mast3r.splat"),
-    ("06_mcd-ntu-day02-supervised", "assets/outdoor-demo/mcd-ntu-day02-supervised.splat"),
-    ("07_bag6-vggt-slam", "assets/outdoor-demo/bag6-vggt-slam-20-15k.splat"),
-    ("08_bag6-mast3r-slam", "assets/outdoor-demo/bag6-mast3r-slam-20-15k.splat"),
-]
+from pages_scene_manifest import capture_scene_specs  # noqa: E402
+
+
+SCENES = capture_scene_specs(DOCS)
 
 
 def _free_port() -> int:
@@ -116,8 +113,7 @@ def main() -> int:
             )
             page = ctx.new_page()
             for stem, rel in scenes:
-                splat = rel.removeprefix("assets/")
-                if not (DOCS / "assets" / "outdoor-demo" / Path(splat).name).is_file():
+                if not (DOCS / rel).is_file():
                     print(f"skip {stem}: missing docs/{rel}", file=sys.stderr)
                     continue
                 url = f"http://127.0.0.1:{port}/splat.html?url={rel}"

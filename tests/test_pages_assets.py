@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import re
 from pathlib import Path
 from types import ModuleType
 
 import pytest
+from PIL import Image
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -17,9 +19,50 @@ def assets_dir() -> Path:
     return REPO_ROOT / "docs" / "assets"
 
 
-def _scene_picker_urls() -> list[str]:
+def _scene_picker_scenes() -> list[dict[str, str]]:
     data = json.loads((REPO_ROOT / "docs" / "scenes-list.json").read_text(encoding="utf-8"))
-    return [scene["url"] for scene in data.get("scenes", [])]
+    return data.get("scenes", [])
+
+
+def _scene_picker_urls() -> list[str]:
+    return [scene["url"] for scene in _scene_picker_scenes()]
+
+
+def _scene_picker_options() -> list[tuple[str, str]]:
+    return [(scene["url"], scene["label"]) for scene in _scene_picker_scenes()]
+
+
+def _readme_preview_specs() -> list[tuple[str, str]]:
+    return [(Path(scene["preview"]).stem, scene["url"]) for scene in _scene_picker_scenes()]
+
+
+def _html_scene_options(path: Path) -> list[tuple[str, str]]:
+    html = path.read_text(encoding="utf-8")
+    options: list[tuple[str, str]] = []
+    for match in re.finditer(r'<option\s+value="([^"]+)"[^>]*>(.*?)</option>', html, flags=re.DOTALL):
+        label = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", "", match.group(2))).strip()
+        options.append((match.group(1), label))
+    return options
+
+
+def _readme_production_scene_rows() -> list[tuple[str, str, str]]:
+    readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+    match = re.search(
+        r"\| Scene \| Preview \| Pipeline \|\n"
+        r"\|[- |]+\|\n"
+        r"(?P<rows>(?:\| .+\|\n)+)"
+        r"\nThe Autoware supervised default uses",
+        readme,
+    )
+    assert match is not None, "README production scene table is missing"
+    rows: list[tuple[str, str, str]] = []
+    for line in match.group("rows").splitlines():
+        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+        assert len(cells) == 3, f"unexpected README scene row: {line}"
+        image_link = re.search(r"!\[\]\(([^)]+)\)\]\([^)]*\?url=([^)]+)\)", cells[1])
+        assert image_link is not None, f"README scene row has no preview/deep link: {line}"
+        rows.append((cells[0], image_link.group(1), image_link.group(2)))
+    return rows
 
 
 def _load_script_module(path: Path) -> ModuleType:
@@ -146,22 +189,22 @@ def test_mcd_tuhh_day04_zero_gnss_diagnostic_not_in_production_picker() -> None:
 
 def test_splat_html_has_scene_picker_with_all_bundled_splats(assets_dir: Path) -> None:
     """The <select id="sceneSelect"> must list every bundled .splat."""
-    html = (REPO_ROOT / "docs" / "splat.html").read_text(encoding="utf-8")
+    path = REPO_ROOT / "docs" / "splat.html"
+    html = path.read_text(encoding="utf-8")
     assert 'id="sceneSelect"' in html, "scene picker <select> is missing"
     assert 'data-testid="scene-picker"' in html
-    for url in _scene_picker_urls():
-        assert f'value="{url}"' in html, f"scene picker does not expose {url}; add an <option> under #sceneSelect"
+    assert _html_scene_options(path) == _scene_picker_options()
     # Picker JS is shared — each viewer must reference the single bootstrap file.
     assert "scene-picker.js" in html, 'splat.html must include <script src="scene-picker.js">'
 
 
 def test_splat_spark_has_scene_picker_and_spark_wiring(assets_dir: Path) -> None:
     """Spark viewer ships the same picker and must use the SparkRenderer wrapper."""
-    html = (REPO_ROOT / "docs" / "splat_spark.html").read_text(encoding="utf-8")
+    path = REPO_ROOT / "docs" / "splat_spark.html"
+    html = path.read_text(encoding="utf-8")
     # Same picker contract as splat.html.
     assert 'id="sceneSelect"' in html, "Spark viewer is missing the scene picker"
-    for url in _scene_picker_urls():
-        assert f'value="{url}"' in html, f"Spark picker does not expose {url}; add an <option> under #sceneSelect"
+    assert _html_scene_options(path) == _scene_picker_options()
     assert "scene-picker.js" in html, 'splat_spark.html must include <script src="scene-picker.js">'
     # Spark 2.0 needs SparkRenderer added to the scene and three >= r179, otherwise
     # the canvas renders blank. Enforce both at the source level.
@@ -199,11 +242,11 @@ def test_webgpu_viewer_bundle_present() -> None:
 
 def test_splat_webgpu_has_scene_picker(assets_dir: Path) -> None:
     """WebGPU wrapper ships the same picker as splat.html / splat_spark.html."""
-    html = (REPO_ROOT / "docs" / "splat_webgpu.html").read_text(encoding="utf-8")
+    path = REPO_ROOT / "docs" / "splat_webgpu.html"
+    html = path.read_text(encoding="utf-8")
     assert 'id="sceneSelect"' in html, "WebGPU viewer is missing the scene picker"
     assert 'data-testid="scene-picker"' in html
-    for url in _scene_picker_urls():
-        assert f'value="{url}"' in html, f"WebGPU picker does not expose {url}; add an <option> under #sceneSelect"
+    assert _html_scene_options(path) == _scene_picker_options()
     assert "scene-picker.js" in html, 'splat_webgpu.html must include <script src="scene-picker.js">'
 
 
@@ -226,8 +269,12 @@ def test_shared_scene_picker_assets_present(assets_dir: Path) -> None:
     assert data.get("version") == "gs-mapper-scene-picker/v1"
     indexed = [scene["url"] for scene in data.get("scenes", [])]
     assert indexed, "scenes-list.json has no production scenes"
-    for url in indexed:
+    for scene in data["scenes"]:
+        url = scene["url"]
+        preview = scene.get("preview")
         assert (REPO_ROOT / "docs" / url).is_file(), f"scenes-list.json points at missing asset {url}"
+        assert preview, f"scenes-list.json scene {url} is missing preview"
+        assert (REPO_ROOT / "docs" / preview).is_file(), f"scenes-list.json points at missing preview {preview}"
 
 
 def test_scene_count_matches_documented_production_bundle() -> None:
@@ -238,11 +285,25 @@ def test_scene_count_matches_documented_production_bundle() -> None:
 def test_readme_preview_script_covers_every_production_scene() -> None:
     """README thumbnail capture should not silently omit a picker scene."""
     module = _load_script_module(REPO_ROOT / "scripts" / "capture_readme_splat_previews.py")
-    preview_urls = [url for _, url in module.SCENES]
-    assert set(preview_urls) == set(_scene_picker_urls())
+    assert module.SCENES == _readme_preview_specs()
 
 
 def test_hero_gif_script_uses_shared_scene_list() -> None:
     """Hero GIF recording should follow docs/scenes-list.json instead of a stale hard-coded subset."""
     module = _load_script_module(REPO_ROOT / "scripts" / "record_demo_gif.py")
     assert module._scene_urls() == _scene_picker_urls()
+
+
+def test_readme_production_scene_table_matches_shared_scene_list() -> None:
+    """README scene rows should stay in the same order as docs/scenes-list.json."""
+    expected = [(scene["label"], f"docs/{scene['preview']}", scene["url"]) for scene in _scene_picker_scenes()]
+    assert _readme_production_scene_rows() == expected
+
+
+def test_readme_preview_images_cover_every_production_scene() -> None:
+    """README preview PNGs should exist and be full-canvas captures."""
+    for scene in _scene_picker_scenes():
+        preview = REPO_ROOT / "docs" / scene["preview"]
+        assert preview.stat().st_size > 50_000, f"preview looks too small: {preview}"
+        with Image.open(preview) as image:
+            assert image.size == (1280, 720), f"preview should be a full-canvas 1280x720 grab: {preview}"

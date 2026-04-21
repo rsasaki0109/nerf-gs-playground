@@ -11,9 +11,9 @@
  *   3. on change, rewrites location.search so the viewer re-fetches.
  *   4. updates the sibling summary span, if one exists.
  *
- * The viewer HTML stays the source of truth for the <select> markup — if the
- * author wants a different label/ordering they just pre-populate the
- * <option>s and this script will skip step (1).
+ * docs/scenes-list.json is the source of truth. Some viewers pre-populate
+ * <option>s for fast first paint; tests keep those options aligned with the
+ * shared scene list.
  */
 (function () {
   "use strict";

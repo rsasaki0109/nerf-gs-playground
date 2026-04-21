@@ -1,6 +1,6 @@
 # 屋外 3D Gaussian Splatting 開発計画 / 引継ぎメモ
 
-更新日: 2026-04-21（MCD `tuhh_day_04` supervised 検証の訂正、`ntu_day_02` supervised bundle 追加、zero-GNSS guard、COLMAP images parser 修正、external SLAM artifact import 追加、VGGT-SLAM / MASt3R-SLAM comparison bundle 実走、binary PLY loader 修正、8-scene viewer smoke、experiment docs prune）
+更新日: 2026-04-21（MCD `tuhh_day_04` supervised 検証の訂正、`ntu_day_02` supervised bundle 追加、zero-GNSS guard、COLMAP images parser 修正、external SLAM artifact import 追加、VGGT-SLAM / MASt3R-SLAM comparison bundle 実走、binary PLY loader 修正、8-scene viewer smoke、experiment docs prune、8-scene viewer contract tests）
 
 この文書は、`GS Mapper` リポジトリにおける屋外 3D Gaussian Splatting 対応の現在地を、**Claude / Codex / Copilot / その他のコーディングエージェント**がそのまま引き継げる粒度でまとめた handoff 文書です。リポジトリ直下の `CLAUDE.md` は開発コマンド早見、本書は **屋外パイプラインの文脈・判断・失敗の履歴**に重きを置きます。
 
@@ -304,9 +304,9 @@ gs-mapper export \
 
 ### 優先度 A（残り）
 
-1. **8-scene viewer smoke の運用化**: `docs/scenes-list.json` を source of truth にして、README thumbnails / hero GIF / viewer picker がズレないことを pre-PR で確認する。
-2. **BYO photos / CoVLA mini**: ユーザ写真または HF access 承認後に、`photos-to-splat --preprocess mast3r` の自己実証デモを作る。
-3. **公開 docs の継続整理**: `docs/experiments.md` は index 化済み。残りは `docs/plan_outdoor_gs.md` の古いセッション履歴を必要に応じて archive 化する。
+1. **BYO photos / CoVLA mini**: ユーザ写真または HF access 承認後に、`photos-to-splat --preprocess mast3r` の自己実証デモを作る。
+2. **公開 docs の継続整理**: `docs/experiments.md` は index 化済み。残りは `docs/plan_outdoor_gs.md` の古いセッション履歴を必要に応じて archive 化する。
+3. **8-scene viewer smoke の継続運用**: `docs/scenes-list.json` は README table / preview capture / hero GIF / viewer picker の source of truth 化済み。pre-PR では `pytest tests/test_pages_assets.py -q` を通す。
 
 ### 優先度 B
 
@@ -830,7 +830,7 @@ Claude Opus 4.7 で PR #77〜#80 の 4 本。OSS 顔の残り整備 + §4.3.3.a 
    - `ruff format src/ tests/ scripts/` → `ruff check src/ tests/ scripts/` → `pytest tests/ -q --ignore=tests/e2e`
 3. **該当テストのピンポイント** — `pytest tests/test_ros_tf.py tests/test_cli.py tests/test_pages_assets.py tests/test_mcd.py tests/test_gsplat_trainer.py -q`（MCD calibration / CLI フラグ / zero-GNSS guard / parser / Pages diagnostic）。
 4. **§4.3.3.c の bash ブロック**が現行 CLI と一致するか — フラグリネームが入っていないか `gs-mapper preprocess --help` で確認。
-5. **Pages 資産** — `docs/scenes-list.json` が production URL として `assets/outdoor-demo/mcd-ntu-day02-supervised.splat` を含み、`mcd-tuhh-day04-supervised.splat` を含まないこと。ローカルで `python3 -m http.server` 等から `docs/splat.html` を開きシーン切替。
+5. **Pages 資産** — `docs/scenes-list.json` が production URL と preview path の source of truth。`assets/outdoor-demo/mcd-ntu-day02-supervised.splat` を含み、`mcd-tuhh-day04-supervised.splat` を含まないこと。ローカルで `python3 -m http.server` 等から `docs/splat.html` を開きシーン切替。
 6. **README 表・Benchmark 行** — `MCD ntu_day_02 — supervised` の row が実走値（400 frames / 30k iter / 500 s / 906k→400k / L1 0.195 / 12.8 MB）と一致しているか。食い違うなら README か export 元を直す。
 
 ### 検証コマンド早見（データとテスト）
@@ -855,6 +855,8 @@ python3 scripts/record_demo_gif.py
 **Headless 注意**: `capture_readme_splat_previews.py` はデフォルト headed。headless のままだとキャンバスが真っ黒・PNG が極小になりうる → CI ではスキップ or 別 job で headed 実行する運用を想定。
 
 2026-04-21 Codex smoke: `DISPLAY=:1 python3 scripts/capture_readme_splat_previews.py --out-dir /tmp/gsmapper-8scene-smoke --wait-ms 8000` で production 8 scenes を全件 capture。各 PNG は 1280×720、最小サイズ 94 KB、最小 nonblack ratio 0.045 で、`splat.html` の WebGL load / scene URL / bundled asset path は全件通った。
+
+2026-04-21 Codex 運用化: `docs/scenes-list.json` に preview path を追加し、`scripts/capture_readme_splat_previews.py` / `scripts/record_demo_gif.py` は同 manifest から production scenes を読む。`tests/test_pages_assets.py` は viewer picker 3 種の option 順、README scene table、README preview PNG 実体、hero GIF script の scene order を同じ manifest に対して検証する。
 
 ### 実装の読みどころ（コードダイブ順）
 
@@ -1097,4 +1099,4 @@ pytest tests/test_pages_assets.py -q
 ```
 
 - preview: `docs/images/demo-sweep/06_mcd-ntu-day02-supervised.png`, 1280x720, 133,861 bytes, non-black WebGL capture.
-- tests: `tests/test_pages_assets.py` = 14 passed.
+- tests: `tests/test_pages_assets.py` = 21 passed.

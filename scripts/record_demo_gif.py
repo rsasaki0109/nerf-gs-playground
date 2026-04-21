@@ -13,7 +13,6 @@ script sets ``DISPLAY=:1`` by default; override via the env var).
 
 from __future__ import annotations
 
-import json
 import os
 import socket
 import subprocess
@@ -24,11 +23,15 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 DOCS = REPO / "docs"
 OUT_DIR = REPO / "artifacts" / "readme-hero"
+SCRIPT_DIR = Path(__file__).resolve().parent
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
+
+from pages_scene_manifest import scene_urls  # noqa: E402
 
 
 def _scene_urls() -> list[str]:
-    data = json.loads((DOCS / "scenes-list.json").read_text(encoding="utf-8"))
-    return [scene["url"] for scene in data.get("scenes", [])]
+    return scene_urls(DOCS)
 
 
 def _free_port() -> int:
