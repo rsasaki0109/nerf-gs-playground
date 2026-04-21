@@ -13,11 +13,14 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from gs_sim2real.experiments.mcd_quality_plan import (  # noqa: E402
+    MCDQualityGatePolicy,
     MCDQualityPlanContext,
     build_mcd_quality_plan,
     collect_mcd_quality_results,
     default_mcd_quality_profiles,
+    evaluate_mcd_quality_gates,
     render_quality_benchmark_markdown,
+    render_quality_gate_markdown,
     render_quality_report_json,
     render_quality_report_markdown,
 )
@@ -44,7 +47,14 @@ def build_parser() -> argparse.ArgumentParser:
         choices=[profile.name for profile in default_mcd_quality_profiles()],
         help="Only collect the named profile. Can be passed multiple times.",
     )
-    parser.add_argument("--format", choices=["markdown", "json", "benchmark"], default="markdown")
+    parser.add_argument("--format", choices=["markdown", "json", "benchmark", "gate"], default="markdown")
+    parser.add_argument(
+        "--gate-max-final-l1",
+        type=float,
+        default=None,
+        help="Optional maximum final L1 allowed by the quality gate",
+    )
+    parser.add_argument("--fail-on-gate", action="store_true", help="Exit with status 2 when the quality gate fails")
     parser.add_argument("--output", default=None, help="Optional path to write the rendered report")
     return parser
 
@@ -65,10 +75,18 @@ def main(argv: list[str] | None = None) -> None:
         wanted = set(args.profile)
         profiles = tuple(profile for profile in profiles if profile.name in wanted)
     report = collect_mcd_quality_results(build_mcd_quality_plan(context, profiles=profiles))
+    gate_policy = MCDQualityGatePolicy(max_final_l1=args.gate_max_final_l1)
+    gate_report = (
+        evaluate_mcd_quality_gates(report, gate_policy) if args.format == "gate" or args.fail_on_gate else None
+    )
     if args.format == "json":
         rendered = render_quality_report_json(report)
     elif args.format == "benchmark":
         rendered = render_quality_benchmark_markdown(report)
+    elif args.format == "gate":
+        if gate_report is None:
+            gate_report = evaluate_mcd_quality_gates(report, gate_policy)
+        rendered = render_quality_gate_markdown(gate_report)
     else:
         rendered = render_quality_report_markdown(report)
     if args.output:
@@ -76,6 +94,8 @@ def main(argv: list[str] | None = None) -> None:
         out_path.parent.mkdir(parents=True, exist_ok=True)
         out_path.write_text(rendered, encoding="utf-8")
     print(rendered, end="")
+    if args.fail_on_gate and gate_report is not None and not gate_report["passed"]:
+        raise SystemExit(2)
 
 
 if __name__ == "__main__":

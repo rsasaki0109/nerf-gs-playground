@@ -9,6 +9,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
 
+from gs_sim2real.experiments.mcd_quality_gate import (
+    MCDQualityGatePolicy,
+    evaluate_mcd_quality_gates,
+    render_quality_gate_markdown,
+)
+
 
 @dataclass(frozen=True)
 class MCDQualityPlanContext:
@@ -651,6 +657,7 @@ def _format_compact_gaussians(value: Any) -> str:
 
 
 __all__ = [
+    "MCDQualityGatePolicy",
     "MCDQualityPlan",
     "MCDQualityPlanContext",
     "MCDQualityRunPlan",
@@ -659,8 +666,10 @@ __all__ = [
     "collect_mcd_quality_results",
     "collect_mcd_quality_run_result",
     "default_mcd_quality_profiles",
+    "evaluate_mcd_quality_gates",
     "plan_to_dict",
     "render_quality_benchmark_markdown",
+    "render_quality_gate_markdown",
     "render_quality_report_json",
     "render_quality_report_markdown",
     "render_plan_json",

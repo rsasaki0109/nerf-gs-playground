@@ -8,10 +8,13 @@ import subprocess
 import sys
 
 from gs_sim2real.experiments.mcd_quality_plan import (
+    MCDQualityGatePolicy,
     MCDQualityPlanContext,
     build_mcd_quality_plan,
     collect_mcd_quality_results,
+    evaluate_mcd_quality_gates,
     render_quality_benchmark_markdown,
+    render_quality_gate_markdown,
     render_quality_report_json,
     render_quality_report_markdown,
     render_plan_json,
@@ -161,17 +164,35 @@ def test_collect_mcd_quality_results_reads_artifacts_and_train_log(tmp_path) -> 
         "0.1951 | 64 B / 2 gauss | yes |"
     ) in benchmark
 
+    gate = evaluate_mcd_quality_gates(report)
+    baseline_gate = gate["runs"][0]
+    failed_checks = {check["name"] for check in baseline_gate["checks"] if not check["passed"]}
+
+    assert gate["passed"] is False
+    assert baseline_gate["passed"] is False
+    assert failed_checks == {"frames"}
+
+    loose_gate = evaluate_mcd_quality_gates(
+        report,
+        MCDQualityGatePolicy(min_frame_fraction=0.0, min_depth_fraction=0.0, max_final_l1=0.2),
+    )
+
+    assert loose_gate["runs"][0]["passed"] is True
+
 
 def test_collect_mcd_quality_results_renders_markdown_and_json_for_missing_runs(tmp_path) -> None:
     plan = build_mcd_quality_plan(MCDQualityPlanContext(output_root=str(tmp_path / "missing")))
 
     report = collect_mcd_quality_results(plan)
     markdown = render_quality_report_markdown(report)
+    gate_markdown = render_quality_gate_markdown(evaluate_mcd_quality_gates(report))
     payload = json.loads(render_quality_report_json(report))
 
     assert report["completeCount"] == 0
     assert "0/3 complete" in markdown
     assert "Single D455B 400 Depth Long" in markdown
+    assert "Gate: 0/3 runs passed" in gate_markdown
+    assert "| Single D455B 400 Depth Long | fail |" in gate_markdown
     assert payload["type"] == "mcd-quality-results-report"
 
 
@@ -221,3 +242,49 @@ def test_collect_mcd_quality_runs_script_can_emit_benchmark(tmp_path) -> None:
 
     assert "# MCD Quality Benchmark" in result.stdout
     assert "| Single D455B 400 Depth Long | n/a/400 | training_depth_long.yaml |" in result.stdout
+
+
+def test_collect_mcd_quality_runs_script_can_emit_gate_and_fail(tmp_path) -> None:
+    env = dict(os.environ)
+    env["PYTHONPATH"] = "src"
+    result = subprocess.run(
+        [
+            sys.executable,
+            "scripts/collect_mcd_quality_runs.py",
+            "--output-root",
+            str(tmp_path / "missing"),
+            "--format",
+            "gate",
+            "--profile",
+            "ntu_day02_single_400_depth_long",
+        ],
+        check=True,
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+
+    assert "# MCD Quality Gate" in result.stdout
+    assert "Gate: 0/1 runs passed" in result.stdout
+    assert "| Single D455B 400 Depth Long | fail |" in result.stdout
+
+    failed = subprocess.run(
+        [
+            sys.executable,
+            "scripts/collect_mcd_quality_runs.py",
+            "--output-root",
+            str(tmp_path / "missing"),
+            "--format",
+            "gate",
+            "--profile",
+            "ntu_day02_single_400_depth_long",
+            "--fail-on-gate",
+        ],
+        check=False,
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+
+    assert failed.returncode == 2
+    assert "# MCD Quality Gate" in failed.stdout
