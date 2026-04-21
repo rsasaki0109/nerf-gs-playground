@@ -406,7 +406,7 @@ gs-mapper preprocess \
 
 `--external-slam-output` 配下から `poses.txt` / `trajectory.txt` / `*.tum` と `*.ply` / `*.npy` / `*.pcd` を自動探索する。Pi3/Pi3X は標準 example が点群 PLY 中心なので、3DGS training へ進むには別途 camera trajectory を `--trajectory` で渡す。Pi3 / Pi3X / LoGeR などの Python 出力が `camera_poses` または `poses` の camera-to-world 行列を `.npy` / `.npz` / `.pt` / `.pth` に保存している場合は、そのファイル自体を `--trajectory` に渡せる。`external-slam` 側で一時TUMへ materialize してから既存 importer に流す。
 
-2026-04-21 追記: `external_slam.py` は互換 facade に縮小し、`external_slam_artifacts/` 配下へ profile 定義、artifact resolver、pose tensor materializer、COLMAP import orchestration を分割した。公式 Pi3/Pi3X は `camera_poses` (camera-to-world, OpenCV, `B x N x 4 x 4`) を返すため、`camera_poses.npy` / `.npz` / `.pt` / `.pth` を自動探索候補に追加。LoGeR の公開 demo は `--output_txt` で TUM trajectory を吐けるほか、`output_folder` の `.pt` 内に `camera_poses` を保存する経路があるので、LoGeR profile も `output_txt.txt` / `predictions.pt` / `*.pt` を候補にした。MASt3R-SLAM は `logs/<save-as>/<sequence>.txt` と `.ply` を保存する既存仕様のまま `*.txt` / `*.ply` で受ける。
+2026-04-21 追記: `external_slam.py` は互換 facade に縮小し、`external_slam_artifacts/` 配下へ profile 定義、artifact resolver、pose tensor materializer、point tensor materializer、COLMAP import orchestration を分割した。公式 Pi3/Pi3X は `camera_poses` (camera-to-world, OpenCV, `B x N x 4 x 4`) を返すため、`camera_poses.npy` / `.npz` / `.pt` / `.pth` を自動探索候補に追加。LoGeR の公開 demo は `--output_txt` で TUM trajectory を吐けるほか、`output_folder` の `.pt` 内に `camera_poses` / `points` / `conf` / `images` を保存する経路があるので、LoGeR profile も `output_txt.txt` / `predictions.pt` / `*.pt` を候補にした。MASt3R-SLAM は `logs/<save-as>/<sequence>.txt` と `.ply` を保存する既存仕様のまま `*.txt` / `*.ply` で受ける。
 
 2026-04-21 Codex smoke: `outputs/bag6_mast3r/poses.npy` を TUM `trajectory.txt` に変換し、`pts3d.npy` を外部点群 artifact として `outputs/external_slam_smoke/mast3r_artifacts/` に置いた。次のコマンドで `trajectory.txt` / `pts3d.npy` の自動探索が通り、`outputs/external_slam_smoke/mast3r_import/sparse/0` に `cameras.txt` / `images.txt` / `points3D.txt` を生成。結果は 20 images / 1000 points で、`require_colmap_sparse_model()` も通過した。
 
@@ -440,6 +440,17 @@ PYTHONPATH=src python3 -m gs_sim2real.cli preprocess \
   --method external-slam \
   --external-slam-system pi3 \
   --external-slam-output outputs/pi3x_smoke/artifacts
+```
+
+LoGeR official reimplementation でも smoke 済み。`/tmp/ext_slam_probe/LoGeR` を repo 外に置き、Hugging Face の `Junyi42/LoGeR/LoGeR/latest.pt` (約5.0GB) を `ckpts/LoGeR/latest.pt` に配置。bag6 cam0 先頭5枚、`--window_size 5 --overlap_size 1 --skip_viser --output_txt` で 17.151 s 推論し、`outputs/loger_smoke/trajectory.txt` と `outputs/loger_smoke/artifacts/pi3x_smoke_images_0_5_1.pt` を生成した。trajectory extent は `[0.376, 0.431, 0.875]`、4/4 steps が非ゼロ。`trajectory.txt` 経由の import は 5 images / 1000 seed points、`.pt` 直 import は `camera_poses` と dense `points` を materialize して 5 images / 100000 points になった。後者は `gsplat --iterations 10` で `outputs/loger_smoke/train_smoke_pt/point_cloud.ply` まで成功。
+
+```bash
+PYTHONPATH=src python3 -m gs_sim2real.cli preprocess \
+  --images outputs/pi3x_smoke/images \
+  --output outputs/loger_smoke/imported_colmap_pt \
+  --method external-slam \
+  --external-slam-system loger \
+  --external-slam-output outputs/loger_smoke/artifacts
 ```
 
 VGGT-SLAM 2.0 smoke も同日実走済み。`/tmp/ext_slam_probe/VGGT-SLAM` を Python 3.11 の隔離 venv (`/tmp/vggt-slam-venv`) に入れ、`requirements.txt` + `third_party/salad` + `MIT-SPARK/VGGT_SPARK` + `vggt-slam` editable install で import まで通った。上流 `main.py` は `--max_loops 0` でも SALAD checkpoint と Viewer を初期化するため、ローカルclone側だけ `VGGT_SLAM_NO_RETRIEVAL=1` / `VGGT_SLAM_NO_VIEWER=1` で無効化する薄いパッチを当てた。

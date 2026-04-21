@@ -144,6 +144,46 @@ def test_import_external_slam_writes_colmap_from_npz_pose_container(tmp_path: Pa
     assert "frame_000001.jpg" in images_txt
 
 
+def test_import_external_slam_writes_colmap_from_loger_pt_container(tmp_path: Path) -> None:
+    torch = pytest.importorskip("torch")
+    image_dir = tmp_path / "images"
+    _write_dummy_images(image_dir)
+    artifact_dir = tmp_path / "loger_out"
+    artifact_dir.mkdir()
+    poses = torch.eye(4).repeat(2, 1, 1)
+    poses[1, 0, 3] = 1.0
+    points = torch.tensor(
+        [
+            [[[0.0, 0.0, 2.0], [1.0, 0.0, 2.0]], [[0.0, 1.0, 2.0], [1.0, 1.0, 2.0]]],
+            [[[0.0, 0.0, 3.0], [1.0, 0.0, 3.0]], [[0.0, 1.0, 3.0], [1.0, 1.0, 3.0]]],
+        ],
+        dtype=torch.float32,
+    )
+    torch.save(
+        {
+            "camera_poses": poses,
+            "points": points,
+            "conf": torch.ones(2, 2, 2, 1),
+            "images": torch.ones(2, 2, 2, 3),
+        },
+        artifact_dir / "predictions.pt",
+    )
+    output_dir = tmp_path / "colmap"
+
+    sparse_dir = import_external_slam(
+        image_dir=image_dir,
+        output_dir=output_dir,
+        system="loger",
+        artifact_dir=artifact_dir,
+    )
+
+    assert Path(sparse_dir) == output_dir / "sparse" / "0"
+    assert (output_dir / "external_slam" / "predictions_trajectory.tum").exists()
+    assert (output_dir / "external_slam" / "predictions_pointcloud.npy").exists()
+    points3d = (output_dir / "sparse" / "0" / "points3D.txt").read_text()
+    assert "255 255 255" in points3d
+
+
 def test_import_external_slam_writes_colmap_from_tum_trajectory(tmp_path: Path) -> None:
     image_dir = tmp_path / "images"
     _write_dummy_images(image_dir)

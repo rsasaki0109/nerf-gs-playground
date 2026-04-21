@@ -4,6 +4,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from gs_sim2real.preprocess.external_slam_artifacts.point_tensor import (
+    is_point_tensor_artifact,
+    materialize_point_tensor_cloud,
+)
 from gs_sim2real.preprocess.external_slam_artifacts.pose_tensor import (
     is_pose_tensor_artifact,
     materialize_pose_tensor_trajectory,
@@ -43,6 +47,13 @@ def import_external_slam(
         )
         trajectory_format_for_import = "tum"
 
+    pointcloud_for_import = artifacts.pointcloud_path
+    if pointcloud_for_import is not None and is_point_tensor_artifact(pointcloud_for_import):
+        pointcloud_for_import = materialize_point_tensor_cloud(
+            pointcloud_for_import,
+            Path(output_dir) / "external_slam",
+        )
+
     from gs_sim2real.preprocess.lidar_slam import import_lidar_slam
 
     return import_lidar_slam(
@@ -50,7 +61,7 @@ def import_external_slam(
         image_dir=image_dir,
         output_dir=output_dir,
         trajectory_format=trajectory_format_for_import,
-        pointcloud_path=artifacts.pointcloud_path,
+        pointcloud_path=pointcloud_for_import,
         pinhole_calib_path=artifacts.pinhole_calib_path,
         nmea_time_offset_sec=nmea_time_offset_sec,
     )

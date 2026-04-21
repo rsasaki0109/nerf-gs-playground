@@ -223,6 +223,9 @@ the COLMAP sparse model used by the normal training commands. Pi3/Pi3X returns
 be imported without linking those packages into this repo. Pose tensors can also
 be passed as `--trajectory` when they are stored in `.npy`, `.npz`, `.pt`, or
 `.pth` files with a `camera_poses` or `poses` array of camera-to-world matrices.
+Pi3/LoGeR-style `.pt` or `.npz` containers with dense `points` plus optional
+`conf` / `images` arrays can also be flattened into a `.npy` point-cloud seed
+inside the import output directory.
 
 ```bash
 gs-mapper preprocess \

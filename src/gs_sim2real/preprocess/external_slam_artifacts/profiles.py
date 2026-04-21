@@ -89,7 +89,16 @@ PROFILES: dict[str, ExternalSLAMProfile] = {
             "*.pt",
             "*.pth",
         ),
-        pointcloud_candidates=("points.ply", "*.ply", "*.npy", "*.pcd"),
+        pointcloud_candidates=(
+            "points.npy",
+            "points.ply",
+            "predictions.pt",
+            "*.ply",
+            "*.npy",
+            "*.pcd",
+            "*.pt",
+            "*.pth",
+        ),
     ),
     "pi3": ExternalSLAMProfile(
         key="pi3",
@@ -102,7 +111,16 @@ PROFILES: dict[str, ExternalSLAMProfile] = {
             "*.tum",
             "*.txt",
         ),
-        pointcloud_candidates=("result.ply", "points.ply", "*.ply", "*.npy"),
+        pointcloud_candidates=(
+            "result.ply",
+            "points.npy",
+            "points.ply",
+            "predictions.pt",
+            "*.ply",
+            "*.npy",
+            "*.pt",
+            "*.pth",
+        ),
     ),
 }
 
