@@ -17,6 +17,7 @@ def collect_external_slam_import_preflight_results(plan: ExternalSLAMImportPlan)
     passed_count = sum(1 for run in run_reports if run["gatePassed"] is True)
     failed_count = sum(1 for run in run_reports if run["gatePassed"] is False)
     invalid_count = sum(1 for run in run_reports if run["manifestExists"] and not run["manifestValid"])
+    error_count = sum(1 for run in run_reports if run["errorMessage"] is not None)
     return {
         "type": "external-slam-import-preflight-report",
         "context": plan.context.__dict__,
@@ -26,6 +27,7 @@ def collect_external_slam_import_preflight_results(plan: ExternalSLAMImportPlan)
         "failedCount": failed_count,
         "missingCount": len(run_reports) - manifest_count,
         "invalidCount": invalid_count,
+        "errorCount": error_count,
         "runs": run_reports,
     }
 
@@ -42,7 +44,8 @@ def collect_external_slam_import_preflight_run_result(run: ExternalSLAMImportRun
     alignment = _nested_dict(manifest, "alignment")
     pointcloud = _nested_dict(manifest, "pointcloud")
     gate = _nested_dict(manifest, "gate")
-    missing = _missing_manifest_fields(manifest_exists, manifest_valid, gate)
+    error = _nested_dict(manifest, "error")
+    missing = _missing_manifest_fields(manifest_exists, manifest_valid, gate, error)
 
     return {
         "name": run.profile.name,
@@ -54,6 +57,9 @@ def collect_external_slam_import_preflight_run_result(run: ExternalSLAMImportRun
         "manifestExists": manifest_exists,
         "manifestValid": manifest_valid,
         "manifestError": manifest_error,
+        "ready": _optional_bool(manifest.get("ready")) if manifest is not None else None,
+        "errorType": _optional_string(error.get("type")),
+        "errorMessage": _optional_string(error.get("message")),
         "gatePassed": _optional_bool(gate.get("passed")),
         "imageCount": _optional_int(images.get("imageCount")),
         "poseCount": _optional_int(trajectory.get("poseCount")),
@@ -82,8 +88,8 @@ def render_external_slam_import_report_markdown(report: dict[str, Any]) -> str:
             f"{report['manifestCount']}/{report['runCount']} manifests present"
         ),
         "",
-        "| Run | System | Gate | Images | Poses | Aligned | Dropped | Unused | Points | Missing |",
-        "| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |",
+        "| Run | System | Gate | Images | Poses | Aligned | Dropped | Unused | Points | Missing | Error |",
+        "| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- |",
     ]
     for run in report["runs"]:
         missing = ", ".join(run["missing"]) or "none"
@@ -101,6 +107,7 @@ def render_external_slam_import_report_markdown(report: dict[str, Any]) -> str:
                     _format_optional_int(run["unusedPoseCount"]),
                     _format_optional_int(run["pointCount"]),
                     missing,
+                    _format_error(run["errorMessage"]),
                 ]
             )
             + " |"
@@ -127,11 +134,18 @@ def _nested_dict(manifest: dict[str, Any] | None, key: str) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
 
 
-def _missing_manifest_fields(manifest_exists: bool, manifest_valid: bool, gate: dict[str, Any]) -> list[str]:
+def _missing_manifest_fields(
+    manifest_exists: bool,
+    manifest_valid: bool,
+    gate: dict[str, Any],
+    error: dict[str, Any],
+) -> list[str]:
     if not manifest_exists:
         return ["manifest"]
     if not manifest_valid:
         return ["manifest_json"]
+    if error:
+        return ["error"]
     if not gate:
         return ["gate"]
     return []
@@ -139,6 +153,10 @@ def _missing_manifest_fields(manifest_exists: bool, manifest_valid: bool, gate: 
 
 def _optional_bool(value: Any) -> bool | None:
     return value if isinstance(value, bool) else None
+
+
+def _optional_string(value: Any) -> str | None:
+    return value if isinstance(value, str) else None
 
 
 def _optional_int(value: Any) -> int | None:
@@ -156,6 +174,8 @@ def _format_gate_status(run: dict[str, Any]) -> str:
         return "n/a"
     if not run["manifestValid"]:
         return "invalid"
+    if run["errorMessage"]:
+        return "error"
     if run["gatePassed"] is True:
         return "pass"
     if run["gatePassed"] is False:
@@ -165,6 +185,12 @@ def _format_gate_status(run: dict[str, Any]) -> str:
 
 def _format_optional_int(value: int | None) -> str:
     return "n/a" if value is None else str(value)
+
+
+def _format_error(value: str | None) -> str:
+    if not value:
+        return "none"
+    return value.replace("|", "/")
 
 
 __all__ = [

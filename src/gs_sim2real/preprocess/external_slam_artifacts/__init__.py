@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from gs_sim2real.preprocess.external_slam_artifacts.importer import import_external_slam
 from gs_sim2real.preprocess.external_slam_artifacts.manifest import (
+    build_external_slam_artifact_error_manifest,
     build_external_slam_artifact_manifest,
     render_external_slam_artifact_manifest_json,
     render_external_slam_artifact_manifest_text,
@@ -33,6 +34,7 @@ __all__ = [
     "ExternalSLAMArtifacts",
     "ExternalSLAMManifestGatePolicy",
     "ExternalSLAMProfile",
+    "build_external_slam_artifact_error_manifest",
     "build_external_slam_artifact_manifest",
     "evaluate_external_slam_manifest_gate",
     "import_external_slam",

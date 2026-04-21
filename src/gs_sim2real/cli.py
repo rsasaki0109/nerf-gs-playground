@@ -1650,15 +1650,32 @@ def _run_external_slam_preprocess_to_colmap(
 
     try:
         if getattr(args, "external_slam_dry_run", False):
-            manifest = external_slam_module.build_external_slam_artifact_manifest(
-                image_dir=images_dir,
-                system=getattr(args, "external_slam_system", "generic"),
-                artifact_dir=getattr(args, "external_slam_output", None),
-                trajectory_path=getattr(args, "trajectory", None),
-                trajectory_format=getattr(args, "trajectory_format", None),
-                pointcloud_path=getattr(args, "pointcloud", None),
-                pinhole_calib_path=getattr(args, "pinhole_calib", None),
-            )
+            try:
+                manifest = external_slam_module.build_external_slam_artifact_manifest(
+                    image_dir=images_dir,
+                    system=getattr(args, "external_slam_system", "generic"),
+                    artifact_dir=getattr(args, "external_slam_output", None),
+                    trajectory_path=getattr(args, "trajectory", None),
+                    trajectory_format=getattr(args, "trajectory_format", None),
+                    pointcloud_path=getattr(args, "pointcloud", None),
+                    pinhole_calib_path=getattr(args, "pinhole_calib", None),
+                )
+            except (FileNotFoundError, NotADirectoryError, ValueError) as exc:
+                manifest = external_slam_module.build_external_slam_artifact_error_manifest(
+                    error=exc,
+                    image_dir=images_dir,
+                    system=getattr(args, "external_slam_system", "generic"),
+                    artifact_dir=getattr(args, "external_slam_output", None),
+                    trajectory_path=getattr(args, "trajectory", None),
+                    trajectory_format=getattr(args, "trajectory_format", None),
+                    pointcloud_path=getattr(args, "pointcloud", None),
+                    pinhole_calib_path=getattr(args, "pinhole_calib", None),
+                )
+                if getattr(args, "external_slam_manifest_format", "text") == "json":
+                    print(external_slam_module.render_external_slam_artifact_manifest_json(manifest), end="")
+                else:
+                    print(external_slam_module.render_external_slam_artifact_manifest_text(manifest), end="")
+                raise SystemExit(2 if getattr(args, "external_slam_fail_on_dry_run_gate", False) else 1) from exc
             gate = external_slam_module.evaluate_external_slam_manifest_gate(
                 manifest,
                 external_slam_module.ExternalSLAMManifestGatePolicy(

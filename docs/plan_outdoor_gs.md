@@ -54,7 +54,7 @@
 | MCD calibration / static TF | `src/gs_sim2real/datasets/ros_tf.py`, `scripts/download_mcd_calibration.sh` | MCDVIRAL official calibration YAML を downloader 経由で取得。YAML は CC BY-NC-SA なので repo に commit しない。 |
 | MCD supervised sparse import | `src/gs_sim2real/cli.py`, `src/gs_sim2real/datasets/mcd.py` | `--mcd-static-calibration`、single-camera colorize/depth、CameraInfo 欠落時の PINHOLE 合成、zero-GNSS guard、IMU orientation CSV normalization、angular-velocity yaw fallback。 |
 | MCD quality run planning | `src/gs_sim2real/experiments/mcd_quality_plan.py`, `scripts/plan_mcd_quality_runs.py`, `scripts/collect_mcd_quality_runs.py` | `ntu_day_02` の baseline / single-camera BA / multi-camera BA の preprocess→train→export commands、expected artifacts、実走後 summary を生成。 |
-| External SLAM import | `src/gs_sim2real/preprocess/external_slam.py`, `src/gs_sim2real/preprocess/external_slam_artifacts/`, `scripts/plan_external_slam_imports.py`, `scripts/collect_external_slam_imports.py` | facade + profile/resolver/materializer/importer/manifest 分割済み。VGGT-SLAM / MASt3R-SLAM 実走済み、Pi3 / LoGeR 候補追加済み。Dry-run manifest の保存先計画と集計レポートも追加済み。 |
+| External SLAM import | `src/gs_sim2real/preprocess/external_slam.py`, `src/gs_sim2real/preprocess/external_slam_artifacts/`, `scripts/plan_external_slam_imports.py`, `scripts/collect_external_slam_imports.py` | facade + profile/resolver/materializer/importer/manifest 分割済み。VGGT-SLAM / MASt3R-SLAM 実走済み、Pi3 / LoGeR 候補追加済み。Dry-run manifest の保存先計画、集計レポート、artifact 未配置時の構造化 error manifest も追加済み。 |
 | Outdoor feature comparison | `src/gs_sim2real/experiments/outdoor_training_features_lab.py` | depth supervision、appearance embedding、pose refinement、sky-mask profile を同一 fixture で比較。real metric run 前の planning harness。 |
 | Pages scene contract | `docs/scenes-list.json`, `scripts/pages_scene_manifest.py`, `tests/test_pages_assets.py` | README table、preview capture、hero GIF、3 viewer picker を manifest に揃える。 |
 | README preview capture | `scripts/capture_readme_splat_previews.py` | WebGL は headed Chromium 推奨。`--out-dir` で smoke capture を一時出力可能。 |
@@ -99,7 +99,8 @@ gs-mapper preprocess --method external-slam --images <images-dir> \
 ```
 
 Dry-run manifest には trajectory pose 数、point cloud 点数、入力画像数、sequential fallback 時に何 frame が
-align されるかと、その manifest gate 判定を含める。
+align されるかと、その manifest gate 判定を含める。Artifact が未配置でも JSON manifest として
+`ready=false` / `error` / candidate patterns を残すので、`collect_external_slam_imports.py` で欠落理由を集計できる。
 
 External SLAM 候補の dry-run gate matrix を出す場合:
 

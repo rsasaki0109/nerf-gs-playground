@@ -12,6 +12,7 @@ import pytest
 
 from gs_sim2real.preprocess.external_slam import (
     ExternalSLAMManifestGatePolicy,
+    build_external_slam_artifact_error_manifest,
     build_external_slam_artifact_manifest,
     evaluate_external_slam_manifest_gate,
     import_external_slam,
@@ -129,6 +130,8 @@ def test_build_external_slam_manifest_marks_tensor_materialization(tmp_path: Pat
     assert "materialization=pose_tensor_to_tum" in text
     assert "2 aligned" in text
     assert payload["pointcloud"]["path"].endswith("points.npz")
+    assert payload["resolution"]["trajectory"]["selectedPath"].endswith("camera_poses.npz")
+    assert "camera_poses.npz" in payload["resolution"]["trajectory"]["candidatePatterns"]
 
 
 def test_build_external_slam_manifest_flags_count_mismatch(tmp_path: Path) -> None:
@@ -150,6 +153,32 @@ def test_build_external_slam_manifest_flags_count_mismatch(tmp_path: Path) -> No
     assert manifest["alignment"]["alignedFrameCount"] == 2
     assert manifest["alignment"]["droppedImageCount"] == 1
     assert manifest["alignment"]["unusedPoseCount"] == 0
+
+
+def test_build_external_slam_error_manifest_keeps_resolution_context(tmp_path: Path) -> None:
+    image_dir = tmp_path / "images"
+    _write_dummy_images(image_dir, count=1)
+    artifact_dir = tmp_path / "pi3_out"
+    artifact_dir.mkdir()
+    error = FileNotFoundError(f"Could not find Pi3/Pi3X trajectory under {artifact_dir}")
+
+    manifest = build_external_slam_artifact_error_manifest(
+        error=error,
+        image_dir=image_dir,
+        system="pi3",
+        artifact_dir=artifact_dir,
+    )
+    text = render_external_slam_artifact_manifest_text(manifest)
+    payload = json.loads(render_external_slam_artifact_manifest_json(manifest))
+
+    assert manifest["ready"] is False
+    assert manifest["error"]["type"] == "FileNotFoundError"
+    assert manifest["images"]["imageCount"] == 1
+    assert manifest["alignment"]["status"] == "unknown"
+    assert manifest["trajectory"] is None
+    assert payload["resolution"]["trajectory"]["selectedPath"] is None
+    assert "camera_poses.npz" in payload["resolution"]["trajectory"]["candidatePatterns"]
+    assert "- error: Could not find Pi3/Pi3X trajectory" in text
 
 
 def test_external_slam_manifest_gate_flags_dropped_images_and_point_count(tmp_path: Path) -> None:

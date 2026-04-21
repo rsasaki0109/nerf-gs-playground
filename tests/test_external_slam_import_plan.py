@@ -144,6 +144,45 @@ def test_collect_external_slam_import_preflight_results_reads_saved_manifests(tm
     assert payload["type"] == "external-slam-import-preflight-report"
 
 
+def test_collect_external_slam_import_preflight_results_reads_error_manifests(tmp_path) -> None:
+    plan = build_external_slam_import_plan(ExternalSLAMImportPlanContext(output_root=str(tmp_path / "imports")))
+    manifest_path = Path(plan.runs[0].manifest_path)
+    manifest_path.parent.mkdir(parents=True)
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "type": "external-slam-artifact-manifest",
+                "system": "mast3r-slam",
+                "displayName": "MASt3R-SLAM",
+                "images": {"imageCount": 2},
+                "trajectory": None,
+                "pointcloud": None,
+                "alignment": {"status": "unknown"},
+                "ready": False,
+                "error": {
+                    "type": "FileNotFoundError",
+                    "message": "Could not find MASt3R-SLAM trajectory",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    report = collect_external_slam_import_preflight_results(plan)
+    markdown = render_external_slam_import_report_markdown(report)
+    first = report["runs"][0]
+
+    assert report["manifestCount"] == 1
+    assert report["passedCount"] == 0
+    assert report["errorCount"] == 1
+    assert first["ready"] is False
+    assert first["errorType"] == "FileNotFoundError"
+    assert first["errorMessage"] == "Could not find MASt3R-SLAM trajectory"
+    assert first["missing"] == ["error"]
+    assert "| Bag6 MASt3R-SLAM | mast3r-slam | error |" in markdown
+    assert "Could not find MASt3R-SLAM trajectory" in markdown
+
+
 def test_collect_external_slam_imports_script_can_emit_missing_json(tmp_path) -> None:
     env = dict(os.environ)
     env["PYTHONPATH"] = "src"

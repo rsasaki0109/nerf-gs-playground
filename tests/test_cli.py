@@ -1234,6 +1234,58 @@ class TestCLIHelp:
 
         assert exc_info.value.code == 2
 
+    def test_cmd_preprocess_external_slam_dry_run_json_reports_resolution_errors(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """external-slam dry-run should emit machine-readable errors when artifacts are missing."""
+        from gs_sim2real import cli
+        from gs_sim2real.preprocess import external_slam as external_slam_module
+
+        def forbidden_import_external_slam(**kwargs):
+            raise AssertionError(f"dry-run should not import artifacts: {kwargs}")
+
+        monkeypatch.setattr(external_slam_module, "import_external_slam", forbidden_import_external_slam)
+
+        image_dir = tmp_path / "images"
+        image_dir.mkdir()
+        (image_dir / "frame_000000.jpg").write_bytes(b"jpg")
+        artifact_dir = tmp_path / "pi3_out"
+        artifact_dir.mkdir()
+
+        args = build_parser().parse_args(
+            [
+                "preprocess",
+                "--images",
+                str(image_dir),
+                "--output",
+                str(tmp_path / "out"),
+                "--method",
+                "external-slam",
+                "--external-slam-system",
+                "pi3",
+                "--external-slam-output",
+                str(artifact_dir),
+                "--external-slam-dry-run",
+                "--external-slam-manifest-format",
+                "json",
+                "--external-slam-fail-on-dry-run-gate",
+            ]
+        )
+
+        with pytest.raises(SystemExit) as exc_info:
+            cli.cmd_preprocess(args)
+
+        payload = json.loads(capsys.readouterr().out)
+        assert exc_info.value.code == 2
+        assert payload["type"] == "external-slam-artifact-manifest"
+        assert payload["ready"] is False
+        assert payload["system"] == "pi3"
+        assert payload["error"]["type"] == "FileNotFoundError"
+        assert payload["trajectory"] is None
+        assert payload["images"]["imageCount"] == 1
+        assert payload["resolution"]["trajectory"]["selectedPath"] is None
+        assert "camera_poses.npz" in payload["resolution"]["trajectory"]["candidatePatterns"]
+
     def test_cmd_preprocess_mcd_list_topics_mode(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path, capsys: pytest.CaptureFixture[str]
     ) -> None:

@@ -16,7 +16,7 @@ from gs_sim2real.preprocess.external_slam_artifacts.pose_tensor import (
     inspect_pose_tensor_artifact,
     is_pose_tensor_artifact,
 )
-from gs_sim2real.preprocess.external_slam_artifacts.profiles import PROFILES
+from gs_sim2real.preprocess.external_slam_artifacts.profiles import PROFILES, ExternalSLAMProfile, normalize_system
 from gs_sim2real.preprocess.external_slam_artifacts.resolver import resolve_external_slam_artifacts
 
 _IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png"}
@@ -51,12 +51,67 @@ def build_external_slam_artifact_manifest(
         "system": artifacts.system,
         "displayName": profile.display_name,
         "artifactDir": str(Path(artifact_dir)) if artifact_dir not in (None, "") else None,
+        "resolution": _build_resolution_summary(
+            profile=profile,
+            artifact_dir=artifact_dir,
+            trajectory_path=trajectory_path,
+            trajectory_format=artifacts.trajectory_format,
+            pointcloud_path=pointcloud_path,
+            pinhole_calib_path=pinhole_calib_path,
+            resolved_trajectory=artifacts.trajectory_path,
+            resolved_pointcloud=artifacts.pointcloud_path,
+            resolved_calib=artifacts.pinhole_calib_path,
+        ),
         "images": image_summary,
         "trajectory": trajectory_summary,
         "pointcloud": pointcloud_summary,
         "pinholeCalibration": _summarize_optional_file(artifacts.pinhole_calib_path, role="pinhole_calibration"),
         "alignment": _summarize_alignment(image_summary, trajectory_summary),
         "ready": True,
+    }
+
+
+def build_external_slam_artifact_error_manifest(
+    *,
+    error: BaseException,
+    image_dir: str | Path | None = None,
+    system: str = "generic",
+    artifact_dir: str | Path | None = None,
+    trajectory_path: str | Path | None = None,
+    trajectory_format: str | None = None,
+    pointcloud_path: str | Path | None = None,
+    pinhole_calib_path: str | Path | None = None,
+) -> dict[str, Any]:
+    """Build a machine-readable dry-run manifest when artifact resolution fails."""
+
+    system_key, profile = _safe_profile(system)
+    image_summary = _summarize_images(image_dir)
+    return {
+        "type": "external-slam-artifact-manifest",
+        "system": system_key,
+        "displayName": profile.display_name if profile else "external SLAM",
+        "artifactDir": str(Path(artifact_dir)) if artifact_dir not in (None, "") else None,
+        "resolution": _build_resolution_summary(
+            profile=profile,
+            artifact_dir=artifact_dir,
+            trajectory_path=trajectory_path,
+            trajectory_format=trajectory_format or (profile.default_trajectory_format if profile else None),
+            pointcloud_path=pointcloud_path,
+            pinhole_calib_path=pinhole_calib_path,
+            resolved_trajectory=None,
+            resolved_pointcloud=None,
+            resolved_calib=None,
+        ),
+        "images": image_summary,
+        "trajectory": None,
+        "pointcloud": None,
+        "pinholeCalibration": None,
+        "alignment": _summarize_alignment(image_summary, {}),
+        "ready": False,
+        "error": {
+            "type": type(error).__name__,
+            "message": str(error),
+        },
     }
 
 
@@ -71,6 +126,8 @@ def render_external_slam_artifact_manifest_text(manifest: dict[str, Any]) -> str
         f"- pinhole calibration: {_format_artifact(manifest['pinholeCalibration'])}",
         f"- alignment: {_format_alignment(manifest['alignment'])}",
     ]
+    if manifest.get("error"):
+        lines.append(f"- error: {manifest['error']['message']}")
     return "\n".join(lines) + "\n"
 
 
@@ -165,6 +222,76 @@ def _summarize_alignment(images: dict[str, Any] | None, trajectory: dict[str, An
             "message": message,
         }
     )
+    return summary
+
+
+def _safe_profile(system: str | None) -> tuple[str, ExternalSLAMProfile | None]:
+    try:
+        system_key = normalize_system(system)
+    except ValueError:
+        return system or "generic", None
+    return system_key, PROFILES[system_key]
+
+
+def _build_resolution_summary(
+    *,
+    profile: ExternalSLAMProfile | None,
+    artifact_dir: str | Path | None,
+    trajectory_path: str | Path | None,
+    trajectory_format: str | None,
+    pointcloud_path: str | Path | None,
+    pinhole_calib_path: str | Path | None,
+    resolved_trajectory: Path | None,
+    resolved_pointcloud: Path | None,
+    resolved_calib: Path | None,
+) -> dict[str, Any]:
+    base_dir = str(Path(artifact_dir)) if artifact_dir not in (None, "") else None
+    trajectory_candidates = profile.trajectory_candidates if profile else ()
+    pointcloud_candidates = profile.pointcloud_candidates if profile else ()
+    return {
+        "trajectory": _resolution_section(
+            role="trajectory",
+            explicit_path=trajectory_path,
+            base_dir=base_dir,
+            candidate_patterns=trajectory_candidates,
+            selected_path=resolved_trajectory,
+            trajectory_format=trajectory_format,
+        ),
+        "pointcloud": _resolution_section(
+            role="pointcloud",
+            explicit_path=pointcloud_path,
+            base_dir=base_dir,
+            candidate_patterns=pointcloud_candidates,
+            selected_path=resolved_pointcloud,
+        ),
+        "pinholeCalibration": _resolution_section(
+            role="pinhole_calibration",
+            explicit_path=pinhole_calib_path,
+            base_dir=base_dir,
+            candidate_patterns=(),
+            selected_path=resolved_calib,
+        ),
+    }
+
+
+def _resolution_section(
+    *,
+    role: str,
+    explicit_path: str | Path | None,
+    base_dir: str | None,
+    candidate_patterns: tuple[str, ...],
+    selected_path: Path | None,
+    trajectory_format: str | None = None,
+) -> dict[str, Any]:
+    summary: dict[str, Any] = {
+        "role": role,
+        "explicitPath": str(Path(explicit_path)) if explicit_path not in (None, "") else None,
+        "baseDir": base_dir,
+        "candidatePatterns": list(candidate_patterns),
+        "selectedPath": str(selected_path) if selected_path is not None else None,
+    }
+    if trajectory_format is not None:
+        summary["format"] = trajectory_format
     return summary
 
 
@@ -271,6 +398,7 @@ def _format_bytes(value: int) -> str:
 
 
 __all__ = [
+    "build_external_slam_artifact_error_manifest",
     "build_external_slam_artifact_manifest",
     "render_external_slam_artifact_manifest_json",
     "render_external_slam_artifact_manifest_text",
