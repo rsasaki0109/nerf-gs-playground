@@ -386,6 +386,11 @@ def collect_mcd_quality_run_result(run: MCDQualityRunPlan) -> dict[str, Any]:
     return {
         "name": run.profile.name,
         "label": run.profile.label,
+        "plannedFrames": run.profile.max_frames,
+        "everyN": run.profile.every_n,
+        "iterations": run.profile.iterations,
+        "configPath": run.profile.config_path,
+        "imageTopics": list(run.profile.image_topics),
         "complete": not missing_artifacts,
         "missingArtifacts": missing_artifacts,
         "artifactStatus": artifact_status,
@@ -449,6 +454,39 @@ def render_quality_report_markdown(report: dict[str, Any]) -> str:
                     _format_optional_float(train["finalL1"], digits=4),
                     _format_optional_bytes(export["splatBytes"]),
                     missing,
+                ]
+            )
+            + " |"
+        )
+    return "\n".join(lines) + "\n"
+
+
+def render_quality_benchmark_markdown(report: dict[str, Any]) -> str:
+    """Render collected quality results as a comparison-oriented benchmark table."""
+    lines = [
+        "# MCD Quality Benchmark",
+        "",
+        f"Runs: {report['completeCount']}/{report['runCount']} complete",
+        "",
+        "| Run | Frames | Config | Train time | Trained gauss | Final L1 | Splat | Complete |",
+        "| --- | ---: | --- | ---: | ---: | ---: | ---: | --- |",
+    ]
+    for run in report["runs"]:
+        preprocess = run["preprocess"]
+        train = run["train"]
+        export = run["export"]
+        lines.append(
+            "| "
+            + " | ".join(
+                [
+                    run["label"],
+                    _format_actual_over_planned(preprocess["imageCount"], run.get("plannedFrames")),
+                    _format_config_name(run.get("configPath")),
+                    _format_optional_seconds(train["trainingSeconds"]),
+                    _format_optional_int(train["trainedGaussians"]),
+                    _format_optional_float(train["finalL1"], digits=4),
+                    _format_splat_summary(export["splatBytes"], export["splatGaussians"]),
+                    "yes" if run["complete"] else "no",
                 ]
             )
             + " |"
@@ -565,6 +603,53 @@ def _format_optional_bytes(value: Any) -> str:
     return f"{int(value):,} B"
 
 
+def _format_actual_over_planned(actual: Any, planned: Any) -> str:
+    actual_text = _format_optional_int(actual)
+    planned_text = _format_optional_int(planned)
+    return f"{actual_text}/{planned_text}"
+
+
+def _format_config_name(value: Any) -> str:
+    if value is None:
+        return "n/a"
+    name = Path(str(value)).name
+    return name or "n/a"
+
+
+def _format_optional_seconds(value: Any) -> str:
+    if value is None:
+        return "n/a"
+    return f"{float(value):.1f} s"
+
+
+def _format_splat_summary(bytes_value: Any, gaussians: Any) -> str:
+    if bytes_value is None and gaussians is None:
+        return "n/a"
+    return f"{_format_compact_bytes(bytes_value)} / {_format_compact_gaussians(gaussians)}"
+
+
+def _format_compact_bytes(value: Any) -> str:
+    if value is None:
+        return "n/a"
+    amount = int(value)
+    if amount >= 1_000_000:
+        return f"{amount / 1_000_000:.1f} MB"
+    if amount >= 1_000:
+        return f"{amount / 1_000:.1f} KB"
+    return f"{amount} B"
+
+
+def _format_compact_gaussians(value: Any) -> str:
+    if value is None:
+        return "n/a"
+    count = int(value)
+    if count >= 1_000_000:
+        return f"{count / 1_000_000:.1f}M gauss"
+    if count >= 1_000:
+        return f"{count / 1_000:.0f}k gauss"
+    return f"{count} gauss"
+
+
 __all__ = [
     "MCDQualityPlan",
     "MCDQualityPlanContext",
@@ -575,6 +660,7 @@ __all__ = [
     "collect_mcd_quality_run_result",
     "default_mcd_quality_profiles",
     "plan_to_dict",
+    "render_quality_benchmark_markdown",
     "render_quality_report_json",
     "render_quality_report_markdown",
     "render_plan_json",

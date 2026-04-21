@@ -17,6 +17,7 @@ from gs_sim2real.experiments.mcd_quality_plan import (  # noqa: E402
     build_mcd_quality_plan,
     collect_mcd_quality_results,
     default_mcd_quality_profiles,
+    render_quality_benchmark_markdown,
     render_quality_report_json,
     render_quality_report_markdown,
 )
@@ -43,7 +44,7 @@ def build_parser() -> argparse.ArgumentParser:
         choices=[profile.name for profile in default_mcd_quality_profiles()],
         help="Only collect the named profile. Can be passed multiple times.",
     )
-    parser.add_argument("--format", choices=["markdown", "json"], default="markdown")
+    parser.add_argument("--format", choices=["markdown", "json", "benchmark"], default="markdown")
     parser.add_argument("--output", default=None, help="Optional path to write the rendered report")
     return parser
 
@@ -64,7 +65,12 @@ def main(argv: list[str] | None = None) -> None:
         wanted = set(args.profile)
         profiles = tuple(profile for profile in profiles if profile.name in wanted)
     report = collect_mcd_quality_results(build_mcd_quality_plan(context, profiles=profiles))
-    rendered = render_quality_report_json(report) if args.format == "json" else render_quality_report_markdown(report)
+    if args.format == "json":
+        rendered = render_quality_report_json(report)
+    elif args.format == "benchmark":
+        rendered = render_quality_benchmark_markdown(report)
+    else:
+        rendered = render_quality_report_markdown(report)
     if args.output:
         out_path = Path(args.output)
         out_path.parent.mkdir(parents=True, exist_ok=True)

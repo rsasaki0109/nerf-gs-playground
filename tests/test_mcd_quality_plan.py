@@ -11,6 +11,7 @@ from gs_sim2real.experiments.mcd_quality_plan import (
     MCDQualityPlanContext,
     build_mcd_quality_plan,
     collect_mcd_quality_results,
+    render_quality_benchmark_markdown,
     render_quality_report_json,
     render_quality_report_markdown,
     render_plan_json,
@@ -149,6 +150,16 @@ def test_collect_mcd_quality_results_reads_artifacts_and_train_log(tmp_path) -> 
     assert baseline["train"]["trainingSeconds"] == 500.3
     assert baseline["export"]["splatBytes"] == 64
     assert baseline["export"]["splatGaussians"] == 2
+    assert baseline["plannedFrames"] == 400
+    assert baseline["configPath"] == "configs/training_depth_long.yaml"
+
+    benchmark = render_quality_benchmark_markdown(report)
+
+    assert "# MCD Quality Benchmark" in benchmark
+    assert (
+        "| Single D455B 400 Depth Long | 1/400 | training_depth_long.yaml | 500.3 s | 123 | "
+        "0.1951 | 64 B / 2 gauss | yes |"
+    ) in benchmark
 
 
 def test_collect_mcd_quality_results_renders_markdown_and_json_for_missing_runs(tmp_path) -> None:
@@ -186,3 +197,27 @@ def test_collect_mcd_quality_runs_script_can_emit_markdown(tmp_path) -> None:
 
     assert "# MCD Quality Results" in result.stdout
     assert "Single D455B 400 Depth Long" in result.stdout
+
+
+def test_collect_mcd_quality_runs_script_can_emit_benchmark(tmp_path) -> None:
+    env = dict(os.environ)
+    env["PYTHONPATH"] = "src"
+    result = subprocess.run(
+        [
+            sys.executable,
+            "scripts/collect_mcd_quality_runs.py",
+            "--output-root",
+            str(tmp_path / "missing"),
+            "--format",
+            "benchmark",
+            "--profile",
+            "ntu_day02_single_400_depth_long",
+        ],
+        check=True,
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+
+    assert "# MCD Quality Benchmark" in result.stdout
+    assert "| Single D455B 400 Depth Long | n/a/400 | training_depth_long.yaml |" in result.stdout

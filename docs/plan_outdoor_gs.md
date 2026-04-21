@@ -113,6 +113,7 @@ MCD `ntu_day_02` quality run matrix を出す場合:
 ```bash
 python3 scripts/plan_mcd_quality_runs.py --format markdown
 python3 scripts/collect_mcd_quality_runs.py --format markdown
+python3 scripts/collect_mcd_quality_runs.py --format benchmark
 ```
 
 ## Scope Boundaries
