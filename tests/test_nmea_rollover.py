@@ -40,6 +40,15 @@ def _compose_rmc(seconds_utc: float, lat: float, lon: float, date_ddmmyy: str, c
     return f"$GPRMC,{hhmmss},A,{lat_field},{lat_hemi},{lon_field},{lon_hemi},5.0,{course_deg:.1f},{date_ddmmyy},,"
 
 
+def _with_checksum(sentence: str) -> str:
+    payload = sentence[1:] if sentence.startswith("$") else sentence
+    payload = payload.split("*", 1)[0]
+    checksum = 0
+    for char in payload:
+        checksum ^= ord(char)
+    return f"${payload}*{checksum:02X}"
+
+
 def test_day_rollover_preserves_monotonic_order(tmp_path: Path) -> None:
     p = tmp_path / "r.nmea"
     lines = [
@@ -98,4 +107,39 @@ def test_gga_and_rmc_merged_at_same_second(tmp_path: Path) -> None:
     )
     proc = LiDARSLAMProcessor()
     timestamps, poses = proc._load_nmea_trajectory(p)
+    assert len(timestamps) == 2
+
+
+def test_bad_nmea_checksum_rows_are_ignored(tmp_path: Path) -> None:
+    p = tmp_path / "r.nmea"
+    good_0 = _with_checksum(_compose_rmc(100.0, 35.0, 139.0, "010122", 0.0))
+    bad = _compose_rmc(101.0, 35.5, 139.5, "010122", 0.0) + "*00"
+    good_1 = _with_checksum(_compose_rmc(102.0, 35.0001, 139.0001, "010122", 0.0))
+    p.write_text("\n".join([good_0, bad, good_1]) + "\n", encoding="utf-8")
+
+    proc = LiDARSLAMProcessor()
+    timestamps, poses = proc._load_nmea_trajectory(p)
+
+    assert len(timestamps) == 2
+    assert timestamps == [timestamps[0], timestamps[0] + 2.0]
+    # The bad row is far away; if it were accepted it would dominate the ENU extent.
+    assert poses[-1][0, 3] < 20.0
+
+
+def test_nmea_rows_without_checksum_remain_supported(tmp_path: Path) -> None:
+    p = tmp_path / "r.nmea"
+    p.write_text(
+        "\n".join(
+            [
+                _compose_rmc(100.0, 35.0, 139.0, "010122", 0.0),
+                _compose_rmc(101.0, 35.0001, 139.0001, "010122", 0.0),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    proc = LiDARSLAMProcessor()
+    timestamps, _ = proc._load_nmea_trajectory(p)
+
     assert len(timestamps) == 2

@@ -322,6 +322,8 @@ class LiDARSLAMProcessor:
                 line = raw_line.strip()
                 if not line or not line.startswith("$"):
                     continue
+                if not self._nmea_checksum_is_valid(line):
+                    continue
 
                 fields = self._split_nmea_sentence(line)
                 if not fields:
@@ -529,6 +531,25 @@ class LiDARSLAMProcessor:
         payload = line[1:] if line.startswith("$") else line
         payload = payload.split("*", 1)[0]
         return payload.split(",")
+
+    @staticmethod
+    def _nmea_checksum_is_valid(line: str) -> bool:
+        """Validate an NMEA checksum when a ``*HH`` suffix is present."""
+        if "*" not in line:
+            return True
+        payload = line[1:] if line.startswith("$") else line
+        body, checksum_text = payload.split("*", 1)
+        checksum_text = checksum_text[:2]
+        if len(checksum_text) != 2:
+            return False
+        try:
+            expected = int(checksum_text, 16)
+        except ValueError:
+            return False
+        actual = 0
+        for char in body:
+            actual ^= ord(char)
+        return actual == expected
 
     @staticmethod
     def _parse_nmea_time(value: str) -> float | None:
