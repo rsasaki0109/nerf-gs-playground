@@ -1,8 +1,8 @@
 # 屋外 3D Gaussian Splatting 開発計画 / 引継ぎメモ
 
-更新日: 2026-04-20（OSS 顔整備 + MCD supervised 経路開通セッション後）
+更新日: 2026-04-21（MCD `tuhh_day_04` supervised 検証の訂正、`ntu_day_02` supervised bundle 追加、zero-GNSS guard、COLMAP images parser 修正）
 
-この文書は、`GS Mapper` リポジトリにおける屋外 3D Gaussian Splatting 対応の現在地を、**Claude / Copilot / その他のコーディングエージェント**がそのまま引き継げる粒度でまとめた handoff 文書です。リポジトリ直下の `CLAUDE.md` は開発コマンド早見、本書は **屋外パイプラインの文脈・判断・失敗の履歴**に重きを置きます。
+この文書は、`GS Mapper` リポジトリにおける屋外 3D Gaussian Splatting 対応の現在地を、**Claude / Codex / Copilot / その他のコーディングエージェント**がそのまま引き継げる粒度でまとめた handoff 文書です。リポジトリ直下の `CLAUDE.md` は開発コマンド早見、本書は **屋外パイプラインの文脈・判断・失敗の履歴**に重きを置きます。
 
 ## エージェント向け: 読み方
 
@@ -19,13 +19,15 @@
 - ローカル worktree `nerf-gs-playground` はそのまま
 - 屋外向け 7 フェーズ（config / SH 全次数 / depth supervision / DUSt3R / LiDAR SLAM-GNSS-NMEA / dynamic mask / appearance-sky）は全て実装済み
 - **2026-04 のセッションで Blocker 1（MCD pose import）と §16 の Pages デモ偽物問題は解決済み**（詳細は §4 / §10）
-- **2026-04-20 セッションで MCDVIRAL calibration YAML を公式 Download page 本体で発見し、`scripts/download_mcd_calibration.sh` + `--mcd-static-calibration` フラグまで配線完了**（詳細は §4.3.3.c / §15 と PR #79 / #80）。残るは実際の supervised MCD training 本走のみ。
+- **2026-04-20 セッションで MCDVIRAL calibration YAML を公式 Download page 本体で発見**（Drive ID は §4.3.3.c / §15.1 参照）。**2026-04-21 時点の本 worktree** では `scripts/download_mcd_calibration.sh` + `ros_tf.load_static_calibration_yaml` / `merge_static_tf_maps` + CLI `--mcd-static-calibration`（`preprocess` / `run` / `demo`）+ 単眼 MCD の colorize/depth 経路 + テストまで **ローカル実装済み**（upstream `main` との差分は `git log` / PR 状態で要確認）。
+- **2026-04-21 Codex 追検証**: `tuhh_day_04` supervised 成功扱いは **撤回**。`/vn200/GPS` は 75,173 件すべて `latitude=longitude=altitude=0.0` で、既存 `outputs/tuhh_day04_sup` は静止 GNSS trajectory だった。さらに trainer の `images.txt` parser が空の 2D points 行を捨てて 400 entries 中 200 images しか読んでいなかった。修正内容は **§15.4**。
+- **2026-04-21 Codex 追実走**: valid GNSS の `ntu_day_02` を 35 s trim + altitude flatten + ATV calibration + LiDAR seed/depth supervision で preprocess/train/export し、`docs/assets/outdoor-demo/mcd-ntu-day02-supervised.splat` を production viewer / README に追加済み（詳細は **§15.5**）。`tuhh_day_04` の zero-GNSS artifact は production picker から除外。
 
 直近の最大の残課題は以下。
 
-1. **Priority A**: MCD day session (`tuhh_day_04`) を supervised 経路 (`--method mcd` + GNSS + LiDAR depth + `--mcd-static-calibration`) で回して、bundled demo に 6 本目 `mcd-tuhh-day04-supervised.splat` を追加する。レシピは §4.3.3.c、pitfalls は §4.3.3.a。**calibration + downloader + CLI フラグが全部 merge 済み or pending なので、次セッションは新規コードほぼ不要、GPU 時間が要るだけ**。
-2. Priority B: **Waymo 実データ E2E が未検証**
-3. Priority C: NMEA / GNSS / IMU robustness、depth / appearance / sky の比較評価
+1. Priority B: **Waymo 実データ E2E が未検証**
+2. Priority C: NMEA / GNSS / IMU robustness、depth / appearance / sky の比較評価
+3. Priority D: MCD `ntu_day_02` supervised は production bundle 化済みだが、屋外シーン品質を上げるにはより長い valid-GNSS session / multi-camera / training budget 比較が必要。
 
 ## 1. リポジトリの現在の識別子
 
@@ -63,6 +65,13 @@
 | Three.js viewer のソフトスプライト化 / helper スケール | `docs/index.html` | `PointsMaterial` を radial-alpha disc + sizeAttenuation。grid/axes は scene bounds に合わせて動的に再構築 |
 | `configs/training_depth.yaml` | `configs/` | `depth_loss_weight: 0.1` の outdoor + depth 学習プリセット |
 | `configs/datasets.yaml` に bag4 / bag6 | `configs/datasets.yaml` | S3 公開バケットの `autoware_leo_drive_bag4` / `bag6` を `scripts/download_datasets.py` から取得可 |
+| **2026-04-21 worktree** `merge_static_tf_maps` / `load_static_calibration_yaml` | `src/gs_sim2real/datasets/ros_tf.py` | MCDVIRAL `body:` YAML → `StaticTfMap`（`T` 4×4）。`merge_static_tf_maps(*maps)` は **後勝ち**で child frame を上書き。`tests/test_ros_tf.py` に単体テスト |
+| **2026-04-21** `--mcd-static-calibration` | `src/gs_sim2real/cli.py` | `preprocess` / `run` / `demo` に同フラグ。`_mcd_static_calibration_tf` → `_mcd_gnss_sparse_import` 先頭で bag TF とマージ。マルチカメラ `HybridTfLookup` の `static_topo` にも同じ YAML をマージ |
+| **2026-04-21** `_mcd_write_pinhole_from_calibration_yaml` | `cli.py` | bag に **`sensor_msgs/CameraInfo` が無い** MCD セッション（例: `tuhh_day_04` の `*_d455b.bag`）向け。YAML の `intrinsics` + `resolution` + `rostopic` 照合で `calibration/<topic_sanitized>.json` を合成し `extract_camera_info` 失敗分を埋める |
+| **2026-04-21** 単眼 `_mcd_gnss_sparse_import` の colorize + depth | `cli.py` | 従来はマルチカメラ分岐にしか `_mcd_colorize_seed` / `_mcd_export_depth_maps` が無く、**単眼 supervised で depth supervision が空振り**していた。単眼でも LiDAR seed 後に同 API を呼ぶ。**`extract_frames` が単 topic のとき画像は `images/frame_*.jpg`（サブディレクトリ無し）**なので、`cameras[]` の `subdir` は **`""`**（`colorize_lidar_world_from_images` / `export_lidar_depth_per_image` のパス規約に合わせる） |
+| **2026-04-21** `scripts/download_mcd_calibration.sh` | `scripts/` | `handheld` / `atv` の Drive ID を引くシェル（CC BY-NC-SA — **repo に YAML を commit しない**）。`data/` は `.gitignore` |
+| **2026-04-21** `scripts/capture_readme_splat_previews.py` | `scripts/` | `docs/splat.html` を **headed Playwright + CDP `Page.captureScreenshot`** でキャンバスクリップ。README 表用 `docs/images/demo-sweep/0{1-6}_*.png` 再生。headless だと WebGL が真っ黒になりがち → **デフォルト headed**、`DISPLAY=:0` 推奨 |
+| **2026-04-21** README / hero 訂正 | `README.md`, `scripts/record_demo_gif.py` | MCD `tuhh_day_04` supervised 成功表記を撤回。valid GNSS の `ntu_day_02` supervised を追加し、Benchmark / scene picker / README thumbnails は production 6 splats 扱い。`mcd-tuhh-day04-supervised.splat` は zero-GNSS diagnostic asset として残すが production picker から除外 |
 
 ## 3. Public data で「実際に verified された」もの
 
@@ -173,7 +182,7 @@ scripts/download_mcd_folder.sh 1nEPiTXkVmLIhmBOVNpwSAEgnAXupnAxx data/mcd/tuhh_n
 
 で 30 分以内で回る、という playbook が確立した。LiDAR depth supervision / appearance / BA を足して質を詰めるなら、そのとき初めて GNSS + calibration path に戻る。
 
-#### 4.3.3.c `tuhh_day_04` を supervised に乗せる full recipe (2026-04-20、次セッション引継)
+#### 4.3.3.c `tuhh_day_04` supervised recipe（2026-04-21 追記: GNSS all-zero のため非推奨）
 
 2026-04-20 セッションで §4.3.3.a の blocker 群が全部解消した:
 
@@ -184,25 +193,25 @@ scripts/download_mcd_folder.sh 1nEPiTXkVmLIhmBOVNpwSAEgnAXupnAxx data/mcd/tuhh_n
    - IR mono: `d455b_infra1/2`、`d455t_infra1/2`
    - IMUs: `d455b_imu`、`d455t_imu`、`vn200_imu` (body 基準はたいてい vn200_imu が identity)
    - LiDAR: `mid70` (Livox `/livox/lidar`)、`os_sensor` (Ouster OS1-64 `/os1_cloud_node/points`)、`os_imu`
-4. **day session に valid GNSS fix があることは §4.3.3.b で既に確認済み** (`tuhh_day_04` の d455b color は 5558 frame / 19-20 frame で非退化 trajectory)。
+4. **2026-04-21 追検証で訂正**: §4.3.3.b で確認した非退化 trajectory は image-only DUSt3R の結果であり、GNSS fix の検証ではなかった。`tuhh_day_04` の `/vn200/GPS` は all-zero なので、この session を GNSS supervised には使わない。
 
-これを踏まえた next-session の full incantation (GPU 環境、`data/mcd/tuhh_day_04/` に session folder 展開済み前提):
+以下は履歴として残すが、**現行コードでは all-zero GNSS を skip するため `tuhh_day_04` では失敗するのが正しい**。topic 名のメモだけは有効 — 完本 DL の `tuhh_day_04_os1_64.bag` では PointCloud2 が **`/os_cloud_node/points`**（`/os1_cloud_node/points` ではない）。VN200 の NavSatFix topic 名は **`/vn200/GPS`**（`/vn200/gps` ではない）が、中身は all-zero。
 
 ```bash
-# 1) calibration YAML fetch (1 回きり)
+# 1) calibration YAML fetch (1 回きり; CC BY-NC-SA — repo に commit しない)
 scripts/download_mcd_calibration.sh handheld data/mcd/calibration_handheld.yaml
 
-# 2) supervised preprocess (GNSS trajectory + LiDAR-seeded colored sparse + per-image depth)
+# 2) supervised preprocess（ローカルは PYTHONPATH=src python3 -m gs_sim2real.cli … でも可）
 gs-mapper preprocess \
   --images data/mcd/tuhh_day_04 \
   --output outputs/tuhh_day04_sup \
   --method mcd \
   --image-topic /d455b/color/image_raw \
   --mcd-camera-frame d455b_color \
-  --lidar-topic /os1_cloud_node/points \
+  --lidar-topic /os_cloud_node/points \
   --mcd-lidar-frame os_sensor \
   --imu-topic /vn200/imu \
-  --gnss-topic /vn200/gps \
+  --gnss-topic /vn200/GPS \
   --mcd-static-calibration data/mcd/calibration_handheld.yaml \
   --mcd-seed-poses-from-gnss \
   --mcd-tf-use-image-stamps \
@@ -211,12 +220,17 @@ gs-mapper preprocess \
   --max-frames 400 --every-n 1 \
   --matching sequential --no-gpu
 
-# 3) depth-supervised gsplat training (`configs/training_depth_long.yaml` が bag4/bag6 で実績)
+# 3) depth-supervised gsplat training（CLI iterations が yaml の num_iterations より優先されるので明示）
 gs-mapper train --data outputs/tuhh_day04_sup --output outputs/tuhh_day04_sup_train \
   --method gsplat --iterations 30000 \
   --config configs/training_depth_long.yaml
 
-# 4) 400k/12.8 MB 以下に export して bundle
+# 3b) 長め学習例（2026-04-21 実走: outputs/tuhh_day04_sup_train50k、wall ~1150 s 台、最終 Gaussians ログ上 163,410）
+gs-mapper train --data outputs/tuhh_day04_sup --output outputs/tuhh_day04_sup_train50k \
+  --method gsplat --iterations 50000 \
+  --config configs/training_depth_long.yaml
+
+# 4) 400k / 12.8 MB に export して bundle（どちらの PLY でも可）
 gs-mapper export \
   --model outputs/tuhh_day04_sup_train/point_cloud.ply \
   --format splat \
@@ -233,16 +247,22 @@ gs-mapper export \
 
 1. **CameraInfo の `frame_id` が YAML のセンサー名と一致しないかもしれない**。MCD bag は `/d455b/color/camera_info` の header.frame_id がたとえば `d455b_color_optical_frame` のような `_optical_frame` suffix 付きで publish される可能性があり、そのままだと `tf_map.lookup(base_frame, "d455b_color_optical_frame")` が miss する。その場合は `--mcd-camera-frame d455b_color` を明示的に渡して override すれば YAML 側の key と一致する。`_mcd_gnss_sparse_import` は `CameraInfo.frame_id` を優先し、空なら `--mcd-camera-frame` にフォールバックするので、明示的に frame name を渡すのが安全。
 2. **`--mcd-base-frame` のデフォルトは `base_link`** で、`load_static_calibration_yaml(path, base_frame="base_link")` として YAML を読むので、YAML の `body:` key は内部的に `base_link` にリラベルされる。`--mcd-lidar-frame os_sensor` / `--mcd-camera-frame d455b_color` のような child name はそのまま引ける。もし別名を使いたい場合は `--mcd-base-frame body` にして lookup 側も `body` に揃える。
-3. **GNSS fix の事前 spot-check**: `scripts/outdoor_smoke.sh mcd-list` 等で `/vn200/gps` の `status.status >= 0` サンプル率を確認。day session は取れているはずだが、`tuhh_night_09` のように全 sample fix=0 な bag は `--mcd-seed-poses-from-gnss` で即落ちる。
-4. **session folder の二重ディレクトリ** — `gdown --folder` で展開すると `data/mcd/tuhh_day_04/tuhh_day_04_*.bag` という shape になる (§4.3.3.a #3)。`MCDLoader._find_bag_paths` は再帰的に `.bag` を拾うので `--images data/mcd/tuhh_day_04` のまま渡して OK。
-5. **LiDAR bag (`*_ouster.bag` など) が無いと depth supervision が無効化される** — image-only bag しか DL していない場合は `--extract-lidar` が空振りし、`mcd-export-depth` は warning を出して skip する。LiDAR 無しで supervised 感は出ないので、session folder 全部 (~12 GB) DL する。
+3. **GNSS fix の事前 spot-check**: `scripts/outdoor_smoke.sh mcd-list` 等で **`/vn200/GPS`**（大文字）の `status.status >= 0` サンプル率を確認。day session は取れているはずだが、`tuhh_night_09` のように全 sample fix=0 な bag は `--mcd-seed-poses-from-gnss` で即落ちる。
+4. **`tuhh_day_04` の d455b bag には CameraInfo が無い**（2026-04-21 確認）。**`_mcd_write_pinhole_from_calibration_yaml`** 経由で PINHOLE JSON を合成しないと単眼 supervised が弱体化する。実装済み worktree では `extract_camera_info` 失敗後に YAML から補完する。
+5. **session folder の二重ディレクトリ** — `gdown --folder` で展開すると `data/mcd/tuhh_day_04/tuhh_day_04_*.bag` という shape になる (§4.3.3.a #3)。`MCDLoader._find_bag_paths` は再帰的に `.bag` を拾うので `--images data/mcd/tuhh_day_04` のまま渡して OK。
+6. **LiDAR bag (`*_ouster.bag` など) が無いと depth supervision が無効化される** — image-only bag しか DL していない場合は `--extract-lidar` が空振りし、`mcd-export-depth` は warning を出して skip する。LiDAR 無しで supervised 感は出ないので、session folder 全部 (~12 GB) DL する。
 
-**成果物の期待値**（§3.1 bag4 の類推から）:
+**当時の期待値（2026-04-21 追検証で `tuhh_day_04` には不適合と判明）**:
 - registered frames: 240-400 × 1-2 cam = 240-800（day session は single cam でも十分）
 - LiDAR world seed: 100k-200k 点 (colorized)
 - trained gauss: 500k-1.5M、400k filter 後 12.8 MB
 - L1: 0.08-0.12 (bag4 相当を期待、DUSt3R 版の 0.16 より一段良い)
-- bundled 6 本目 = 既存 5 本と A/B 比較可能な「同じ scene の supervised vs pose-free」軸が tuhh_day_04 でも成立。bag6 で {supervised, DUSt3R, MAST3R}、MCD で {DUSt3R, MAST3R, supervised} の対称行列が閉じる。
+- valid GNSS session であれば、既存 5 本と A/B 比較可能な「同じ scene の supervised vs pose-free」軸が成立する見込みだった。`tuhh_day_04` は all-zero GNSS のためこの用途には使わない。
+
+**2026-04-21 実測（単眼 400 frames、`outputs/tuhh_day04_sup`）** — **§15.4 により診断 artifact 扱い**:
+- preprocess: LiDAR colorize **約 32k / 200k** 点が非灰色、per-image depth **400** maps、`sparse/0` 生成
+- train **30k**（`outputs/tuhh_day04_sup_train`）: wall **~5600 s** 級、**Final Gaussians ~436k**、ログ終盤 **L1 ~0.19**
+- train **50k**（`outputs/tuhh_day04_sup_train50k`）: wall **~1150 s**、**Final Gaussians 163,410**（ログ上 densify 後ほぼ固定）、iter 50000 行 **L1 ~0.25**。**なぜ 30k 実行と Gaussians 最大値が食い違う見えるかは未解決**（同一 preprocess パスを再読みしているつもりでも、コード版・config マージ・ログの見ている run が異なる可能性 — Codex 引継ぎ先で要照合）。
 
 ### 4.4 densification は 100k 級初期点でも Stable に走るよう修正済み
 
@@ -494,7 +514,7 @@ Claude Opus 4.7 で PR #77〜#80 の 4 本。OSS 顔の残り整備 + §4.3.3.a 
 - PR #80 — `--mcd-static-calibration <calib.yaml>` フラグを `preprocess` / `run` / `demo` の 3 subcommand に配線。実装は `src/gs_sim2real/datasets/ros_tf.py::load_static_calibration_yaml(path, base_frame=…)` が YAML の `body:` セクションから `StaticTfMap` (parent=`base_frame` → child=`<sensor>` edges) を構築、`merge_static_tf_maps(…)` で bag-derived map とマージ (後者が collision 時に勝つ — MCD では常に empty なので YAML が通る)。`_mcd_gnss_sparse_import` の `tf_map` 構築直後と `HybridTfLookup` 用の `static_topo` 構築直後の両方でマージして、`--mcd-tf-use-image-stamps` と併用しても正しい extrinsics が出るようにした。テスト 6 件: YAML parser (happy path / parent override / lookup round-trip / missing `body:` raises / malformed T skipped) + merge helper (後者が勝つ / 両側エッジ保存 / `None` 許容) + CLI flag presence on 3 subcommands。
 
 **本セッションで変わった blocker 状態**:
-- §6 の "非対象" には Waymo E2E が残るが、§4.3.3 の MCD supervised 経路はもう blocker が無い。**calibration 入手手段 + YAML 注入 CLI + day session 選定 + GNSS fix 確認が全部揃っている**。次セッションは (a) `scripts/download_mcd_calibration.sh handheld`、(b) §4.3.3.c の CLI incantation、(c) 30k iter training、(d) `ply_to_splat` で 400k/12.8 MB、(e) bundle triplet 更新 (CONTRIBUTING.md §"Bundled demo splats")、の 5 step が一直線。bag4/bag6 の supervised と同 recipe なので GPU 2-4 時間あれば回る見込み (bag4 は 30k iter で 932k gauss、L1 ~0.08)。
+- §6 の "非対象" には Waymo E2E が残る。§4.3.3 の MCD supervised 経路は calibration 入手手段と YAML 注入 CLI までは揃った。後続の 2026-04-21 追検証で **`tuhh_day_04` の GNSS fix 確認は誤り**と判明したが（§15.4）、valid GNSS の `ntu_day_02` で同 recipe を実走して production bundle 化済み（§15.5）。
 - PR #77 の dependabot が 2026-04-21 月曜に初回発火する。最初の週は pip 側で `urllib3` / `certifi` 等の patch bump が数本出る想定、GHA 側は `actions/setup-python` / `actions/checkout` の最新 minor があれば 1-2 本。マージ前に `ci.yml` / `pages.yml` / `publish.yml` が通ることを必ず確認。
 
 **本セッションで明らかに touch しなかった / あえて残した判断**:
@@ -506,7 +526,7 @@ Claude Opus 4.7 で PR #77〜#80 の 4 本。OSS 顔の残り整備 + §4.3.3.a 
 
 **Priority A (ship できる最短経路)**:
 
-1. **`mcd-tuhh-day04-supervised.splat` を bundle の 6 本目に** — §4.3.3.c の full recipe。コード変更は bundle triplet 更新 (1 行 JSON + 3 HTML `<option>` + 1 test 関数) のみ、本丸は GPU training。PR #79 / #80 が merged 済みなら即着手可。想定 L1 0.08-0.12 で pose-free DUSt3R 版 (0.18) / MAST3R 版 (0.16) に対して明らかに sharper な比較対象になる。README Benchmark 表の MCD 行を 3 項目 (DUSt3R / MAST3R / supervised) に拡張できる。
+1. ~~**`mcd-tuhh-day04-supervised.splat` を bundle の 6 本目に**~~ — **§15.4 で撤回**。`tuhh_day_04` の `/vn200/GPS` は all-zero。代替として `ntu_day_02` を valid GNSS session として採用し、§15.5 で `mcd-ntu-day02-supervised.splat` を production bundle 化済み。
 2. **`docs/experiments.md` の prune** — ユーザ合意後。公開 vs 内部 note の線引き方針を先に決める (前セッションで ROI 低判定、次セッションで議論)。
 
 **Priority B (blocker あり or ROI 中)**:
@@ -520,3 +540,335 @@ Claude Opus 4.7 で PR #77〜#80 の 4 本。OSS 顔の残り整備 + §4.3.3.a 
 6. `--renderer gsplat` CUDA path の smoke テスト (gated、GPU 必要)。
 7. README `apps/` / `projects/` プロトタイプ節の最新化 — DreamWalker Live / Robotics の現状と同期していない可能性あり。
 8. NMEA / GNSS / IMU robustness (§6 の残 blocker)。日跨ぎ RMC、IMU quaternion 融合、logger 時刻ずれ。
+
+## 15.3 Codex 引き継ぎ — セッション 2026-04-21（Priority A 実走・bundle 6 本目、§15.4 で訂正）
+
+**注意**: この節は作業当時の記録。2026-04-21 の追検証で GNSS all-zero と trainer parser bug が見つかったため、成功扱いは **§15.4 で撤回**。以下の数値は「静止 GNSS trajectory + 旧 parser で 200 images training した診断 artifact」の履歴として読む。
+
+### 確認済み事実（ローカル）
+
+| 項目 | 値 |
+|------|-----|
+| LiDAR topic | `/os_cloud_node/points`（`/os1_cloud_node/points` ではない） |
+| GNSS topic | `/vn200/GPS`（大文字、`status` 要確認） |
+| preprocess 出力 | `outputs/tuhh_day04_sup` — colorized LiDAR 約 32k / 200k 非灰色、depth **400** maps、400 frames |
+| train 30k | `outputs/tuhh_day04_sup_train` — ログ上最終 Gaussians **~436k**、L1 **~0.19**（スレッド記録） |
+| train 50k | `outputs/tuhh_day04_sup_train50k` — 壁時計 **~1152 s**、最終 **163,410** Gaussians、末尾 L1 **~0.2531**、`point_cloud.ply` あり |
+| バンドル splat（スレッド時点） | `docs/assets/outdoor-demo/mcd-tuhh-day04-supervised.splat`（**30k** 系 PLY から export、400k cap / ~12.8 MB と記録） |
+| 単眼 flat images | `_mcd_gnss_sparse_import` で LiDAR colorize + depth は **`subdir: ""`**（`images/frame_*.jpg`） |
+| d455b bag | **CameraInfo なし** → `_mcd_write_pinhole_from_calibration_yaml` 必須（§4.3.3.c Pitfalls 4） |
+| README / viewer | §15.5 後は production 6 scenes（`ntu_day_02` supervised 追加）。`tuhh_day_04` zero-GNSS artifact は diagnostic asset としてのみ残し、scene picker / Benchmark / hero script から除外 |
+
+### 実装タッチポイント（worktree）
+
+- `src/gs_sim2real/datasets/ros_tf.py` — `merge_static_tf_maps`, `load_static_calibration_yaml`
+- `src/gs_sim2real/cli.py` — `--mcd-static-calibration`、`_mcd_write_pinhole_from_calibration_yaml`、単眼 `subdir: ""`
+- `scripts/download_mcd_calibration.sh`, `scripts/capture_readme_splat_previews.py`, `scripts/record_demo_gif.py`（6 splats）
+- テスト: `tests/test_ros_tf.py`, `tests/test_cli.py`, `tests/test_pages_assets.py`
+
+### 未確認 / 要調査
+
+1. **同じ preprocess `outputs/tuhh_day04_sup` に対し、30k で ~436k Gaussians、50k で ~163k** — 設定マージ・コード版・ログ解釈のどれか要突合。再現コマンドと `configs/training_depth_long.yaml` の実効値をログと照合すること。
+2. **Bundled `.splat` を 50k PLY に差し替えるか** — 品質・ファイルサイズ・README Benchmark 行との整合。
+3. **ローカル VLM（Ollama moondream / llava:7b）** — splat スクショの VQA は信頼できず、検証用途には不適。
+
+### 次アクション（Codex / 次エージェント）
+
+1. `git status` / `main` との差分確認 → PR 前に `pytest` + `ruff`。
+2. `tuhh_day_04` は all-zero GNSS のため production には戻さない。新しい valid GNSS session を採用する場合のみ、`gs-mapper export` で別名の `.splat` を作り README Benchmark の数値も揃える。
+3. Gaussian 数の乖離を潰す（必要なら同一コミット・同一 config で 30k / 50k を再実行してログ比較）。
+4. 任意: `record_demo_gif.py` の ffmpeg `palettegen` 警告（`-update 1` 等）の整理。
+
+### 絶対パス（このリポジトリ）
+
+- ルート: `/media/sasaki/aiueo/ai_coding_ws/nerf-gs-playground`
+- preprocess: `outputs/tuhh_day04_sup`
+- trains: `outputs/tuhh_day04_sup_train`, `outputs/tuhh_day04_sup_train50k`（ログ例: `outputs/tuhh_day04_sup_train50k.log`）
+- bundle: `docs/assets/outdoor-demo/mcd-tuhh-day04-supervised.splat`
+
+### 事実と推論（引き継ぎで混同しないこと）
+
+| 区分 | 内容 |
+|------|------|
+| **直接確認できる** | preprocess 出力ディレクトリの `images/`・`depth/`・`sparse/0` の存在、訓練ログファイルの最終行、`.ply` / `.splat` の mtime とサイズ、`rosbag info` の topic 一覧 |
+| **スレッド／メモからの転記** | 「30k で L1 ~0.19」「50k で L1 ~0.2531」「436k vs 163k Gaussians」— **同一マシン・同一コミットのログに再突合するまで確定値ではない** |
+| **要再検証** | 30k の wall **~5600 s** と 50k の wall **~1152 s** は、iter 数と単調関係が逆なので **別 GPU・別実行コンテキスト・ログの取り違え**の可能性がある。引き継ぎ先は `time` 付き再実行 or ログ先頭の hostname / git SHA / torch 版を突き合わせること |
+
+### §15.2 との整合（2026-04-21 時点）
+
+- §15.2 の **Priority A #1**（`mcd-tuhh-day04-supervised.splat` を 6 本目に）— **§15.4 で撤回**。現 worktree では diagnostic asset としてのみ残す。
+- §15.2 の Priority A #2（`docs/experiments.md` prune）— **未着手のまま**。
+
+### Codex 着任時チェックリスト（推奨順）
+
+1. `git fetch origin && git log --oneline -5` と **`git status`** — ブランチ名・未コミット差分・`main` からの divergence を把握。
+2. **MCD 関連の回帰** — `CONTRIBUTING.md` の incantation に従い、少なくとも次を通す（E2E は GPU 次第で skip 可だが、pages テストは軽い）:
+   - `ruff format src/ tests/ scripts/` → `ruff check src/ tests/ scripts/` → `pytest tests/ -q --ignore=tests/e2e`
+3. **該当テストのピンポイント** — `pytest tests/test_ros_tf.py tests/test_cli.py tests/test_pages_assets.py tests/test_mcd.py tests/test_gsplat_trainer.py -q`（MCD calibration / CLI フラグ / zero-GNSS guard / parser / Pages diagnostic）。
+4. **§4.3.3.c の bash ブロック**が現行 CLI と一致するか — フラグリネームが入っていないか `gs-mapper preprocess --help` で確認。
+5. **Pages 資産** — `docs/scenes-list.json` が production URL として `assets/outdoor-demo/mcd-ntu-day02-supervised.splat` を含み、`mcd-tuhh-day04-supervised.splat` を含まないこと。ローカルで `python3 -m http.server` 等から `docs/splat.html` を開きシーン切替。
+6. **README 表・Benchmark 行** — `MCD ntu_day_02 — supervised` の row が実走値（400 frames / 30k iter / 500 s / 906k→400k / L1 0.195 / 12.8 MB）と一致しているか。食い違うなら README か export 元を直す。
+
+### 検証コマンド早見（データとテスト）
+
+```bash
+# topic 実在確認（session folder を path に）
+rosbag info data/mcd/tuhh_day_04/*.bag | head -80
+
+# 開発ルートで（venv なら activate 後）
+ruff format src/ tests/ scripts/
+ruff check src/ tests/ scripts/
+pytest tests/ -q --ignore=tests/e2e
+
+# README 用 PNG（WebGL は headed 推奨）
+export DISPLAY=:0   # 環境に合わせる
+python3 scripts/capture_readme_splat_previews.py
+
+# hero GIF（6 シーン）
+python3 scripts/record_demo_gif.py
+```
+
+**Headless 注意**: `capture_readme_splat_previews.py` はデフォルト headed。headless のままだとキャンバスが真っ黒・PNG が極小になりうる → CI ではスキップ or 別 job で headed 実行する運用を想定。
+
+### 実装の読みどころ（コードダイブ順）
+
+1. **`_mcd_gnss_sparse_import`**（`cli.py`）— static calib マージ、単眼分岐での `_mcd_colorize_seed` / depth export、**`subdir: ""`**。
+2. **`_mcd_write_pinhole_from_calibration_yaml`** — CameraInfo 欠落 bag への PINHOLE JSON 合成。
+3. **`load_static_calibration_yaml` / `merge_static_tf_maps`**（`ros_tf.py`）— YAML `body:` → edge、マージ時 **後勝ち**。
+4. **`MCDLoader.colorize_lidar_world_from_images` / `export_lidar_depth_per_image`**（`mcd.py`）— path 規約（`images/` flat vs サブディレクトリ）。
+
+### トラブルシュート早見
+
+| 症状 | まず疑うこと |
+|------|----------------|
+| preprocess で GNSS seed が落ちる | topic が `/vn200/gps` になっていないか（**大文字 `GPS`**）。fix がゼロの night session でないか。 |
+| depth maps が 0 / warning のみ | LiDAR bag 未 DL、`--extract-lidar` が空振り。`--lidar-topic` が **`/os_cloud_node/points`** か。 |
+| 単眼で colorize が灰色のまま | `cameras[]` の `subdir` が `frame_*.jpg` の実パスと一致しているか（単眼は **`""`**）。 |
+| export 後の viewer が真っ白 | `.splat` の URL パス、`scenes-list.json` の相対 URL、ブラザの CORS（`file://` ではなく local server）。 |
+| プレビュー PNG が真っ黒 | headless WebGL。`DISPLAY` 付き headed で `capture_readme_splat_previews.py`。 |
+
+### PR 本文に貼れる要約（テンプレ）
+
+- **目的**: MCD `tuhh_day_04` supervised 成功扱いを訂正し、all-zero GNSS から静止 trajectory / false-positive bundle が出ないようにする。
+- **変更**: NavSatFix zero placeholder の skip、COLMAP `images.txt` parser の空 2D 行対応、MCD diagnostic relabel、valid GNSS の `ntu_day_02` supervised bundle 追加。
+- **検証**: `ruff` + `pytest tests/ -q --ignore=tests/e2e`。実データ spot-check で `/vn200/GPS` は 75,173 / 75,173 samples が all-zero、修正後は `extract_navsat_trajectory` が fail-fast。
+- **既知のフォローアップ**: `ntu_day_02` より長い valid-GNSS session / multi-camera で supervised MCD を再実走し、屋外シーン品質を比較する。
+
+## 15.4 Codex 追検証 — `tuhh_day_04` supervised 成功扱いの訂正
+
+**結論**: §15.3 の `tuhh_day_04` supervised bundle は **ship 品質ではない**。原因は 2 つ。
+
+1. **GNSS が all-zero** — `data/mcd/tuhh_day_04/.../tuhh_day_04_vn200.bag` の `/vn200/GPS` は 75,173 samples すべて `latitude=longitude=altitude=0.0`。従来の `extract_navsat_trajectory` は `status.status=0` を valid と見ていたため、ゼロ fix から静止 ENU trajectory を生成していた。`outputs/tuhh_day04_sup/pose/gnss_trajectory*.tum` と `sparse/0/images.txt` は pose が 1 種類しかない。
+2. **trainer が 400 entries 中 200 images しか読んでいなかった** — COLMAP text `images.txt` は metadata 行 + 2D points 行のペアだが、pose-seeded import では 2D points 行が空。旧 `_load_images_txt` は空行を捨ててから 2 行ペアで読んでいたため、半数の image metadata を 2D points 行扱いで skip していた。
+
+**実装済み修正**:
+
+- `src/gs_sim2real/datasets/mcd.py::extract_navsat_trajectory` は `lat == 0 && lon == 0` の placeholder NavSatFix を skip する。`tuhh_day_04` は now fail-fast: `Need at least 2 NavSatFix samples ... got 0 from /vn200/GPS`。
+- `src/gs_sim2real/train/gsplat_trainer.py::_load_images_txt` は空の 2D points 行を保持したまま metadata 行を parse する。修正後は `outputs/tuhh_day04_sup` を `1 camera / 400 images / 100000 points` と読める。
+- `scripts/check_mcd_gnss.py` を追加。NavSatFix の valid / zero-placeholder / invalid-status 件数、ENU translation extent、任意の `image_timestamps.csv` との時刻 overlap を training 前に判定する。
+- `README.md` / viewer labels は `mcd-tuhh-day04-supervised.splat` を **zero-GNSS diagnostic** に relabel し、Benchmark から外した。その後 §15.5 で `mcd-ntu-day02-supervised.splat` に置き換え、production picker / README / hero script は production 6 splats を周回する。
+- Tests: `tests/test_mcd.py::test_extract_navsat_trajectory_rejects_zero_placeholder_fixes`, `tests/test_gsplat_trainer.py::test_load_images_txt_preserves_entries_with_blank_points_lines`, `tests/test_check_mcd_gnss_script.py`。
+
+**Preflight command**:
+
+```bash
+scripts/check_mcd_gnss.py data/mcd/<session> \
+  --gnss-topic /vn200/GPS \
+  --image-timestamps outputs/<preprocess>/images/image_timestamps.csv
+```
+
+`tuhh_day_04` 実測: `total=75173`, `valid=0`, `zero placeholders=75173`, `image overlap=0` → non-zero exit。
+
+**次に supervised MCD を ship する条件**:
+
+- `rosbags` で対象 session の NavSatFix を直接 scan し、`lat/lon != 0` が十分あり、ENU translation extent が数 m 以上あることを training 前に確認する。
+- 具体的には `scripts/check_mcd_gnss.py` が `[OK]` になることを preprocess / train の前提にする。
+- `GsplatTrainer._load_colmap_data(preprocess_dir)` で images 数が `sparse/0/images.txt` の camera entries 数と一致することを確認する。
+- 新しい valid session で preprocess → train → export をやり直すまで、`mcd-tuhh-day04-supervised.splat` は benchmark / README hero の成功例にしない。
+
+### セキュリティ / ライセンス（手戻り防止）
+
+- **MCDVIRAL calibration YAML** — CC BY-NC-SA。**リポジトリに YAML 本体を commit しない**。`scripts/download_mcd_calibration.sh` のみ。
+- **大容量 bag / outputs** — `.gitignore` 想定。PR にデータを載せない。
+
+### エージェント向け短い読み順（本ファイルのみ）
+
+1. **§0 TL;DR**（今週の状態）
+2. **§15.5**（`ntu_day_02` の valid GNSS probe と trim/flatten 条件）
+3. **§15.3**（本セッションのパス・数値・チェックリスト）
+4. **§4.3.3.c**（コピペ用コマンドと Pitfalls）
+5. **§6**（残ブロッカー）
+6. **§15.1–15.2**（PR 履歴と未完了 Priority B/C）
+
+## 15.5 Codex 追検証 — `ntu_day_02` GNSS 候補の cheap probe
+
+**結論**: `ntu_day_02` は `tuhh_day_04` と違い non-zero GNSS がある。ただし raw NavSatFix は開始直後に altitude spike と水平 warm-up jump があるため、そのまま supervised preprocess に使わない。現 worktree では以下を実装して、trim 後の sparse smoke まで通した。
+
+- `MCDLoader.DEFAULT_GNSS_TOPICS` に `/vn200/GPS` / `/vn100/GPS` を追加。
+- `scripts/check_mcd_gnss.py` に horizontal / vertical extent、raw altitude span、p95 / max horizontal speed、`--flatten-altitude`、`--start-offset-sec` を追加。
+- `MCDLoader.extract_navsat_trajectory(..., flatten_altitude=True, start_offset_sec=...)` を追加。
+- CLI `preprocess` / `run` / `demo` に `--mcd-flatten-gnss-altitude` と `--mcd-start-offset-sec` を追加。MCD image / LiDAR extraction と GNSS TUM 出力に同じ start offset を渡す。
+- `scripts/download_mcd_session.sh` は小さい Drive file が confirm page ではなく直接返るケースを保存できるようにした。
+
+**取得したローカル subset**（full folder 14.8 GB ではなく supervised 単眼に必要なものだけ）:
+
+| file | source | size |
+|------|--------|------|
+| `data/mcd/ntu_day_02/ntu_day_02_vn200.bag` | official VN200 file (`1wo1rUuzqDkvFMhXJhx9fnNtn6uyh_F7z`) | 25 MB |
+| `data/mcd/ntu_day_02/ntu_day_02_d455b.bag` | official D455 bottom file (`1sfQdn6MGt4BsSx6PQtDdMZSiwfFcsihk`) | 5.0 GB |
+| `data/mcd/ntu_day_02/ntu_day_02_os1_128.bag` | official Ouster file (`1jDS84WvHCfM_L73EptXKp-BKPIPKoE0Z`) | 5.0 GB |
+| `data/mcd/ntu_day_02/ntu_day_02_ltpb.bag` | official LTPB file (`1a31zWxJK-OgqP6z4IV4WudF2DbcjYRxY`) | 401 KB |
+| `data/mcd/calibration_atv.yaml` | `scripts/download_mcd_calibration.sh atv` | 6.3 KB |
+
+**Topic 確認**:
+
+- images: `/d455b/color/image_raw` (6862 frames)
+- LiDAR: `/os_cloud_node/points` (2288 frames)
+- GNSS: `/vn200/GPS` (91537 samples)
+- IMU: `/vn200/imu`
+- ATV calibration YAML は `d455b_color`, `os_sensor`, `vn200_imu` を解決できる。`d455b` bag 自体に CameraInfo は無いので YAML → PINHOLE 補完が必要。
+
+**GNSS preflight 実測**:
+
+Raw + altitude flatten only:
+
+```bash
+scripts/check_mcd_gnss.py data/mcd/ntu_day_02 --flatten-altitude --json
+```
+
+- total / valid: 91537 / 91537
+- zero placeholders: 0
+- horizontal extent: 1472.72 m
+- horizontal path: 2036.44 m
+- raw altitude span: 11940.11 m（開始直後が 11760 m、後続は -100 m 台）
+- horizontal max speed: 459827 m/s（30.54 sec で 1.36 km warm-up jump）
+
+Start offset 35 sec + altitude flatten:
+
+```bash
+scripts/check_mcd_gnss.py data/mcd/ntu_day_02 \
+  --flatten-altitude \
+  --start-offset-sec 35
+```
+
+- total / valid after trim: 77537 / 77537
+- horizontal extent: 250.43 m
+- horizontal path: 660.76 m
+- vertical extent: 0.003 m
+- raw altitude span after trim: 112.81 m
+- p95 horizontal speed: 6.65 m/s
+- Result: `[OK]`
+
+**Sparse smoke 済み**:
+
+```bash
+PYTHONPATH=src python3 -m gs_sim2real.cli preprocess \
+  --images data/mcd/ntu_day_02 \
+  --output outputs/ntu_day02_probe_trimmed2 \
+  --method mcd \
+  --image-topic /d455b/color/image_raw \
+  --mcd-camera-frame d455b_color \
+  --gnss-topic /vn200/GPS \
+  --mcd-static-calibration data/mcd/calibration_atv.yaml \
+  --mcd-seed-poses-from-gnss \
+  --mcd-flatten-gnss-altitude \
+  --mcd-start-offset-sec 35 \
+  --mcd-tf-use-image-stamps \
+  --mcd-skip-lidar-seed \
+  --max-frames 2 --every-n 1 \
+  --matching sequential --no-gpu
+```
+
+Output:
+
+- `outputs/ntu_day02_probe_trimmed2/images/image_timestamps.csv` starts at `1644824131.386...`, matching the 35 sec trim.
+- `outputs/ntu_day02_probe_trimmed2/pose/origin_wgs84.json` records `"altitude_mode": "flattened_median"` and `"start_offset_sec": 35.0`.
+- YAML PINHOLE補完と `base_link <- d455b_color` extrinsics lookup が通り、`sparse/0` 生成成功。
+
+**次に full supervised preprocess を回すなら**:
+
+```bash
+PYTHONPATH=src python3 -m gs_sim2real.cli preprocess \
+  --images data/mcd/ntu_day_02 \
+  --output outputs/ntu_day02_sup \
+  --method mcd \
+  --image-topic /d455b/color/image_raw \
+  --mcd-camera-frame d455b_color \
+  --lidar-topic /os_cloud_node/points \
+  --mcd-lidar-frame os_sensor \
+  --imu-topic /vn200/imu \
+  --gnss-topic /vn200/GPS \
+  --mcd-static-calibration data/mcd/calibration_atv.yaml \
+  --mcd-seed-poses-from-gnss \
+  --mcd-flatten-gnss-altitude \
+  --mcd-start-offset-sec 35 \
+  --mcd-tf-use-image-stamps \
+  --extract-lidar --extract-imu --mcd-export-depth \
+  --max-frames 400 --every-n 14 \
+  --matching sequential --no-gpu
+```
+
+`--every-n 14` は trim 後の約193 sec / 6862 frames から 400 frame 近くを拾うための初期値。LiDAR extraction も同じ `every_n` を使うため、LiDAR seed は約 130–140 frames になる見込み。必要なら後続で image と LiDAR の sampling を別指定に分ける。
+
+**2026-04-21 実走結果**:
+
+- preprocess output: `outputs/ntu_day02_sup`
+- images: 400 JPG + `image_timestamps.csv`
+- LiDAR: 139 `.npy` frames + `timestamps.csv`（`find` の素朴な file count では csv 込みで 140）
+- IMU: `imu.csv` 91,539 lines
+- GNSS preflight with image timestamps: 400 / 400 overlap, `[OK]`
+- LiDAR world seed: 200,000 points → colorized 198,947 / 200,000 with image RGB
+- depth maps: 400
+- COLMAP sparse: 400 image entries, 1 PINHOLE camera, 100,000 `points3D`
+
+Training:
+
+```bash
+PYTHONPATH=src python3 -m gs_sim2real.cli train \
+  --data outputs/ntu_day02_sup \
+  --output outputs/ntu_day02_sup_train \
+  --method gsplat \
+  --iterations 30000 \
+  --config configs/training_depth_long.yaml
+```
+
+- wall time: 500.3 s
+- final model: `outputs/ntu_day02_sup_train/point_cloud.ply`
+- final Gaussians: 906,291
+- final iter log line: `loss=6.1367 l1=0.1951 ssim_loss=0.5354`
+- checkpoint: `outputs/ntu_day02_sup_train/point_cloud_iter_20000.ply`
+
+Export:
+
+```bash
+PYTHONPATH=src python3 -m gs_sim2real.cli export \
+  --model outputs/ntu_day02_sup_train/point_cloud.ply \
+  --format splat \
+  --output docs/assets/outdoor-demo/mcd-ntu-day02-supervised.splat \
+  --max-points 400000 \
+  --splat-normalize-extent 17.0 \
+  --splat-min-opacity 0.02 \
+  --splat-max-scale 2.0
+```
+
+- output: `docs/assets/outdoor-demo/mcd-ntu-day02-supervised.splat`
+- size: 12,800,000 bytes = 400,000 gaussians
+- viewer direct URL after local/Pages serve: `splat.html?url=assets/outdoor-demo/mcd-ntu-day02-supervised.splat`
+
+Viewer / README wiring:
+
+- `docs/scenes-list.json`, `docs/splat.html`, `docs/splat_spark.html`, `docs/splat_webgpu.html` expose `MCD ntu_day_02 — supervised` as the second supervised MCD production scene.
+- `README.md` now documents **six** production bundled scenes and uses `docs/images/demo-sweep/06_mcd-ntu-day02-supervised.png`.
+- `scripts/record_demo_gif.py` and `scripts/capture_readme_splat_previews.py` include `mcd-ntu-day02-supervised.splat`; the old `mcd-tuhh-day04-supervised.splat` remains only as a rejected zero-GNSS diagnostic asset and is not listed in the production picker.
+
+Verification after wiring:
+
+```bash
+PYTHONPATH=src python3 scripts/capture_readme_splat_previews.py --only 06_mcd-ntu-day02-supervised
+ruff format --check src/ tests/ scripts/
+ruff check src/ tests/ scripts/
+pytest tests/test_pages_assets.py -q
+```
+
+- preview: `docs/images/demo-sweep/06_mcd-ntu-day02-supervised.png`, 1280x720, 133,861 bytes, non-black WebGL capture.
+- tests: `tests/test_pages_assets.py` = 14 passed.
