@@ -600,6 +600,34 @@ class TestCLIHelp:
         assert args.trajectory == "data/gnss.nmea"
         assert args.trajectory_format == "nmea"
 
+    def test_cli_preprocess_external_slam_flags(self) -> None:
+        """preprocess parser accepts external visual SLAM artifact settings."""
+        args = build_parser().parse_args(
+            [
+                "preprocess",
+                "--images",
+                "data/images",
+                "--method",
+                "external-slam",
+                "--external-slam-system",
+                "loger",
+                "--external-slam-output",
+                "outputs/loger",
+                "--trajectory",
+                "trajectory.txt",
+                "--pointcloud",
+                "points.ply",
+                "--pinhole-calib",
+                "camera.json",
+            ]
+        )
+        assert args.method == "external-slam"
+        assert args.external_slam_system == "loger"
+        assert args.external_slam_output == "outputs/loger"
+        assert args.trajectory == "trajectory.txt"
+        assert args.pointcloud == "points.ply"
+        assert args.pinhole_calib == "camera.json"
+
     def test_cli_run_lidar_slam_flags(self) -> None:
         """run parser accepts lidar-slam trajectory settings."""
         args = build_parser().parse_args(
@@ -621,6 +649,31 @@ class TestCLIHelp:
         assert args.trajectory == "data/poses.nmea"
         assert args.trajectory_format == "nmea"
         assert args.pointcloud == "data/cloud.ply"
+
+    def test_cli_run_external_slam_flags(self) -> None:
+        """run parser accepts external SLAM trajectory settings."""
+        args = build_parser().parse_args(
+            [
+                "run",
+                "--images",
+                "data/images",
+                "--preprocess-method",
+                "external-slam",
+                "--external-slam-system",
+                "vggt-slam",
+                "--external-slam-output",
+                "outputs/vggt",
+                "--trajectory",
+                "poses.txt",
+                "--pinhole-calib",
+                "camera.json",
+            ]
+        )
+        assert args.preprocess_method == "external-slam"
+        assert args.external_slam_system == "vggt-slam"
+        assert args.external_slam_output == "outputs/vggt"
+        assert args.trajectory == "poses.txt"
+        assert args.pinhole_calib == "camera.json"
 
     def test_cli_run_waymo_flags(self) -> None:
         """run parser accepts Waymo extraction settings."""
@@ -1002,6 +1055,60 @@ class TestCLIHelp:
                 False,
             )
         ]
+
+    def test_cmd_preprocess_external_slam_delegates_import(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """external-slam preprocess should call the isolated artifact importer."""
+        from gs_sim2real import cli
+        from gs_sim2real.preprocess import external_slam as external_slam_module
+
+        calls: list[dict[str, object]] = []
+
+        def fake_import_external_slam(**kwargs):
+            calls.append(kwargs)
+            return tmp_path / "out" / "sparse" / "0"
+
+        monkeypatch.setattr(external_slam_module, "import_external_slam", fake_import_external_slam)
+
+        args = build_parser().parse_args(
+            [
+                "preprocess",
+                "--images",
+                str(tmp_path / "images"),
+                "--output",
+                str(tmp_path / "out"),
+                "--method",
+                "external-slam",
+                "--external-slam-system",
+                "loger",
+                "--external-slam-output",
+                str(tmp_path / "loger"),
+                "--trajectory",
+                "trajectory.txt",
+                "--pointcloud",
+                "points.ply",
+                "--pinhole-calib",
+                "camera.json",
+            ]
+        )
+
+        cli.cmd_preprocess(args)
+
+        assert calls == [
+            {
+                "image_dir": tmp_path / "images",
+                "output_dir": tmp_path / "out",
+                "system": "loger",
+                "artifact_dir": str(tmp_path / "loger"),
+                "trajectory_path": "trajectory.txt",
+                "trajectory_format": "tum",
+                "pointcloud_path": "points.ply",
+                "pinhole_calib_path": "camera.json",
+                "nmea_time_offset_sec": 0.0,
+            }
+        ]
+        assert "External SLAM import complete:" in capsys.readouterr().out
 
     def test_cmd_preprocess_mcd_list_topics_mode(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path, capsys: pytest.CaptureFixture[str]

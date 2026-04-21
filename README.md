@@ -211,6 +211,29 @@ gs-mapper export \
 Preview locally with `python -m http.server` from the repo root and open
 `http://localhost:8000/docs/splat.html?url=<path-to-splat>`.
 
+## Import External SLAM Results
+
+If poses come from an external front-end such as MASt3R-SLAM, VGGT-SLAM 2.0,
+LoGeR, or Pi3/Pi3X, keep those heavy dependencies outside this repo and import
+their exported trajectory as data. `external-slam` accepts TUM/KITTI/NMEA
+trajectories plus an optional `.ply` / `.npy` / `.pcd` point cloud, then writes
+the COLMAP sparse model used by the normal training commands.
+
+```bash
+gs-mapper preprocess \
+  --images ./frames \
+  --output outputs/external_colmap \
+  --method external-slam \
+  --external-slam-system loger \
+  --external-slam-output outputs/loger_run \
+  --trajectory trajectory.txt \
+  --pointcloud points.ply \
+  --pinhole-calib camera.json
+
+gs-mapper train --data outputs/external_colmap --output outputs/external_train \
+  --method gsplat --iterations 30000
+```
+
 ## Outdoor pipeline quickstart (Autoware Leo Drive)
 
 Download a public bag, preprocess with pose-import + image-projected RGB + LiDAR depth maps, train with depth supervision:

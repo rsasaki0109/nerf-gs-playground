@@ -15,6 +15,51 @@ import sys
 from pathlib import Path
 
 
+_PREPROCESS_METHOD_CHOICES = [
+    "colmap",
+    "frames",
+    "pose-free",
+    "dust3r",
+    "simple",
+    "waymo",
+    "mcd",
+    "lidar-slam",
+    "external-slam",
+]
+_PIPELINE_PREPROCESS_METHOD_CHOICES = [
+    "colmap",
+    "pose-free",
+    "dust3r",
+    "simple",
+    "waymo",
+    "mcd",
+    "lidar-slam",
+    "external-slam",
+]
+_EXTERNAL_SLAM_SYSTEM_CHOICES = ["generic", "mast3r-slam", "vggt-slam", "loger", "pi3"]
+
+
+def _add_external_slam_args(parser: argparse.ArgumentParser, *, context: str) -> None:
+    parser.add_argument(
+        "--external-slam-system",
+        default="generic",
+        help=(
+            f"External SLAM artifact convention for {context}: "
+            f"{', '.join(_EXTERNAL_SLAM_SYSTEM_CHOICES)} (default: generic; common aliases accepted)"
+        ),
+    )
+    parser.add_argument(
+        "--external-slam-output",
+        default=None,
+        help=f"Directory containing external SLAM outputs for {context}; used to auto-discover trajectory/point cloud",
+    )
+    parser.add_argument(
+        "--pinhole-calib",
+        default=None,
+        help=f"Optional PINHOLE calibration JSON for {context} trajectory import",
+    )
+
+
 def build_parser() -> argparse.ArgumentParser:
     """Build the argument parser with all subcommands."""
     parser = argparse.ArgumentParser(
@@ -38,14 +83,15 @@ def build_parser() -> argparse.ArgumentParser:
     pp.add_argument("--output", default="outputs/colmap", help="Output directory")
     pp.add_argument(
         "--method",
-        choices=["colmap", "frames", "pose-free", "dust3r", "simple", "waymo", "mcd", "lidar-slam"],
+        choices=_PREPROCESS_METHOD_CHOICES,
         default="colmap",
         help="Preprocessing method (default: colmap). "
         "'pose-free' and 'dust3r' use DUSt3R for pose estimation; "
         "'simple' uses circular camera initialization; "
         "'waymo' extracts frames from Waymo tfrecord files; "
         "'mcd' extracts images and optional sensors from MCD rosbags; "
-        "'lidar-slam' imports an external SLAM trajectory.",
+        "'lidar-slam' imports an external trajectory; "
+        "'external-slam' imports artifacts from MASt3R-SLAM, VGGT-SLAM 2.0, LoGeR, Pi3, or another front-end.",
     )
     pp.add_argument("--fps", type=float, default=2.0, help="FPS for frame extraction (default: 2)")
     pp.add_argument("--max-frames", type=int, default=100, help="Max frames to extract (default: 100)")
@@ -217,6 +263,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Fixed seconds added to NMEA-derived timestamps to realign against a drifted logger clock.",
     )
     pp.add_argument("--pointcloud", default=None, help="Point cloud file for lidar-slam (.ply/.npy/.pcd)")
+    _add_external_slam_args(pp, context="preprocess")
 
     # train
     tr = subparsers.add_parser("train", help="Train a 3DGS model")
@@ -377,7 +424,7 @@ def build_parser() -> argparse.ArgumentParser:
     rn.add_argument("--config", default=None, help="Path to training config YAML override")
     rn.add_argument(
         "--preprocess-method",
-        choices=["colmap", "pose-free", "dust3r", "simple", "waymo", "mcd", "lidar-slam"],
+        choices=_PIPELINE_PREPROCESS_METHOD_CHOICES,
         default="colmap",
         help="Preprocessing method (default: colmap)",
     )
@@ -528,6 +575,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="Trajectory format for --preprocess-method lidar-slam (default: tum)",
     )
     rn.add_argument("--pointcloud", default=None, help="Point cloud file for --preprocess-method lidar-slam")
+    rn.add_argument(
+        "--nmea-time-offset-sec",
+        type=float,
+        default=0.0,
+        help="Fixed seconds added to NMEA-derived timestamps for trajectory import.",
+    )
+    _add_external_slam_args(rn, context="run")
     rn.add_argument("--skip-preprocess", action="store_true", help="Skip COLMAP preprocessing")
     rn.add_argument("--no-viewer", action="store_true", help="Skip launching the viewer")
     rn.add_argument("--port", type=int, default=8080, help="Viewer port (default: 8080)")
@@ -566,7 +620,7 @@ def build_parser() -> argparse.ArgumentParser:
     dm.add_argument("--config", default=None, help="Path to training config YAML override")
     dm.add_argument(
         "--preprocess-method",
-        choices=["colmap", "pose-free", "dust3r", "simple", "waymo", "mcd", "lidar-slam"],
+        choices=_PIPELINE_PREPROCESS_METHOD_CHOICES,
         default="colmap",
         help="Preprocessing method (default: colmap)",
     )
@@ -717,6 +771,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="Trajectory format for --preprocess-method lidar-slam (default: tum)",
     )
     dm.add_argument("--pointcloud", default=None, help="Point cloud file for --preprocess-method lidar-slam")
+    dm.add_argument(
+        "--nmea-time-offset-sec",
+        type=float,
+        default=0.0,
+        help="Fixed seconds added to NMEA-derived timestamps for trajectory import.",
+    )
+    _add_external_slam_args(dm, context="demo")
     dm.add_argument("--fragment", default="residency", help="DreamWalker fragment name (default: residency)")
     dm.add_argument("--no-launch", action="store_true", help="Skip launching the Vite dev server")
     dm.add_argument(
@@ -1209,20 +1270,11 @@ def cmd_preprocess(args: argparse.Namespace) -> None:
             print(f"Error: '{images_path}' is not a file or directory.")
             sys.exit(1)
     elif args.method == "lidar-slam":
-        from gs_sim2real.preprocess.lidar_slam import import_lidar_slam
-
-        if not args.trajectory:
-            print("Error: --trajectory is required for lidar-slam method.")
-            sys.exit(1)
-        sparse_dir = import_lidar_slam(
-            trajectory_path=args.trajectory,
-            image_dir=images_path,
-            output_dir=output_dir,
-            trajectory_format=args.trajectory_format,
-            pointcloud_path=args.pointcloud,
-            nmea_time_offset_sec=getattr(args, "nmea_time_offset_sec", 0.0),
-        )
+        sparse_dir = _run_lidar_slam_preprocess_to_colmap(images_path, Path(output_dir), args)
         print(f"LiDAR SLAM import complete: {sparse_dir}")
+    elif args.method == "external-slam":
+        sparse_dir = _run_external_slam_preprocess_to_colmap(images_path, Path(output_dir), args)
+        print(f"External SLAM import complete: {sparse_dir}")
     elif args.method in ("pose-free", "dust3r", "simple"):
         from gs_sim2real.preprocess.pose_free import run_pose_free
 
@@ -1516,6 +1568,54 @@ def _run_mcd_preprocess_to_colmap(
     return run_mcd_preprocess_to_colmap(source_dir, colmap_dir, options)
 
 
+def _run_lidar_slam_preprocess_to_colmap(
+    images_dir: Path,
+    colmap_dir: Path,
+    args: argparse.Namespace,
+):
+    """Import a trajectory through the existing generic trajectory importer."""
+    from gs_sim2real.preprocess.lidar_slam import import_lidar_slam
+
+    trajectory = getattr(args, "trajectory", None)
+    if not trajectory:
+        print("Error: --trajectory is required for lidar-slam method.")
+        sys.exit(1)
+    return import_lidar_slam(
+        trajectory_path=trajectory,
+        image_dir=images_dir,
+        output_dir=colmap_dir,
+        trajectory_format=getattr(args, "trajectory_format", "tum"),
+        pointcloud_path=getattr(args, "pointcloud", None),
+        pinhole_calib_path=getattr(args, "pinhole_calib", None),
+        nmea_time_offset_sec=getattr(args, "nmea_time_offset_sec", 0.0),
+    )
+
+
+def _run_external_slam_preprocess_to_colmap(
+    images_dir: Path,
+    colmap_dir: Path,
+    args: argparse.Namespace,
+):
+    """Import artifacts exported by MASt3R-SLAM/VGGT-SLAM/LoGeR/Pi3-like front-ends."""
+    from gs_sim2real.preprocess.external_slam import import_external_slam
+
+    try:
+        return import_external_slam(
+            image_dir=images_dir,
+            output_dir=colmap_dir,
+            system=getattr(args, "external_slam_system", "generic"),
+            artifact_dir=getattr(args, "external_slam_output", None),
+            trajectory_path=getattr(args, "trajectory", None),
+            trajectory_format=getattr(args, "trajectory_format", None),
+            pointcloud_path=getattr(args, "pointcloud", None),
+            pinhole_calib_path=getattr(args, "pinhole_calib", None),
+            nmea_time_offset_sec=getattr(args, "nmea_time_offset_sec", 0.0),
+        )
+    except (FileNotFoundError, NotADirectoryError, ValueError) as exc:
+        print(f"Error: {exc}")
+        sys.exit(1)
+
+
 def cmd_run(args: argparse.Namespace) -> None:
     """Handle the run subcommand (full pipeline)."""
     images_dir = Path(args.images)
@@ -1538,19 +1638,9 @@ def cmd_run(args: argparse.Namespace) -> None:
         print("=" * 60)
 
         if preprocess_method == "lidar-slam":
-            from gs_sim2real.preprocess.lidar_slam import import_lidar_slam
-
-            trajectory = getattr(args, "trajectory", None)
-            if not trajectory:
-                print("Error: --trajectory is required for lidar-slam method.")
-                sys.exit(1)
-            import_lidar_slam(
-                trajectory_path=trajectory,
-                image_dir=images_dir,
-                output_dir=colmap_dir,
-                trajectory_format=getattr(args, "trajectory_format", "tum"),
-                pointcloud_path=getattr(args, "pointcloud", None),
-            )
+            _run_lidar_slam_preprocess_to_colmap(images_dir, colmap_dir, args)
+        elif preprocess_method == "external-slam":
+            _run_external_slam_preprocess_to_colmap(images_dir, colmap_dir, args)
         elif preprocess_method == "waymo":
             _run_waymo_preprocess(images_dir, colmap_dir, args)
         elif preprocess_method == "mcd":
@@ -1645,19 +1735,9 @@ def cmd_demo(args: argparse.Namespace) -> None:
         print("=" * 60)
 
         if preprocess_method == "lidar-slam":
-            from gs_sim2real.preprocess.lidar_slam import import_lidar_slam as _slam_import
-
-            trajectory = getattr(args, "trajectory", None)
-            if not trajectory:
-                print("Error: --trajectory is required for lidar-slam method.")
-                sys.exit(1)
-            _slam_import(
-                trajectory_path=trajectory,
-                image_dir=images_dir,
-                output_dir=colmap_dir,
-                trajectory_format=getattr(args, "trajectory_format", "tum"),
-                pointcloud_path=getattr(args, "pointcloud", None),
-            )
+            _run_lidar_slam_preprocess_to_colmap(images_dir, colmap_dir, args)
+        elif preprocess_method == "external-slam":
+            _run_external_slam_preprocess_to_colmap(images_dir, colmap_dir, args)
         elif preprocess_method == "waymo":
             _run_waymo_preprocess(images_dir, colmap_dir, args)
         elif preprocess_method == "mcd":

@@ -1,0 +1,89 @@
+"""Tests for external visual SLAM artifact import boundaries."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import cv2
+import numpy as np
+import pytest
+
+from gs_sim2real.preprocess.external_slam import (
+    import_external_slam,
+    normalize_system,
+    resolve_external_slam_artifacts,
+)
+
+
+def _write_dummy_images(image_dir: Path, count: int = 2) -> None:
+    image_dir.mkdir(parents=True, exist_ok=True)
+    for idx in range(count):
+        cv2.imwrite(str(image_dir / f"frame_{idx:06d}.jpg"), np.zeros((32, 48, 3), dtype=np.uint8))
+
+
+def test_normalize_system_accepts_common_aliases() -> None:
+    assert normalize_system("MASt3R") == "mast3r-slam"
+    assert normalize_system("VGGT-SLAM-2.0") == "vggt-slam"
+    assert normalize_system("Pi3X") == "pi3"
+
+
+def test_resolve_loger_artifacts_from_output_directory(tmp_path: Path) -> None:
+    artifact_dir = tmp_path / "loger_out"
+    nested = artifact_dir / "sequence_a"
+    nested.mkdir(parents=True)
+    trajectory = nested / "trajectory.txt"
+    pointcloud = nested / "points.ply"
+    trajectory.write_text("0 0 0 0 0 0 0 1\n1 1 0 0 0 0 0 1\n")
+    pointcloud.write_text("ply\n")
+
+    artifacts = resolve_external_slam_artifacts(system="loger", artifact_dir=artifact_dir)
+
+    assert artifacts.system == "loger"
+    assert artifacts.trajectory_path == trajectory
+    assert artifacts.trajectory_format == "tum"
+    assert artifacts.pointcloud_path == pointcloud
+
+
+def test_relative_explicit_paths_resolve_under_artifact_dir(tmp_path: Path) -> None:
+    artifact_dir = tmp_path / "vggt_out"
+    artifact_dir.mkdir()
+    trajectory = artifact_dir / "custom_poses.txt"
+    trajectory.write_text("0 0 0 0 0 0 0 1\n1 1 0 0 0 0 0 1\n")
+
+    artifacts = resolve_external_slam_artifacts(
+        system="vggt-slam",
+        artifact_dir=artifact_dir,
+        trajectory_path="custom_poses.txt",
+    )
+
+    assert artifacts.trajectory_path == trajectory
+
+
+def test_pi3_pointcloud_only_still_requires_trajectory(tmp_path: Path) -> None:
+    artifact_dir = tmp_path / "pi3_out"
+    artifact_dir.mkdir()
+    (artifact_dir / "result.ply").write_text("ply\n")
+
+    with pytest.raises(FileNotFoundError, match="Pi3/Pi3X trajectory"):
+        resolve_external_slam_artifacts(system="pi3", artifact_dir=artifact_dir)
+
+
+def test_import_external_slam_writes_colmap_from_tum_trajectory(tmp_path: Path) -> None:
+    image_dir = tmp_path / "images"
+    _write_dummy_images(image_dir)
+    artifact_dir = tmp_path / "mast3r_slam_out"
+    artifact_dir.mkdir()
+    (artifact_dir / "poses.txt").write_text("0 0 0 0 0 0 0 1\n1 1 0 0 0 0 0 1\n")
+    output_dir = tmp_path / "colmap"
+
+    sparse_dir = import_external_slam(
+        image_dir=image_dir,
+        output_dir=output_dir,
+        system="mast3r-slam",
+        artifact_dir=artifact_dir,
+    )
+
+    assert Path(sparse_dir) == output_dir / "sparse" / "0"
+    images_txt = (output_dir / "sparse" / "0" / "images.txt").read_text()
+    assert "frame_000000.jpg" in images_txt
+    assert "frame_000001.jpg" in images_txt

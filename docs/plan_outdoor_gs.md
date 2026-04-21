@@ -1,6 +1,6 @@
 # 屋外 3D Gaussian Splatting 開発計画 / 引継ぎメモ
 
-更新日: 2026-04-21（MCD `tuhh_day_04` supervised 検証の訂正、`ntu_day_02` supervised bundle 追加、zero-GNSS guard、COLMAP images parser 修正）
+更新日: 2026-04-21（MCD `tuhh_day_04` supervised 検証の訂正、`ntu_day_02` supervised bundle 追加、zero-GNSS guard、COLMAP images parser 修正、external SLAM artifact import 追加）
 
 この文書は、`GS Mapper` リポジトリにおける屋外 3D Gaussian Splatting 対応の現在地を、**Claude / Codex / Copilot / その他のコーディングエージェント**がそのまま引き継げる粒度でまとめた handoff 文書です。リポジトリ直下の `CLAUDE.md` は開発コマンド早見、本書は **屋外パイプラインの文脈・判断・失敗の履歴**に重きを置きます。
 
@@ -57,6 +57,7 @@
 | `MCDLoader.export_lidar_depth_per_image()` | `mcd.py` | 各学習画像に world LiDAR を投影、closest z を per-pixel 保持した float32 (H, W) depth map を `depth/<subdir>/<stem>.npy` に保存 |
 | LiDAR-seeded COLMAP sparse (色付き) | `cli.py` `_mcd_gnss_sparse_import` + `_mcd_colorize_seed` | `points3D.txt` を実 LiDAR 点 + 画像由来 RGB で seed。`--mcd-skip-lidar-colorize` で opt-out |
 | Nx6 点群の `points3D.txt` 書き出し | `preprocess/lidar_slam.py`, `preprocess/depth_from_lidar.py` | `_write_colmap` / `_write_colmap_multiview` が Nx6（xyz + RGB）を受けて色を書く |
+| External SLAM artifact import | `preprocess/external_slam.py`, `cli.py` | MASt3R-SLAM / VGGT-SLAM 2.0 / LoGeR / Pi3 などの **出力ファイルだけ**を受け、TUM/KITTI/NMEA trajectory + optional point cloud を既存 COLMAP sparse importer に流す。外部モデル本体は import しない |
 | 新 CLI フラグ | `cli.py` | `--mcd-lidar-frame` / `--mcd-skip-lidar-seed` / `--mcd-skip-lidar-colorize` / `--mcd-export-depth`（preprocess/run/demo すべて） |
 | gsplat depth supervision (`render_mode=RGB+D`) | `train/gsplat_trainer.py` | `_render_gsplat(want_depth=True)` で depth を返し、`depth_loss_weight * L1(rendered_depth, gt_depth)` を valid pixel でトレーニングに加算 |
 | PLY→.splat 変換 (`ply_to_splat`) | `src/gs_sim2real/viewer/web_export.py` | antimatter15/splat 形式（32 B/gauss）。`normalize_target_extent` で世界スケール→viewer 適合サイズに縮小、`min_opacity` / `max_scale` フィルタで霧除去 |
@@ -386,7 +387,26 @@ gs-mapper train --data outputs/bag6_multicam --output outputs/bag6_multicam_trai
   --method gsplat --iterations 15000 --config configs/training.yaml
 ```
 
-### 9.3 PLY → .splat → Pages デプロイ
+### 9.3 External SLAM artifacts → COLMAP sparse
+
+MASt3R-SLAM / VGGT-SLAM 2.0 / LoGeR / Pi3 系を使う場合、このリポジトリ側は外部パッケージを import しない。外部ツールで trajectory を吐かせてから、`external-slam` がファイルだけを取り込む。
+
+```bash
+# 例: LoGeR の --output_txt trajectory.txt を取り込む
+gs-mapper preprocess \
+  --images data/my_frames \
+  --output outputs/my_external_colmap \
+  --method external-slam \
+  --external-slam-system loger \
+  --external-slam-output outputs/loger_run \
+  --trajectory trajectory.txt \
+  --pointcloud points.ply \
+  --pinhole-calib camera.json
+```
+
+`--external-slam-output` 配下から `poses.txt` / `trajectory.txt` / `*.tum` と `*.ply` / `*.npy` / `*.pcd` を自動探索する。Pi3/Pi3X は標準 example が点群 PLY 中心なので、3DGS training へ進むには別途 camera trajectory を `--trajectory` で渡す。
+
+### 9.4 PLY → .splat → Pages デプロイ
 
 ```python
 from gs_sim2real.viewer.web_export import ply_to_splat
