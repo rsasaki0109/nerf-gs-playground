@@ -429,6 +429,42 @@ PYTHONPATH=src python3 -m gs_sim2real.cli preprocess \
   --pointcloud outputs/bag6_mast3r/pts3d.npy
 ```
 
+VGGT-SLAM 2.0 smoke も同日実走済み。`/tmp/ext_slam_probe/VGGT-SLAM` を Python 3.11 の隔離 venv (`/tmp/vggt-slam-venv`) に入れ、`requirements.txt` + `third_party/salad` + `MIT-SPARK/VGGT_SPARK` + `vggt-slam` editable install で import まで通った。上流 `main.py` は `--max_loops 0` でも SALAD checkpoint と Viewer を初期化するため、ローカルclone側だけ `VGGT_SLAM_NO_RETRIEVAL=1` / `VGGT_SLAM_NO_VIEWER=1` で無効化する薄いパッチを当てた。
+
+```bash
+GS_MAPPER_ROOT=/path/to/nerf-gs-playground
+cd /tmp/ext_slam_probe/VGGT-SLAM
+
+VGGT_SLAM_NO_RETRIEVAL=1 VGGT_SLAM_NO_VIEWER=1 \
+  /tmp/vggt-slam-venv/bin/python main.py \
+  --image_folder "$GS_MAPPER_ROOT/outputs/vggt_slam_smoke/images" \
+  --max_loops 0 \
+  --submap_size 4 \
+  --overlapping_window_size 1 \
+  --min_disparity 0 \
+  --log_results \
+  --skip_dense_log \
+  --log_path "$GS_MAPPER_ROOT/outputs/vggt_slam_smoke/poses.txt"
+```
+
+5-frame smoke の `poses.txt` は非ゼロ trajectory を出力し、次で `external-slam` に戻せた。結果は 5 images / 1000 points の COLMAP sparse、さらに `gsplat --iterations 10` まで成功して `outputs/vggt_slam_smoke/train_smoke/point_cloud.ply` を生成した。
+
+```bash
+PYTHONPATH=src python3 -m gs_sim2real.cli preprocess \
+  --images outputs/vggt_slam_smoke/images \
+  --output outputs/vggt_slam_smoke/imported_colmap \
+  --method external-slam \
+  --external-slam-system vggt-slam \
+  --external-slam-output outputs/vggt_slam_smoke \
+  --trajectory poses.txt
+
+PYTHONPATH=src python3 -m gs_sim2real.cli train \
+  --data outputs/vggt_slam_smoke/imported_colmap \
+  --output outputs/vggt_slam_smoke/train_smoke \
+  --method gsplat \
+  --iterations 10
+```
+
 ### 9.4 PLY → .splat → Pages デプロイ
 
 ```python
