@@ -22,6 +22,7 @@ from gs_sim2real.preprocess.external_slam import (
     render_external_slam_artifact_manifest_text,
     render_external_slam_manifest_gate_text,
     resolve_external_slam_artifacts,
+    trace_external_slam_file_resolution,
 )
 
 
@@ -132,6 +133,8 @@ def test_build_external_slam_manifest_marks_tensor_materialization(tmp_path: Pat
     assert payload["pointcloud"]["path"].endswith("points.npz")
     assert payload["resolution"]["trajectory"]["selectedPath"].endswith("camera_poses.npz")
     assert "camera_poses.npz" in payload["resolution"]["trajectory"]["candidatePatterns"]
+    assert payload["resolution"]["trajectory"]["reason"] == "explicit_path_found"
+    assert payload["resolution"]["trajectory"]["trace"][0]["reason"] == "explicit_path_found"
 
 
 def test_build_external_slam_manifest_flags_count_mismatch(tmp_path: Path) -> None:
@@ -179,6 +182,68 @@ def test_build_external_slam_error_manifest_keeps_resolution_context(tmp_path: P
     assert payload["resolution"]["trajectory"]["selectedPath"] is None
     assert "camera_poses.npz" in payload["resolution"]["trajectory"]["candidatePatterns"]
     assert "- error: Could not find Pi3/Pi3X trajectory" in text
+
+
+def test_external_slam_manifest_resolution_trace_records_selected_pattern(tmp_path: Path) -> None:
+    image_dir = tmp_path / "images"
+    _write_dummy_images(image_dir, count=2)
+    artifact_dir = tmp_path / "pi3_out"
+    nested = artifact_dir / "sequence_a"
+    nested.mkdir(parents=True)
+    poses = np.repeat(np.eye(4)[None, ...], 2, axis=0)
+    np.savez(nested / "camera_poses.npz", camera_poses=poses)
+    (artifact_dir / "result.ply").write_text("ply\n")
+
+    manifest = build_external_slam_artifact_manifest(
+        image_dir=image_dir,
+        system="pi3",
+        artifact_dir=artifact_dir,
+    )
+    resolution = manifest["resolution"]["trajectory"]
+    selected = next(item for item in resolution["trace"] if item["reason"] == "selected")
+
+    assert resolution["reason"] == "selected_candidate"
+    assert selected["pattern"] == "camera_poses.npz"
+    assert selected["matchCount"] == 1
+    assert selected["selectedPath"].endswith("sequence_a/camera_poses.npz")
+    assert manifest["trajectory"]["poseCount"] == 2
+
+
+def test_external_slam_error_manifest_trace_records_all_missed_patterns(tmp_path: Path) -> None:
+    artifact_dir = tmp_path / "pi3_out"
+    artifact_dir.mkdir()
+    manifest = build_external_slam_artifact_error_manifest(
+        error=FileNotFoundError("missing"),
+        system="pi3",
+        artifact_dir=artifact_dir,
+    )
+    trajectory_resolution = manifest["resolution"]["trajectory"]
+
+    assert trajectory_resolution["reason"] == "no_candidate_match"
+    assert len(trajectory_resolution["trace"]) == len(trajectory_resolution["candidatePatterns"])
+    assert trajectory_resolution["trace"][0]["pattern"] == "poses.txt"
+    assert trajectory_resolution["trace"][0]["reason"] == "no_match"
+    assert all(item["selectedPath"] is None for item in trajectory_resolution["trace"])
+
+
+def test_external_slam_trace_records_skipped_non_trajectory_text(tmp_path: Path) -> None:
+    artifact_dir = tmp_path / "mast3r_out"
+    artifact_dir.mkdir()
+    (artifact_dir / "readme.txt").write_text("not a trajectory\n")
+    (artifact_dir / "metrics.txt").write_text("not a trajectory\n")
+
+    trace = trace_external_slam_file_resolution(
+        explicit=None,
+        base_dir=artifact_dir,
+        candidates=("*.txt",),
+        role="trajectory",
+    )
+    pattern_trace = trace.candidate_traces[0]
+
+    assert trace.reason == "no_candidate_match"
+    assert pattern_trace.reason == "only_skipped_non_trajectory_text"
+    assert pattern_trace.match_count == 0
+    assert sorted(path.name for path in pattern_trace.skipped_paths) == ["metrics.txt", "readme.txt"]
 
 
 def test_external_slam_manifest_gate_flags_dropped_images_and_point_count(tmp_path: Path) -> None:

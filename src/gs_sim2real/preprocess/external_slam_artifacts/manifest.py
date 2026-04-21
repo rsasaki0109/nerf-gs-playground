@@ -17,7 +17,12 @@ from gs_sim2real.preprocess.external_slam_artifacts.pose_tensor import (
     is_pose_tensor_artifact,
 )
 from gs_sim2real.preprocess.external_slam_artifacts.profiles import PROFILES, ExternalSLAMProfile, normalize_system
-from gs_sim2real.preprocess.external_slam_artifacts.resolver import resolve_external_slam_artifacts
+from gs_sim2real.preprocess.external_slam_artifacts.resolver import (
+    ExternalSLAMCandidateTrace,
+    ExternalSLAMFileResolutionTrace,
+    resolve_external_slam_artifacts,
+    trace_external_slam_file_resolution,
+)
 
 _IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png"}
 
@@ -248,6 +253,24 @@ def _build_resolution_summary(
     base_dir = str(Path(artifact_dir)) if artifact_dir not in (None, "") else None
     trajectory_candidates = profile.trajectory_candidates if profile else ()
     pointcloud_candidates = profile.pointcloud_candidates if profile else ()
+    trajectory_trace = trace_external_slam_file_resolution(
+        explicit=trajectory_path,
+        base_dir=artifact_dir,
+        candidates=trajectory_candidates,
+        role="trajectory",
+    )
+    pointcloud_trace = trace_external_slam_file_resolution(
+        explicit=pointcloud_path,
+        base_dir=artifact_dir,
+        candidates=pointcloud_candidates,
+        role="pointcloud",
+    )
+    calib_trace = trace_external_slam_file_resolution(
+        explicit=pinhole_calib_path,
+        base_dir=artifact_dir,
+        candidates=(),
+        role="pinhole_calibration",
+    )
     return {
         "trajectory": _resolution_section(
             role="trajectory",
@@ -256,6 +279,7 @@ def _build_resolution_summary(
             candidate_patterns=trajectory_candidates,
             selected_path=resolved_trajectory,
             trajectory_format=trajectory_format,
+            trace=trajectory_trace,
         ),
         "pointcloud": _resolution_section(
             role="pointcloud",
@@ -263,6 +287,7 @@ def _build_resolution_summary(
             base_dir=base_dir,
             candidate_patterns=pointcloud_candidates,
             selected_path=resolved_pointcloud,
+            trace=pointcloud_trace,
         ),
         "pinholeCalibration": _resolution_section(
             role="pinhole_calibration",
@@ -270,6 +295,7 @@ def _build_resolution_summary(
             base_dir=base_dir,
             candidate_patterns=(),
             selected_path=resolved_calib,
+            trace=calib_trace,
         ),
     }
 
@@ -282,6 +308,7 @@ def _resolution_section(
     candidate_patterns: tuple[str, ...],
     selected_path: Path | None,
     trajectory_format: str | None = None,
+    trace: ExternalSLAMFileResolutionTrace | None = None,
 ) -> dict[str, Any]:
     summary: dict[str, Any] = {
         "role": role,
@@ -292,7 +319,20 @@ def _resolution_section(
     }
     if trajectory_format is not None:
         summary["format"] = trajectory_format
+    if trace is not None:
+        summary["reason"] = trace.reason
+        summary["trace"] = [_candidate_trace_to_dict(item) for item in trace.candidate_traces]
     return summary
+
+
+def _candidate_trace_to_dict(trace: ExternalSLAMCandidateTrace) -> dict[str, Any]:
+    return {
+        "pattern": trace.pattern,
+        "matchCount": trace.match_count,
+        "selectedPath": str(trace.selected_path) if trace.selected_path is not None else None,
+        "skippedPaths": [str(path) for path in trace.skipped_paths],
+        "reason": trace.reason,
+    }
 
 
 def _summarize_optional_file(path: Path | None, *, role: str) -> dict[str, Any] | None:

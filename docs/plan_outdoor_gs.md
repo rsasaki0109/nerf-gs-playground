@@ -100,7 +100,8 @@ gs-mapper preprocess --method external-slam --images <images-dir> \
 
 Dry-run manifest には trajectory pose 数、point cloud 点数、入力画像数、sequential fallback 時に何 frame が
 align されるかと、その manifest gate 判定を含める。Artifact が未配置でも JSON manifest として
-`ready=false` / `error` / candidate patterns を残すので、`collect_external_slam_imports.py` で欠落理由を集計できる。
+`ready=false` / `error` / candidate patterns / per-pattern trace を残すので、`collect_external_slam_imports.py`
+で欠落理由を集計できる。
 
 External SLAM 候補の dry-run gate matrix を出す場合:
 

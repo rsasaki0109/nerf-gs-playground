@@ -1285,6 +1285,10 @@ class TestCLIHelp:
         assert payload["images"]["imageCount"] == 1
         assert payload["resolution"]["trajectory"]["selectedPath"] is None
         assert "camera_poses.npz" in payload["resolution"]["trajectory"]["candidatePatterns"]
+        assert payload["resolution"]["trajectory"]["reason"] == "no_candidate_match"
+        assert len(payload["resolution"]["trajectory"]["trace"]) == len(
+            payload["resolution"]["trajectory"]["candidatePatterns"]
+        )
 
     def test_cmd_preprocess_mcd_list_topics_mode(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path, capsys: pytest.CaptureFixture[str]

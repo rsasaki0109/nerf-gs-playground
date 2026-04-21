@@ -24,7 +24,10 @@ from gs_sim2real.preprocess.external_slam_artifacts.profiles import (
 )
 from gs_sim2real.preprocess.external_slam_artifacts.resolver import (
     ExternalSLAMArtifacts,
+    ExternalSLAMCandidateTrace,
+    ExternalSLAMFileResolutionTrace,
     resolve_external_slam_artifacts,
+    trace_external_slam_file_resolution,
 )
 
 __all__ = [
@@ -32,6 +35,8 @@ __all__ = [
     "PROFILES",
     "SYSTEM_CHOICES",
     "ExternalSLAMArtifacts",
+    "ExternalSLAMCandidateTrace",
+    "ExternalSLAMFileResolutionTrace",
     "ExternalSLAMManifestGatePolicy",
     "ExternalSLAMProfile",
     "build_external_slam_artifact_error_manifest",
@@ -44,4 +49,5 @@ __all__ = [
     "render_external_slam_artifact_manifest_text",
     "render_external_slam_manifest_gate_text",
     "resolve_external_slam_artifacts",
+    "trace_external_slam_file_resolution",
 ]
