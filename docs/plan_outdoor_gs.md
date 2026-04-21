@@ -513,6 +513,8 @@ PYTHONPATH=src python3 -m gs_sim2real.cli export \
   --splat-max-scale 2.0
 ```
 
+15k quality push も実走した。189.6 s で完了し、Final Gaussians は 222,419。export 後は 214,570 gaussians / 6.6 MB の `bag6-vggt-slam-20-15k.splat` になった。headed Chromium (`DISPLAY=:1`) で `docs/splat.html?url=../outputs/vggt_slam_20/vggt-slam-20-15k.splat` を確認し、WebGL viewer は `splats 214570` をロード、非blankに描画した。ただし見た目はかなり foggy なので、production default ではなく **VGGT-SLAM 2.0 comparison-quality** として `docs/assets/outdoor-demo/bag6-vggt-slam-20-15k.splat` に bundle した。
+
 ### 9.4 PLY → .splat → Pages デプロイ
 
 ```python
