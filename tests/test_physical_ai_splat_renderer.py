@@ -109,7 +109,7 @@ def test_splat_asset_renderer_feeds_headless_environment_observation(tmp_path: P
 
     outputs = observation.outputs
     jpeg = base64.b64decode(outputs["rgb"]["jpegBase64"])
-    assert outputs["mode"] == "splat-raster"
+    assert outputs["mode"] == "splat-raster-rgb"
     assert outputs["sceneId"] == "scene-one"
     assert outputs["assetUrl"] == "assets/scene-one/scene-one.splat"
     assert outputs["rgb"]["width"] == 64
@@ -117,6 +117,61 @@ def test_splat_asset_renderer_feeds_headless_environment_observation(tmp_path: P
     assert jpeg.startswith(b"\xff\xd8")
     assert outputs["cameraInfo"]["frameId"] == env.state.pose.frame_id
     assert outputs["depthStats"]["validPixelCount"] > 0
+
+
+def test_splat_asset_renderer_returns_depth_proxy_payload(tmp_path: Path) -> None:
+    asset_path = tmp_path / "assets" / "scene-one" / "scene-one.splat"
+    write_test_splat(
+        asset_path,
+        [
+            ((0.0, 0.0, 3.0), (0, 0, 255, 255)),
+            ((0.0, 0.0, 5.0), (255, 0, 0, 255)),
+            ((1.0, 0.0, 5.0), (0, 255, 0, 255)),
+        ],
+    )
+    catalog = build_simulation_catalog(
+        {
+            "scenes": [
+                {
+                    "url": "assets/scene-one/scene-one.splat",
+                    "label": "Scene One",
+                    "summary": "Tiny depth integration fixture",
+                }
+            ]
+        },
+        docs_root=tmp_path,
+        site_url="https://example.test/gs/",
+    )
+    env = HeadlessPhysicalAIEnvironment(
+        catalog,
+        observation_renderer=SplatAssetObservationRenderer(
+            tmp_path,
+            config=SplatRenderConfig(width=64, height=48, far_clip=20.0, point_radius=1),
+        ),
+    )
+    env.reset("scene-one")
+
+    observation = env.render_observation(
+        ObservationRequest(
+            pose=Pose3D(
+                position=(0.0, 0.0, 0.0),
+                orientation_xyzw=(0.0, 0.0, 0.0, 1.0),
+                frame_id=env.state.pose.frame_id,
+            ),
+            sensor_id="depth-proxy",
+            outputs=("depth", "validity-mask"),
+        )
+    )
+
+    outputs = observation.outputs
+    depth = np.frombuffer(base64.b64decode(outputs["depth"]["depthBase64"]), dtype="<f4").reshape(48, 64)
+    mask = np.frombuffer(base64.b64decode(outputs["validityMask"]["maskBase64"]), dtype=np.uint8).reshape(48, 64)
+    assert outputs["mode"] == "splat-raster-depth"
+    assert outputs["depth"]["encoding"] == "float32-le"
+    assert outputs["validityMask"]["encoding"] == "uint8-0-or-1"
+    assert outputs["depthStats"]["validPixelCount"] == int(mask.sum())
+    assert depth[24, 32] == np.float32(3.0)
+    assert mask[24, 32] == 1
 
 
 def test_resolve_scene_asset_path_rejects_escape(tmp_path: Path) -> None:

@@ -114,14 +114,14 @@
             "status": "ready-via-splat-viewer"
           },
           {
-            "description": "Depth proxy contract for future splat ray marching or depth-buffer backends.",
+            "description": "Depth proxy rendered from the local splat rasterizer as float32 depth plus validity mask.",
             "modality": "depth",
             "outputs": [
               "depth",
               "validity-mask"
             ],
             "sensorId": "depth-proxy",
-            "status": "contract-only"
+            "status": "ready-via-splat-raster"
           },
           {
             "description": "LiDAR-like ray query contract for navigation and mapping agents.",
@@ -248,14 +248,14 @@
             "status": "ready-via-splat-viewer"
           },
           {
-            "description": "Depth proxy contract for future splat ray marching or depth-buffer backends.",
+            "description": "Depth proxy rendered from the local splat rasterizer as float32 depth plus validity mask.",
             "modality": "depth",
             "outputs": [
               "depth",
               "validity-mask"
             ],
             "sensorId": "depth-proxy",
-            "status": "contract-only"
+            "status": "ready-via-splat-raster"
           },
           {
             "description": "LiDAR-like ray query contract for navigation and mapping agents.",
@@ -381,14 +381,14 @@
             "status": "ready-via-splat-viewer"
           },
           {
-            "description": "Depth proxy contract for future splat ray marching or depth-buffer backends.",
+            "description": "Depth proxy rendered from the local splat rasterizer as float32 depth plus validity mask.",
             "modality": "depth",
             "outputs": [
               "depth",
               "validity-mask"
             ],
             "sensorId": "depth-proxy",
-            "status": "contract-only"
+            "status": "ready-via-splat-raster"
           },
           {
             "description": "LiDAR-like ray query contract for navigation and mapping agents.",
@@ -542,14 +542,14 @@
             "status": "ready-via-splat-viewer"
           },
           {
-            "description": "Depth proxy contract for future splat ray marching or depth-buffer backends.",
+            "description": "Depth proxy rendered from the local splat rasterizer as float32 depth plus validity mask.",
             "modality": "depth",
             "outputs": [
               "depth",
               "validity-mask"
             ],
             "sensorId": "depth-proxy",
-            "status": "contract-only"
+            "status": "ready-via-splat-raster"
           },
           {
             "description": "LiDAR-like ray query contract for navigation and mapping agents.",
@@ -704,14 +704,14 @@
             "status": "ready-via-splat-viewer"
           },
           {
-            "description": "Depth proxy contract for future splat ray marching or depth-buffer backends.",
+            "description": "Depth proxy rendered from the local splat rasterizer as float32 depth plus validity mask.",
             "modality": "depth",
             "outputs": [
               "depth",
               "validity-mask"
             ],
             "sensorId": "depth-proxy",
-            "status": "contract-only"
+            "status": "ready-via-splat-raster"
           },
           {
             "description": "LiDAR-like ray query contract for navigation and mapping agents.",
@@ -865,14 +865,14 @@
             "status": "ready-via-splat-viewer"
           },
           {
-            "description": "Depth proxy contract for future splat ray marching or depth-buffer backends.",
+            "description": "Depth proxy rendered from the local splat rasterizer as float32 depth plus validity mask.",
             "modality": "depth",
             "outputs": [
               "depth",
               "validity-mask"
             ],
             "sensorId": "depth-proxy",
-            "status": "contract-only"
+            "status": "ready-via-splat-raster"
           },
           {
             "description": "LiDAR-like ray query contract for navigation and mapping agents.",
@@ -1026,14 +1026,14 @@
             "status": "ready-via-splat-viewer"
           },
           {
-            "description": "Depth proxy contract for future splat ray marching or depth-buffer backends.",
+            "description": "Depth proxy rendered from the local splat rasterizer as float32 depth plus validity mask.",
             "modality": "depth",
             "outputs": [
               "depth",
               "validity-mask"
             ],
             "sensorId": "depth-proxy",
-            "status": "contract-only"
+            "status": "ready-via-splat-raster"
           },
           {
             "description": "LiDAR-like ray query contract for navigation and mapping agents.",
@@ -1188,14 +1188,14 @@
             "status": "ready-via-splat-viewer"
           },
           {
-            "description": "Depth proxy contract for future splat ray marching or depth-buffer backends.",
+            "description": "Depth proxy rendered from the local splat rasterizer as float32 depth plus validity mask.",
             "modality": "depth",
             "outputs": [
               "depth",
               "validity-mask"
             ],
             "sensorId": "depth-proxy",
-            "status": "contract-only"
+            "status": "ready-via-splat-raster"
           },
           {
             "description": "LiDAR-like ray query contract for navigation and mapping agents.",

@@ -38,7 +38,7 @@ print([task.task_id for task in scene.evaluation_tasks])
 
 ## Current Readiness
 
-`rgb-forward` is ready through the existing splat viewers. `depth-proxy` and `lidar-ray-proxy` are contract-only placeholders so agents, robotics bridges, and future render backends can agree on names and payload shapes before the ray-query implementation lands.
+`rgb-forward` is ready through the existing splat viewers and the local `.splat` observation renderer. `depth-proxy` is backed by the same local rasterizer and returns float32 depth plus a validity mask. `lidar-ray-proxy` is still a contract-only placeholder so agents, robotics bridges, and future ray backends can agree on names and payload shapes before ray marching lands.
 
 Metric and estimated-metric scenes expose navigation and mapping tasks. Relative-scale scenes expose localization and viewpoint-planning tasks, but avoid waypoint-navigation scoring until a metric alignment is provided.
 
@@ -92,7 +92,7 @@ collision = env.query_collision(env.state.pose)
 observation = env.render_observation(ObservationRequest(pose=env.state.pose, sensor_id="rgb-forward"))
 ```
 
-For local renderer-backed RGB, inject `SplatAssetObservationRenderer`. It reads the same bundled `.splat` assets as the public viewer and returns JPEG-backed `rgb-forward` observations with camera metadata and depth coverage statistics.
+For local renderer-backed RGB and depth, inject `SplatAssetObservationRenderer`. It reads the same bundled `.splat` assets as the public viewer and returns JPEG-backed `rgb-forward` observations or float32 `depth-proxy` observations with camera metadata and validity masks.
 
 ```python
 from pathlib import Path
@@ -116,6 +116,16 @@ env = HeadlessPhysicalAIEnvironment(catalog, observation_renderer=renderer)
 env.reset("outdoor-demo")
 observation = env.render_observation(ObservationRequest(pose=env.state.pose, sensor_id="rgb-forward"))
 jpeg_base64 = observation.outputs["rgb"]["jpegBase64"]
+
+depth = env.render_observation(
+    ObservationRequest(
+        pose=env.state.pose,
+        sensor_id="depth-proxy",
+        outputs=("depth", "validity-mask"),
+    )
+)
+depth_base64 = depth.outputs["depth"]["depthBase64"]
+mask_base64 = depth.outputs["validityMask"]["maskBase64"]
 ```
 
 Supported actions:
@@ -127,4 +137,4 @@ The backend blocks poses outside `SceneEnvironment.bounds`. This is not a replac
 
 ## Next Implementation Layer
 
-The next useful layer is depth and ray-query backing. `depth-proxy` should move from contract-only to renderer depth-buffer output, then `lidar-ray-proxy` can be backed by splat ray marching or an acceleration structure over splat centers.
+The next useful layer is ray-query backing. `lidar-ray-proxy` can be backed by splat ray marching or an acceleration structure over splat centers, then collision checks can move from scene bounds to geometry-aware occupancy.

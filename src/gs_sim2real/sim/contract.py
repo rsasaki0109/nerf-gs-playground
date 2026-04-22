@@ -443,9 +443,9 @@ def _default_sensor_rig() -> SensorRig:
             SensorModel(
                 sensor_id="depth-proxy",
                 modality="depth",
-                status="contract-only",
+                status="ready-via-splat-raster",
                 outputs=("depth", "validity-mask"),
-                description="Depth proxy contract for future splat ray marching or depth-buffer backends.",
+                description="Depth proxy rendered from the local splat rasterizer as float32 depth plus validity mask.",
             ),
             SensorModel(
                 sensor_id="lidar-ray-proxy",

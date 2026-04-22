@@ -39,6 +39,8 @@ def test_simulation_catalog_wraps_all_public_scenes() -> None:
     assert outdoor.has_task("waypoint-navigation")
     assert outdoor.viewer_url.endswith("splat.html?url=assets/outdoor-demo/outdoor-demo.splat")
     assert "rgb-forward" in outdoor.sensor_rig.sensor_ids()
+    depth_sensor = next(sensor for sensor in outdoor.sensor_rig.sensors if sensor.sensor_id == "depth-proxy")
+    assert depth_sensor.status == "ready-via-splat-raster"
 
     dust3r = catalog.scene_by_id("outdoor-demo-dust3r")
     assert dust3r.coordinate_frame.scale_status == "relative"

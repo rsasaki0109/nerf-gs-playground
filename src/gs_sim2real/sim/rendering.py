@@ -42,6 +42,15 @@ class SplatPointCloud:
     loaded_count: int
 
 
+@dataclass(frozen=True, slots=True)
+class SplatRenderFrame:
+    """One local render from a decoded .splat asset."""
+
+    cloud: SplatPointCloud
+    rgb: np.ndarray
+    depth: np.ndarray
+
+
 class ObservationRenderer(Protocol):
     """Renderer adapter used by concrete Physical AI environments."""
 
@@ -53,7 +62,9 @@ class ObservationRenderer(Protocol):
 
 
 class SplatAssetObservationRenderer:
-    """Render RGB observations from bundled `.splat` assets using a local rasterizer."""
+    """Render RGB and depth observations from bundled `.splat` assets."""
+
+    _DEPTH_OUTPUTS = frozenset({"depth", "validity-mask"})
 
     def __init__(self, docs_root: str | Path, *, config: SplatRenderConfig | None = None):
         self.docs_root = Path(docs_root)
@@ -61,31 +72,35 @@ class SplatAssetObservationRenderer:
         self._cache: dict[Path, SplatPointCloud] = {}
 
     def can_render(self, scene: SceneEnvironment, request: ObservationRequest) -> bool:
-        return (
-            request.sensor_id == "rgb-forward"
-            and tuple(request.outputs) == ("rgb",)
-            and scene.asset_url.endswith(".splat")
-        )
+        if not scene.asset_url.endswith(".splat"):
+            return False
+        if request.sensor_id == "rgb-forward":
+            return tuple(request.outputs) == ("rgb",)
+        if request.sensor_id == "depth-proxy":
+            requested_outputs = set(request.outputs)
+            return bool(requested_outputs) and requested_outputs.issubset(self._DEPTH_OUTPUTS)
+        return False
 
     def render_observation(self, scene: SceneEnvironment, request: ObservationRequest) -> Observation:
         if not self.can_render(scene, request):
             raise ValueError(f"splat asset renderer cannot render {request.sensor_id} outputs {request.outputs}")
 
-        cloud = self._load_cloud(scene)
-        rgb, depth = render_splat_point_cloud(cloud, request.pose, self.config)
-        jpeg_bytes = encode_rgb_to_jpeg(rgb, quality=self.config.jpeg_quality)
-        valid_depth = depth[depth < self.config.far_clip]
-        valid_pixel_count = int(valid_depth.size)
-        return Observation(
-            sensor_id=request.sensor_id,
-            pose=request.pose,
-            outputs={
-                "mode": "splat-raster",
-                "sceneId": scene.scene_id,
-                "assetUrl": scene.asset_url,
-                "renderer": "splat-asset-simple",
-                "gaussianCount": cloud.gaussian_count,
-                "loadedGaussianCount": cloud.loaded_count,
+        frame = self._render_frame(scene, request)
+        if request.sensor_id == "depth-proxy":
+            return self._render_depth_observation(scene, request, frame)
+        return self._render_rgb_observation(scene, request, frame)
+
+    def _render_rgb_observation(
+        self,
+        scene: SceneEnvironment,
+        request: ObservationRequest,
+        frame: SplatRenderFrame,
+    ) -> Observation:
+        jpeg_bytes = encode_rgb_to_jpeg(frame.rgb, quality=self.config.jpeg_quality)
+        outputs = self._base_outputs(scene, request, frame)
+        outputs.update(
+            {
+                "mode": "splat-raster-rgb",
                 "rgb": {
                     "encoding": "jpeg",
                     "width": int(self.config.width),
@@ -93,21 +108,69 @@ class SplatAssetObservationRenderer:
                     "jpegBase64": base64.b64encode(jpeg_bytes).decode("ascii"),
                     "byteLength": len(jpeg_bytes),
                 },
-                "cameraInfo": build_camera_info(
-                    width=self.config.width,
-                    height=self.config.height,
-                    fov_degrees=self.config.fov_degrees,
-                    frame_id=request.pose.frame_id,
-                ),
-                "depthStats": {
-                    "validPixelCount": valid_pixel_count,
-                    "validPixelRatio": valid_pixel_count / float(depth.size),
-                    "minMeters": float(valid_depth.min()) if valid_pixel_count else None,
-                    "maxMeters": float(valid_depth.max()) if valid_pixel_count else None,
-                    "farClipMeters": float(self.config.far_clip),
-                },
-            },
+                "depthStats": build_depth_stats(frame.depth, far_clip=self.config.far_clip),
+            }
         )
+        return Observation(sensor_id=request.sensor_id, pose=request.pose, outputs=outputs)
+
+    def _render_depth_observation(
+        self,
+        scene: SceneEnvironment,
+        request: ObservationRequest,
+        frame: SplatRenderFrame,
+    ) -> Observation:
+        validity_mask = build_validity_mask(frame.depth, far_clip=self.config.far_clip)
+        depth_bytes = encode_depth_float32(frame.depth)
+        mask_bytes = validity_mask.astype(np.uint8).tobytes()
+        outputs = self._base_outputs(scene, request, frame)
+        outputs["mode"] = "splat-raster-depth"
+        if "depth" in request.outputs:
+            outputs["depth"] = {
+                "encoding": "float32-le",
+                "unit": "meter",
+                "width": int(self.config.width),
+                "height": int(self.config.height),
+                "depthBase64": base64.b64encode(depth_bytes).decode("ascii"),
+                "byteLength": len(depth_bytes),
+                "nearClipMeters": float(self.config.near_clip),
+                "farClipMeters": float(self.config.far_clip),
+            }
+        if "validity-mask" in request.outputs:
+            outputs["validityMask"] = {
+                "encoding": "uint8-0-or-1",
+                "width": int(self.config.width),
+                "height": int(self.config.height),
+                "maskBase64": base64.b64encode(mask_bytes).decode("ascii"),
+                "byteLength": len(mask_bytes),
+            }
+        outputs["depthStats"] = build_depth_stats(frame.depth, far_clip=self.config.far_clip)
+        return Observation(sensor_id=request.sensor_id, pose=request.pose, outputs=outputs)
+
+    def _render_frame(self, scene: SceneEnvironment, request: ObservationRequest) -> SplatRenderFrame:
+        cloud = self._load_cloud(scene)
+        rgb, depth = render_splat_point_cloud(cloud, request.pose, self.config)
+        return SplatRenderFrame(cloud=cloud, rgb=rgb, depth=depth)
+
+    def _base_outputs(
+        self,
+        scene: SceneEnvironment,
+        request: ObservationRequest,
+        frame: SplatRenderFrame,
+    ) -> dict[str, object]:
+        return {
+            "sceneId": scene.scene_id,
+            "assetUrl": scene.asset_url,
+            "renderer": "splat-asset-simple",
+            "gaussianCount": frame.cloud.gaussian_count,
+            "loadedGaussianCount": frame.cloud.loaded_count,
+            "requestedOutputs": list(request.outputs),
+            "cameraInfo": build_camera_info(
+                width=self.config.width,
+                height=self.config.height,
+                fov_degrees=self.config.fov_degrees,
+                frame_id=request.pose.frame_id,
+            ),
+        }
 
     def _load_cloud(self, scene: SceneEnvironment) -> SplatPointCloud:
         path = resolve_scene_asset_path(self.docs_root, scene.asset_url)
@@ -260,6 +323,35 @@ def build_camera_info(width: int, height: int, fov_degrees: float, frame_id: str
         "d": [0.0, 0.0, 0.0, 0.0, 0.0],
         "k": [fx, 0.0, cx, 0.0, fy, cy, 0.0, 0.0, 1.0],
     }
+
+
+def build_validity_mask(depth: np.ndarray, *, far_clip: float) -> np.ndarray:
+    """Return a uint8 mask where finite values before far clip are valid."""
+
+    depth_array = np.asarray(depth, dtype=np.float32)
+    return (np.isfinite(depth_array) & (depth_array < float(far_clip))).astype(np.uint8)
+
+
+def build_depth_stats(depth: np.ndarray, *, far_clip: float) -> dict[str, object]:
+    """Summarize valid depth coverage for an observation."""
+
+    depth_array = np.asarray(depth, dtype=np.float32)
+    valid = build_validity_mask(depth_array, far_clip=far_clip).astype(bool)
+    valid_depth = depth_array[valid]
+    valid_pixel_count = int(valid_depth.size)
+    return {
+        "validPixelCount": valid_pixel_count,
+        "validPixelRatio": valid_pixel_count / float(depth_array.size),
+        "minMeters": float(valid_depth.min()) if valid_pixel_count else None,
+        "maxMeters": float(valid_depth.max()) if valid_pixel_count else None,
+        "farClipMeters": float(far_clip),
+    }
+
+
+def encode_depth_float32(depth: np.ndarray) -> bytes:
+    """Encode a depth image as little-endian float32 bytes."""
+
+    return np.asarray(depth, dtype="<f4").tobytes()
 
 
 def world_to_camera_transform(pose: Pose3D) -> tuple[np.ndarray, np.ndarray]:
