@@ -1,0 +1,1243 @@
+{
+  "sceneCount": 8,
+  "scenes": [
+    {
+      "assetUrl": "assets/outdoor-demo/outdoor-demo.splat",
+      "bounds": {
+        "center": [
+          3.1414453983306885,
+          -0.6721465289592743,
+          -0.6074967384338379
+        ],
+        "confidence": "declared",
+        "extent": [
+          17.59957456588745,
+          3.335951864719391,
+          5.751887321472168
+        ],
+        "max": [
+          11.941232681274414,
+          0.9958294034004211,
+          2.268446922302246
+        ],
+        "min": [
+          -5.658341884613037,
+          -2.3401224613189697,
+          -3.483440399169922
+        ],
+        "source": "assets/outdoor-demo/scene.json"
+      },
+      "coordinateFrame": {
+        "frameId": "autoware_metric_world",
+        "gravity": [
+          0.0,
+          -9.80665,
+          0.0
+        ],
+        "handedness": "right-handed",
+        "scaleStatus": "metric",
+        "unit": "meter",
+        "upAxis": "y"
+      },
+      "evaluationTasks": [
+        {
+          "kind": "pose-estimation",
+          "label": "Visual localization",
+          "metrics": [
+            "translation-error",
+            "rotation-error",
+            "tracking-success-rate"
+          ],
+          "requiredSensors": [
+            "rgb-forward"
+          ],
+          "taskId": "localization"
+        },
+        {
+          "kind": "planning",
+          "label": "Viewpoint planning",
+          "metrics": [
+            "coverage-gain",
+            "path-length",
+            "render-validity"
+          ],
+          "requiredSensors": [
+            "rgb-forward",
+            "depth-proxy"
+          ],
+          "taskId": "viewpoint-planning"
+        },
+        {
+          "kind": "navigation",
+          "label": "Waypoint navigation",
+          "metrics": [
+            "goal-success",
+            "collision-rate",
+            "path-efficiency"
+          ],
+          "requiredSensors": [
+            "rgb-forward",
+            "lidar-ray-proxy"
+          ],
+          "taskId": "waypoint-navigation"
+        },
+        {
+          "kind": "mapping",
+          "label": "Mapping coverage",
+          "metrics": [
+            "surface-coverage",
+            "frontier-count",
+            "revisit-rate"
+          ],
+          "requiredSensors": [
+            "rgb-forward",
+            "depth-proxy"
+          ],
+          "taskId": "mapping-coverage"
+        }
+      ],
+      "label": "Autoware 6-bag fused (supervised default)",
+      "previewUrl": "images/demo-sweep/01_outdoor-demo.png",
+      "reconstructionMethod": "supervised-gnss-lidar",
+      "sceneFamily": "autoware",
+      "sceneId": "outdoor-demo",
+      "sensorRig": {
+        "rigId": "physical-ai-default",
+        "sensors": [
+          {
+            "description": "RGB observation rendered from the browser-viewable splat scene.",
+            "modality": "rgb",
+            "outputs": [
+              "rgb"
+            ],
+            "sensorId": "rgb-forward",
+            "status": "ready-via-splat-viewer"
+          },
+          {
+            "description": "Depth proxy contract for future splat ray marching or depth-buffer backends.",
+            "modality": "depth",
+            "outputs": [
+              "depth",
+              "validity-mask"
+            ],
+            "sensorId": "depth-proxy",
+            "status": "contract-only"
+          },
+          {
+            "description": "LiDAR-like ray query contract for navigation and mapping agents.",
+            "modality": "lidar",
+            "outputs": [
+              "ranges",
+              "points"
+            ],
+            "sensorId": "lidar-ray-proxy",
+            "status": "contract-only"
+          }
+        ]
+      },
+      "summary": "Autoware Leo Drive 6-bag fused — supervised (GNSS + LiDAR + appearance + BA)",
+      "tags": [
+        "supervised-gnss-lidar",
+        "autoware",
+        "metric",
+        "supervised",
+        "gnss",
+        "lidar"
+      ],
+      "taskSplit": [
+        {
+          "description": "Trajectory poses used for reconstruction or artifact import.",
+          "episodeId": "outdoor-demo-train",
+          "poseCount": 4896,
+          "source": "reconstruction-trajectory",
+          "split": "train"
+        },
+        {
+          "description": "Held-out viewpoints sampled within scene bounds for Physical AI evaluation.",
+          "episodeId": "outdoor-demo-eval",
+          "poseCount": 1224,
+          "source": "held-out-viewpoint-contract",
+          "split": "eval"
+        }
+      ],
+      "trajectoryExtentMeters": null,
+      "viewerUrl": "https://rsasaki0109.github.io/gs-mapper/splat.html?url=assets/outdoor-demo/outdoor-demo.splat"
+    },
+    {
+      "assetUrl": "assets/outdoor-demo/outdoor-demo-dust3r.splat",
+      "bounds": {
+        "center": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "confidence": "estimated",
+        "extent": [
+          2.0,
+          4.0,
+          2.0
+        ],
+        "max": [
+          1.0,
+          2.0,
+          1.0
+        ],
+        "min": [
+          -1.0,
+          -2.0,
+          -1.0
+        ],
+        "source": "readme-trajectory-extent"
+      },
+      "coordinateFrame": {
+        "frameId": "autoware_relative_world",
+        "gravity": [
+          0.0,
+          -9.80665,
+          0.0
+        ],
+        "handedness": "right-handed",
+        "scaleStatus": "relative",
+        "unit": "meter",
+        "upAxis": "y"
+      },
+      "evaluationTasks": [
+        {
+          "kind": "pose-estimation",
+          "label": "Visual localization",
+          "metrics": [
+            "translation-error",
+            "rotation-error",
+            "tracking-success-rate"
+          ],
+          "requiredSensors": [
+            "rgb-forward"
+          ],
+          "taskId": "localization"
+        },
+        {
+          "kind": "planning",
+          "label": "Viewpoint planning",
+          "metrics": [
+            "coverage-gain",
+            "path-length",
+            "render-validity"
+          ],
+          "requiredSensors": [
+            "rgb-forward",
+            "depth-proxy"
+          ],
+          "taskId": "viewpoint-planning"
+        }
+      ],
+      "label": "bag6 cam0 — DUSt3R pose-free",
+      "previewUrl": "images/demo-sweep/02_outdoor-demo-dust3r.png",
+      "reconstructionMethod": "dust3r-pose-free",
+      "sceneFamily": "autoware",
+      "sceneId": "outdoor-demo-dust3r",
+      "sensorRig": {
+        "rigId": "physical-ai-default",
+        "sensors": [
+          {
+            "description": "RGB observation rendered from the browser-viewable splat scene.",
+            "modality": "rgb",
+            "outputs": [
+              "rgb"
+            ],
+            "sensorId": "rgb-forward",
+            "status": "ready-via-splat-viewer"
+          },
+          {
+            "description": "Depth proxy contract for future splat ray marching or depth-buffer backends.",
+            "modality": "depth",
+            "outputs": [
+              "depth",
+              "validity-mask"
+            ],
+            "sensorId": "depth-proxy",
+            "status": "contract-only"
+          },
+          {
+            "description": "LiDAR-like ray query contract for navigation and mapping agents.",
+            "modality": "lidar",
+            "outputs": [
+              "ranges",
+              "points"
+            ],
+            "sensorId": "lidar-ray-proxy",
+            "status": "contract-only"
+          }
+        ]
+      },
+      "summary": "Autoware bag6 cam0, 20 DUSt3R frames, no GNSS/LiDAR — pose-free",
+      "tags": [
+        "dust3r-pose-free",
+        "autoware",
+        "relative",
+        "dust3r",
+        "pose-free"
+      ],
+      "taskSplit": [
+        {
+          "description": "Trajectory poses used for reconstruction or artifact import.",
+          "episodeId": "outdoor-demo-dust3r-train",
+          "poseCount": 16,
+          "source": "reconstruction-trajectory",
+          "split": "train"
+        },
+        {
+          "description": "Held-out viewpoints sampled within scene bounds for Physical AI evaluation.",
+          "episodeId": "outdoor-demo-dust3r-eval",
+          "poseCount": 4,
+          "source": "held-out-viewpoint-contract",
+          "split": "eval"
+        }
+      ],
+      "trajectoryExtentMeters": 1.02,
+      "viewerUrl": "https://rsasaki0109.github.io/gs-mapper/splat.html?url=assets/outdoor-demo/outdoor-demo-dust3r.splat"
+    },
+    {
+      "assetUrl": "assets/outdoor-demo/mcd-tuhh-day04.splat",
+      "bounds": {
+        "center": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "confidence": "estimated",
+        "extent": [
+          2.0,
+          4.0,
+          2.0
+        ],
+        "max": [
+          1.0,
+          2.0,
+          1.0
+        ],
+        "min": [
+          -1.0,
+          -2.0,
+          -1.0
+        ],
+        "source": "readme-trajectory-extent"
+      },
+      "coordinateFrame": {
+        "frameId": "mcd_relative_world",
+        "gravity": [
+          0.0,
+          -9.80665,
+          0.0
+        ],
+        "handedness": "right-handed",
+        "scaleStatus": "relative",
+        "unit": "meter",
+        "upAxis": "y"
+      },
+      "evaluationTasks": [
+        {
+          "kind": "pose-estimation",
+          "label": "Visual localization",
+          "metrics": [
+            "translation-error",
+            "rotation-error",
+            "tracking-success-rate"
+          ],
+          "requiredSensors": [
+            "rgb-forward"
+          ],
+          "taskId": "localization"
+        },
+        {
+          "kind": "planning",
+          "label": "Viewpoint planning",
+          "metrics": [
+            "coverage-gain",
+            "path-length",
+            "render-validity"
+          ],
+          "requiredSensors": [
+            "rgb-forward",
+            "depth-proxy"
+          ],
+          "taskId": "viewpoint-planning"
+        }
+      ],
+      "label": "MCD tuhh_day_04 — DUSt3R pose-free",
+      "previewUrl": "images/demo-sweep/03_mcd-tuhh-day04.png",
+      "reconstructionMethod": "dust3r-pose-free",
+      "sceneFamily": "mcd",
+      "sceneId": "mcd-tuhh-day04",
+      "sensorRig": {
+        "rigId": "physical-ai-default",
+        "sensors": [
+          {
+            "description": "RGB observation rendered from the browser-viewable splat scene.",
+            "modality": "rgb",
+            "outputs": [
+              "rgb"
+            ],
+            "sensorId": "rgb-forward",
+            "status": "ready-via-splat-viewer"
+          },
+          {
+            "description": "Depth proxy contract for future splat ray marching or depth-buffer backends.",
+            "modality": "depth",
+            "outputs": [
+              "depth",
+              "validity-mask"
+            ],
+            "sensorId": "depth-proxy",
+            "status": "contract-only"
+          },
+          {
+            "description": "LiDAR-like ray query contract for navigation and mapping agents.",
+            "modality": "lidar",
+            "outputs": [
+              "ranges",
+              "points"
+            ],
+            "sensorId": "lidar-ray-proxy",
+            "status": "contract-only"
+          }
+        ]
+      },
+      "summary": "MCD tuhh_day_04 handheld day session, 20 DUSt3R frames — non-Autoware",
+      "tags": [
+        "dust3r-pose-free",
+        "mcd",
+        "relative",
+        "dust3r",
+        "pose-free"
+      ],
+      "taskSplit": [
+        {
+          "description": "Trajectory poses used for reconstruction or artifact import.",
+          "episodeId": "mcd-tuhh-day04-train",
+          "poseCount": 16,
+          "source": "reconstruction-trajectory",
+          "split": "train"
+        },
+        {
+          "description": "Held-out viewpoints sampled within scene bounds for Physical AI evaluation.",
+          "episodeId": "mcd-tuhh-day04-eval",
+          "poseCount": 4,
+          "source": "held-out-viewpoint-contract",
+          "split": "eval"
+        }
+      ],
+      "trajectoryExtentMeters": 1.78,
+      "viewerUrl": "https://rsasaki0109.github.io/gs-mapper/splat.html?url=assets/outdoor-demo/mcd-tuhh-day04.splat"
+    },
+    {
+      "assetUrl": "assets/outdoor-demo/bag6-mast3r.splat",
+      "bounds": {
+        "center": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "confidence": "estimated",
+        "extent": [
+          28.1,
+          4.0,
+          28.1
+        ],
+        "max": [
+          14.05,
+          2.0,
+          14.05
+        ],
+        "min": [
+          -14.05,
+          -2.0,
+          -14.05
+        ],
+        "source": "readme-trajectory-extent"
+      },
+      "coordinateFrame": {
+        "frameId": "autoware_metric_world",
+        "gravity": [
+          0.0,
+          -9.80665,
+          0.0
+        ],
+        "handedness": "right-handed",
+        "scaleStatus": "metric",
+        "unit": "meter",
+        "upAxis": "y"
+      },
+      "evaluationTasks": [
+        {
+          "kind": "pose-estimation",
+          "label": "Visual localization",
+          "metrics": [
+            "translation-error",
+            "rotation-error",
+            "tracking-success-rate"
+          ],
+          "requiredSensors": [
+            "rgb-forward"
+          ],
+          "taskId": "localization"
+        },
+        {
+          "kind": "planning",
+          "label": "Viewpoint planning",
+          "metrics": [
+            "coverage-gain",
+            "path-length",
+            "render-validity"
+          ],
+          "requiredSensors": [
+            "rgb-forward",
+            "depth-proxy"
+          ],
+          "taskId": "viewpoint-planning"
+        },
+        {
+          "kind": "navigation",
+          "label": "Waypoint navigation",
+          "metrics": [
+            "goal-success",
+            "collision-rate",
+            "path-efficiency"
+          ],
+          "requiredSensors": [
+            "rgb-forward",
+            "lidar-ray-proxy"
+          ],
+          "taskId": "waypoint-navigation"
+        },
+        {
+          "kind": "mapping",
+          "label": "Mapping coverage",
+          "metrics": [
+            "surface-coverage",
+            "frontier-count",
+            "revisit-rate"
+          ],
+          "requiredSensors": [
+            "rgb-forward",
+            "depth-proxy"
+          ],
+          "taskId": "mapping-coverage"
+        }
+      ],
+      "label": "bag6 cam0 — MAST3R pose-free (metric)",
+      "previewUrl": "images/demo-sweep/04_bag6-mast3r.png",
+      "reconstructionMethod": "mast3r-pose-free",
+      "sceneFamily": "autoware",
+      "sceneId": "bag6-mast3r",
+      "sensorRig": {
+        "rigId": "physical-ai-default",
+        "sensors": [
+          {
+            "description": "RGB observation rendered from the browser-viewable splat scene.",
+            "modality": "rgb",
+            "outputs": [
+              "rgb"
+            ],
+            "sensorId": "rgb-forward",
+            "status": "ready-via-splat-viewer"
+          },
+          {
+            "description": "Depth proxy contract for future splat ray marching or depth-buffer backends.",
+            "modality": "depth",
+            "outputs": [
+              "depth",
+              "validity-mask"
+            ],
+            "sensorId": "depth-proxy",
+            "status": "contract-only"
+          },
+          {
+            "description": "LiDAR-like ray query contract for navigation and mapping agents.",
+            "modality": "lidar",
+            "outputs": [
+              "ranges",
+              "points"
+            ],
+            "sensorId": "lidar-ray-proxy",
+            "status": "contract-only"
+          }
+        ]
+      },
+      "summary": "Autoware bag6 cam0, 20 MAST3R frames — metric-aware pose-free",
+      "tags": [
+        "mast3r-pose-free",
+        "autoware",
+        "metric",
+        "mast3r",
+        "pose-free",
+        "metric"
+      ],
+      "taskSplit": [
+        {
+          "description": "Trajectory poses used for reconstruction or artifact import.",
+          "episodeId": "bag6-mast3r-train",
+          "poseCount": 16,
+          "source": "reconstruction-trajectory",
+          "split": "train"
+        },
+        {
+          "description": "Held-out viewpoints sampled within scene bounds for Physical AI evaluation.",
+          "episodeId": "bag6-mast3r-eval",
+          "poseCount": 4,
+          "source": "held-out-viewpoint-contract",
+          "split": "eval"
+        }
+      ],
+      "trajectoryExtentMeters": 28.1,
+      "viewerUrl": "https://rsasaki0109.github.io/gs-mapper/splat.html?url=assets/outdoor-demo/bag6-mast3r.splat"
+    },
+    {
+      "assetUrl": "assets/outdoor-demo/bag6-vggt-slam-20-15k.splat",
+      "bounds": {
+        "center": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "confidence": "estimated",
+        "extent": [
+          3.23,
+          4.0,
+          3.23
+        ],
+        "max": [
+          1.615,
+          2.0,
+          1.615
+        ],
+        "min": [
+          -1.615,
+          -2.0,
+          -1.615
+        ],
+        "source": "readme-trajectory-extent"
+      },
+      "coordinateFrame": {
+        "frameId": "autoware_estimated_metric_world",
+        "gravity": [
+          0.0,
+          -9.80665,
+          0.0
+        ],
+        "handedness": "right-handed",
+        "scaleStatus": "estimated-metric",
+        "unit": "meter",
+        "upAxis": "y"
+      },
+      "evaluationTasks": [
+        {
+          "kind": "pose-estimation",
+          "label": "Visual localization",
+          "metrics": [
+            "translation-error",
+            "rotation-error",
+            "tracking-success-rate"
+          ],
+          "requiredSensors": [
+            "rgb-forward"
+          ],
+          "taskId": "localization"
+        },
+        {
+          "kind": "planning",
+          "label": "Viewpoint planning",
+          "metrics": [
+            "coverage-gain",
+            "path-length",
+            "render-validity"
+          ],
+          "requiredSensors": [
+            "rgb-forward",
+            "depth-proxy"
+          ],
+          "taskId": "viewpoint-planning"
+        },
+        {
+          "kind": "navigation",
+          "label": "Waypoint navigation",
+          "metrics": [
+            "goal-success",
+            "collision-rate",
+            "path-efficiency"
+          ],
+          "requiredSensors": [
+            "rgb-forward",
+            "lidar-ray-proxy"
+          ],
+          "taskId": "waypoint-navigation"
+        },
+        {
+          "kind": "mapping",
+          "label": "Mapping coverage",
+          "metrics": [
+            "surface-coverage",
+            "frontier-count",
+            "revisit-rate"
+          ],
+          "requiredSensors": [
+            "rgb-forward",
+            "depth-proxy"
+          ],
+          "taskId": "mapping-coverage"
+        }
+      ],
+      "label": "bag6 cam0 — VGGT-SLAM 2.0 (15k)",
+      "previewUrl": "images/demo-sweep/07_bag6-vggt-slam.png",
+      "reconstructionMethod": "vggt-slam-2.0",
+      "sceneFamily": "autoware",
+      "sceneId": "bag6-vggt-slam-20-15k",
+      "sensorRig": {
+        "rigId": "physical-ai-default",
+        "sensors": [
+          {
+            "description": "RGB observation rendered from the browser-viewable splat scene.",
+            "modality": "rgb",
+            "outputs": [
+              "rgb"
+            ],
+            "sensorId": "rgb-forward",
+            "status": "ready-via-splat-viewer"
+          },
+          {
+            "description": "Depth proxy contract for future splat ray marching or depth-buffer backends.",
+            "modality": "depth",
+            "outputs": [
+              "depth",
+              "validity-mask"
+            ],
+            "sensorId": "depth-proxy",
+            "status": "contract-only"
+          },
+          {
+            "description": "LiDAR-like ray query contract for navigation and mapping agents.",
+            "modality": "lidar",
+            "outputs": [
+              "ranges",
+              "points"
+            ],
+            "sensorId": "lidar-ray-proxy",
+            "status": "contract-only"
+          }
+        ]
+      },
+      "summary": "Autoware bag6 cam0, 20 VGGT-SLAM 2.0 frames, external artifact import — comparison-quality",
+      "tags": [
+        "vggt-slam-2.0",
+        "autoware",
+        "estimated-metric",
+        "vggt-slam",
+        "external-slam"
+      ],
+      "taskSplit": [
+        {
+          "description": "Trajectory poses used for reconstruction or artifact import.",
+          "episodeId": "bag6-vggt-slam-20-15k-train",
+          "poseCount": 16,
+          "source": "reconstruction-trajectory",
+          "split": "train"
+        },
+        {
+          "description": "Held-out viewpoints sampled within scene bounds for Physical AI evaluation.",
+          "episodeId": "bag6-vggt-slam-20-15k-eval",
+          "poseCount": 4,
+          "source": "held-out-viewpoint-contract",
+          "split": "eval"
+        }
+      ],
+      "trajectoryExtentMeters": 3.23,
+      "viewerUrl": "https://rsasaki0109.github.io/gs-mapper/splat.html?url=assets/outdoor-demo/bag6-vggt-slam-20-15k.splat"
+    },
+    {
+      "assetUrl": "assets/outdoor-demo/bag6-mast3r-slam-20-15k.splat",
+      "bounds": {
+        "center": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "confidence": "estimated",
+        "extent": [
+          2.16,
+          4.0,
+          2.16
+        ],
+        "max": [
+          1.08,
+          2.0,
+          1.08
+        ],
+        "min": [
+          -1.08,
+          -2.0,
+          -1.08
+        ],
+        "source": "readme-trajectory-extent"
+      },
+      "coordinateFrame": {
+        "frameId": "autoware_estimated_metric_world",
+        "gravity": [
+          0.0,
+          -9.80665,
+          0.0
+        ],
+        "handedness": "right-handed",
+        "scaleStatus": "estimated-metric",
+        "unit": "meter",
+        "upAxis": "y"
+      },
+      "evaluationTasks": [
+        {
+          "kind": "pose-estimation",
+          "label": "Visual localization",
+          "metrics": [
+            "translation-error",
+            "rotation-error",
+            "tracking-success-rate"
+          ],
+          "requiredSensors": [
+            "rgb-forward"
+          ],
+          "taskId": "localization"
+        },
+        {
+          "kind": "planning",
+          "label": "Viewpoint planning",
+          "metrics": [
+            "coverage-gain",
+            "path-length",
+            "render-validity"
+          ],
+          "requiredSensors": [
+            "rgb-forward",
+            "depth-proxy"
+          ],
+          "taskId": "viewpoint-planning"
+        },
+        {
+          "kind": "navigation",
+          "label": "Waypoint navigation",
+          "metrics": [
+            "goal-success",
+            "collision-rate",
+            "path-efficiency"
+          ],
+          "requiredSensors": [
+            "rgb-forward",
+            "lidar-ray-proxy"
+          ],
+          "taskId": "waypoint-navigation"
+        },
+        {
+          "kind": "mapping",
+          "label": "Mapping coverage",
+          "metrics": [
+            "surface-coverage",
+            "frontier-count",
+            "revisit-rate"
+          ],
+          "requiredSensors": [
+            "rgb-forward",
+            "depth-proxy"
+          ],
+          "taskId": "mapping-coverage"
+        }
+      ],
+      "label": "bag6 cam0 — MASt3R-SLAM (15k)",
+      "previewUrl": "images/demo-sweep/08_bag6-mast3r-slam.png",
+      "reconstructionMethod": "mast3r-slam",
+      "sceneFamily": "autoware",
+      "sceneId": "bag6-mast3r-slam-20-15k",
+      "sensorRig": {
+        "rigId": "physical-ai-default",
+        "sensors": [
+          {
+            "description": "RGB observation rendered from the browser-viewable splat scene.",
+            "modality": "rgb",
+            "outputs": [
+              "rgb"
+            ],
+            "sensorId": "rgb-forward",
+            "status": "ready-via-splat-viewer"
+          },
+          {
+            "description": "Depth proxy contract for future splat ray marching or depth-buffer backends.",
+            "modality": "depth",
+            "outputs": [
+              "depth",
+              "validity-mask"
+            ],
+            "sensorId": "depth-proxy",
+            "status": "contract-only"
+          },
+          {
+            "description": "LiDAR-like ray query contract for navigation and mapping agents.",
+            "modality": "lidar",
+            "outputs": [
+              "ranges",
+              "points"
+            ],
+            "sensorId": "lidar-ray-proxy",
+            "status": "contract-only"
+          }
+        ]
+      },
+      "summary": "Autoware bag6 cam0, 20 MASt3R-SLAM candidates, external artifact import — comparison-quality",
+      "tags": [
+        "mast3r-slam",
+        "autoware",
+        "estimated-metric",
+        "mast3r-slam",
+        "external-slam"
+      ],
+      "taskSplit": [
+        {
+          "description": "Trajectory poses used for reconstruction or artifact import.",
+          "episodeId": "bag6-mast3r-slam-20-15k-train",
+          "poseCount": 8,
+          "source": "reconstruction-trajectory",
+          "split": "train"
+        },
+        {
+          "description": "Held-out viewpoints sampled within scene bounds for Physical AI evaluation.",
+          "episodeId": "bag6-mast3r-slam-20-15k-eval",
+          "poseCount": 2,
+          "source": "held-out-viewpoint-contract",
+          "split": "eval"
+        }
+      ],
+      "trajectoryExtentMeters": 2.16,
+      "viewerUrl": "https://rsasaki0109.github.io/gs-mapper/splat.html?url=assets/outdoor-demo/bag6-mast3r-slam-20-15k.splat"
+    },
+    {
+      "assetUrl": "assets/outdoor-demo/mcd-tuhh-day04-mast3r.splat",
+      "bounds": {
+        "center": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "confidence": "estimated",
+        "extent": [
+          59.0,
+          4.0,
+          59.0
+        ],
+        "max": [
+          29.5,
+          2.0,
+          29.5
+        ],
+        "min": [
+          -29.5,
+          -2.0,
+          -29.5
+        ],
+        "source": "readme-trajectory-extent"
+      },
+      "coordinateFrame": {
+        "frameId": "mcd_metric_world",
+        "gravity": [
+          0.0,
+          -9.80665,
+          0.0
+        ],
+        "handedness": "right-handed",
+        "scaleStatus": "metric",
+        "unit": "meter",
+        "upAxis": "y"
+      },
+      "evaluationTasks": [
+        {
+          "kind": "pose-estimation",
+          "label": "Visual localization",
+          "metrics": [
+            "translation-error",
+            "rotation-error",
+            "tracking-success-rate"
+          ],
+          "requiredSensors": [
+            "rgb-forward"
+          ],
+          "taskId": "localization"
+        },
+        {
+          "kind": "planning",
+          "label": "Viewpoint planning",
+          "metrics": [
+            "coverage-gain",
+            "path-length",
+            "render-validity"
+          ],
+          "requiredSensors": [
+            "rgb-forward",
+            "depth-proxy"
+          ],
+          "taskId": "viewpoint-planning"
+        },
+        {
+          "kind": "navigation",
+          "label": "Waypoint navigation",
+          "metrics": [
+            "goal-success",
+            "collision-rate",
+            "path-efficiency"
+          ],
+          "requiredSensors": [
+            "rgb-forward",
+            "lidar-ray-proxy"
+          ],
+          "taskId": "waypoint-navigation"
+        },
+        {
+          "kind": "mapping",
+          "label": "Mapping coverage",
+          "metrics": [
+            "surface-coverage",
+            "frontier-count",
+            "revisit-rate"
+          ],
+          "requiredSensors": [
+            "rgb-forward",
+            "depth-proxy"
+          ],
+          "taskId": "mapping-coverage"
+        }
+      ],
+      "label": "MCD tuhh_day_04 — MAST3R pose-free (metric)",
+      "previewUrl": "images/demo-sweep/05_mcd-tuhh-day04-mast3r.png",
+      "reconstructionMethod": "mast3r-pose-free",
+      "sceneFamily": "mcd",
+      "sceneId": "mcd-tuhh-day04-mast3r",
+      "sensorRig": {
+        "rigId": "physical-ai-default",
+        "sensors": [
+          {
+            "description": "RGB observation rendered from the browser-viewable splat scene.",
+            "modality": "rgb",
+            "outputs": [
+              "rgb"
+            ],
+            "sensorId": "rgb-forward",
+            "status": "ready-via-splat-viewer"
+          },
+          {
+            "description": "Depth proxy contract for future splat ray marching or depth-buffer backends.",
+            "modality": "depth",
+            "outputs": [
+              "depth",
+              "validity-mask"
+            ],
+            "sensorId": "depth-proxy",
+            "status": "contract-only"
+          },
+          {
+            "description": "LiDAR-like ray query contract for navigation and mapping agents.",
+            "modality": "lidar",
+            "outputs": [
+              "ranges",
+              "points"
+            ],
+            "sensorId": "lidar-ray-proxy",
+            "status": "contract-only"
+          }
+        ]
+      },
+      "summary": "MCD tuhh_day_04 handheld day session, 20 MAST3R frames — metric-aware pose-free",
+      "tags": [
+        "mast3r-pose-free",
+        "mcd",
+        "metric",
+        "mast3r",
+        "pose-free",
+        "metric"
+      ],
+      "taskSplit": [
+        {
+          "description": "Trajectory poses used for reconstruction or artifact import.",
+          "episodeId": "mcd-tuhh-day04-mast3r-train",
+          "poseCount": 16,
+          "source": "reconstruction-trajectory",
+          "split": "train"
+        },
+        {
+          "description": "Held-out viewpoints sampled within scene bounds for Physical AI evaluation.",
+          "episodeId": "mcd-tuhh-day04-mast3r-eval",
+          "poseCount": 4,
+          "source": "held-out-viewpoint-contract",
+          "split": "eval"
+        }
+      ],
+      "trajectoryExtentMeters": 59.0,
+      "viewerUrl": "https://rsasaki0109.github.io/gs-mapper/splat.html?url=assets/outdoor-demo/mcd-tuhh-day04-mast3r.splat"
+    },
+    {
+      "assetUrl": "assets/outdoor-demo/mcd-ntu-day02-supervised.splat",
+      "bounds": {
+        "center": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "confidence": "estimated",
+        "extent": [
+          250.0,
+          4.0,
+          250.0
+        ],
+        "max": [
+          125.0,
+          2.0,
+          125.0
+        ],
+        "min": [
+          -125.0,
+          -2.0,
+          -125.0
+        ],
+        "source": "readme-trajectory-extent"
+      },
+      "coordinateFrame": {
+        "frameId": "mcd_metric_world",
+        "gravity": [
+          0.0,
+          -9.80665,
+          0.0
+        ],
+        "handedness": "right-handed",
+        "scaleStatus": "metric",
+        "unit": "meter",
+        "upAxis": "y"
+      },
+      "evaluationTasks": [
+        {
+          "kind": "pose-estimation",
+          "label": "Visual localization",
+          "metrics": [
+            "translation-error",
+            "rotation-error",
+            "tracking-success-rate"
+          ],
+          "requiredSensors": [
+            "rgb-forward"
+          ],
+          "taskId": "localization"
+        },
+        {
+          "kind": "planning",
+          "label": "Viewpoint planning",
+          "metrics": [
+            "coverage-gain",
+            "path-length",
+            "render-validity"
+          ],
+          "requiredSensors": [
+            "rgb-forward",
+            "depth-proxy"
+          ],
+          "taskId": "viewpoint-planning"
+        },
+        {
+          "kind": "navigation",
+          "label": "Waypoint navigation",
+          "metrics": [
+            "goal-success",
+            "collision-rate",
+            "path-efficiency"
+          ],
+          "requiredSensors": [
+            "rgb-forward",
+            "lidar-ray-proxy"
+          ],
+          "taskId": "waypoint-navigation"
+        },
+        {
+          "kind": "mapping",
+          "label": "Mapping coverage",
+          "metrics": [
+            "surface-coverage",
+            "frontier-count",
+            "revisit-rate"
+          ],
+          "requiredSensors": [
+            "rgb-forward",
+            "depth-proxy"
+          ],
+          "taskId": "mapping-coverage"
+        }
+      ],
+      "label": "MCD ntu_day_02 — supervised",
+      "previewUrl": "images/demo-sweep/06_mcd-ntu-day02-supervised.png",
+      "reconstructionMethod": "supervised-gnss-lidar",
+      "sceneFamily": "mcd",
+      "sceneId": "mcd-ntu-day02-supervised",
+      "sensorRig": {
+        "rigId": "physical-ai-default",
+        "sensors": [
+          {
+            "description": "RGB observation rendered from the browser-viewable splat scene.",
+            "modality": "rgb",
+            "outputs": [
+              "rgb"
+            ],
+            "sensorId": "rgb-forward",
+            "status": "ready-via-splat-viewer"
+          },
+          {
+            "description": "Depth proxy contract for future splat ray marching or depth-buffer backends.",
+            "modality": "depth",
+            "outputs": [
+              "depth",
+              "validity-mask"
+            ],
+            "sensorId": "depth-proxy",
+            "status": "contract-only"
+          },
+          {
+            "description": "LiDAR-like ray query contract for navigation and mapping agents.",
+            "modality": "lidar",
+            "outputs": [
+              "ranges",
+              "points"
+            ],
+            "sensorId": "lidar-ray-proxy",
+            "status": "contract-only"
+          }
+        ]
+      },
+      "summary": "MCD ntu_day_02 ATV session, GNSS + ATV calibration + LiDAR-seeded depth-supervised gsplat.",
+      "tags": [
+        "supervised-gnss-lidar",
+        "mcd",
+        "metric",
+        "supervised",
+        "gnss",
+        "lidar"
+      ],
+      "taskSplit": [
+        {
+          "description": "Trajectory poses used for reconstruction or artifact import.",
+          "episodeId": "mcd-ntu-day02-supervised-train",
+          "poseCount": 320,
+          "source": "reconstruction-trajectory",
+          "split": "train"
+        },
+        {
+          "description": "Held-out viewpoints sampled within scene bounds for Physical AI evaluation.",
+          "episodeId": "mcd-ntu-day02-supervised-eval",
+          "poseCount": 80,
+          "source": "held-out-viewpoint-contract",
+          "split": "eval"
+        }
+      ],
+      "trajectoryExtentMeters": 250.0,
+      "viewerUrl": "https://rsasaki0109.github.io/gs-mapper/splat.html?url=assets/outdoor-demo/mcd-ntu-day02-supervised.splat"
+    }
+  ],
+  "sourceCatalog": "docs/scenes-list.json",
+  "version": "gs-mapper-physical-ai-sim/v1"
+}

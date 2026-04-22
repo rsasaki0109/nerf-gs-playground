@@ -33,7 +33,8 @@ import MASt3R-SLAM / VGGT-SLAM 2.0 / Pi3 / LoGeR artifacts as external pose
 data, train with gsplat, and export antimatter15-compatible `.splat` files that
 load directly in the bundled WebGL / WebGPU viewers.
 
-Project notes: [outdoor pipeline handoff](docs/plan_outdoor_gs.md), release notes
+Project notes: [Physical AI sim contract](docs/physical-ai-sim.md),
+[outdoor pipeline handoff](docs/plan_outdoor_gs.md), release notes
 [v0.1.0](docs/releases/v0.1.0.md).
 
 The repo ships **eight** production demo scenes that A/B-compare pose-free and
