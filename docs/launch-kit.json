@@ -1,0 +1,91 @@
+{
+  "description": "GS Mapper turns photos, robotics logs, and MASt3R-SLAM / VGGT-SLAM 2.0 / Pi3 / LoGeR artifacts into trainable 3DGS outputs with WebGL, Spark, and WebGPU viewers.",
+  "heroImage": "images/demo-sweep/hero.gif",
+  "links": [
+    {
+      "description": "First-stop page with the GS Mapper pitch and viewer entry points.",
+      "label": "Project page",
+      "url": "https://rsasaki0109.github.io/gs-mapper/"
+    },
+    {
+      "description": "WebGL scene picker with eight bundled comparison splats.",
+      "label": "Live splat viewer",
+      "url": "https://rsasaki0109.github.io/gs-mapper/splat.html"
+    },
+    {
+      "description": "Spark viewer for mobile and WebXR-capable devices.",
+      "label": "Spark mobile / VR viewer",
+      "url": "https://rsasaki0109.github.io/gs-mapper/splat_spark.html"
+    },
+    {
+      "description": "GPU-sort viewer for Chrome, Edge, and WebGPU-enabled browsers.",
+      "label": "WebGPU viewer",
+      "url": "https://rsasaki0109.github.io/gs-mapper/splat_webgpu.html"
+    },
+    {
+      "description": "Source, README benchmarks, external SLAM import docs, and tests.",
+      "label": "GitHub repository",
+      "url": "https://github.com/rsasaki0109/gs-mapper"
+    }
+  ],
+  "project": "GS Mapper",
+  "repoUrl": "https://github.com/rsasaki0109/gs-mapper",
+  "siteUrl": "https://rsasaki0109.github.io/gs-mapper/",
+  "snippets": [
+    {
+      "charCount": 233,
+      "key": "short-social",
+      "label": "Short social post",
+      "maxChars": 280,
+      "text": "GS Mapper turns photos, robotics logs, and external SLAM outputs (MASt3R-SLAM, VGGT-SLAM 2.0, Pi3, LoGeR) into browser-viewable 3D Gaussian Splats.\n\nLive demos: https://rsasaki0109.github.io/gs-mapper/splat.html\n#3DGS #SLAM #Robotics",
+      "withinLimit": true
+    },
+    {
+      "charCount": 350,
+      "key": "technical-social",
+      "label": "Technical social post",
+      "maxChars": null,
+      "text": "I released GS Mapper: a glue layer from DUSt3R / MASt3R pose-free preprocessing and MASt3R-SLAM / VGGT-SLAM 2.0 / Pi3 / LoGeR exported artifacts into gsplat training and browser-viewable .splat demos.\n\nIt ships external SLAM dry-run manifests, candidate-resolution traces, and eight public comparison scenes.\n\nhttps://github.com/rsasaki0109/gs-mapper",
+      "withinLimit": true
+    },
+    {
+      "charCount": 636,
+      "key": "community-post",
+      "label": "Community post",
+      "maxChars": null,
+      "text": "GS Mapper is a small open-source bridge for turning visual geometry outputs into 3D Gaussian Splatting demos. It accepts image folders, robotics logs, and external SLAM artifacts, then trains or exports browser-viewable .splat files.\n\nThe current demo set compares supervised GNSS + LiDAR, DUSt3R, MASt3R, VGGT-SLAM 2.0, and MASt3R-SLAM outputs on outdoor robotics scenes. The external SLAM import path has dry-run manifests so missing trajectories, point clouds, and image-directory mismatches are caught before GPU training.\n\nLive demo: https://rsasaki0109.github.io/gs-mapper/splat.html\nRepo: https://github.com/rsasaki0109/gs-mapper",
+      "withinLimit": true
+    },
+    {
+      "charCount": 218,
+      "key": "awesome-list",
+      "label": "Awesome-list entry",
+      "maxChars": null,
+      "text": "- [GS Mapper](https://github.com/rsasaki0109/gs-mapper) - Converts photos, robotics logs, and MASt3R-SLAM / VGGT-SLAM / Pi3 / LoGeR artifacts into trainable 3DGS outputs and browser-viewable WebGL / WebGPU splat demos.",
+      "withinLimit": true
+    },
+    {
+      "charCount": 252,
+      "key": "japanese",
+      "label": "Japanese announcement",
+      "maxChars": null,
+      "text": "GS Mapper を公開しました。写真フォルダ、ロボティクスログ、MASt3R-SLAM / VGGT-SLAM 2.0 / Pi3 / LoGeR の出力を、学習可能な 3D Gaussian Splatting と WebGL / WebGPU ビューアにつなぐツールです。\n\nLive demo: https://rsasaki0109.github.io/gs-mapper/splat.html\nGitHub: https://github.com/rsasaki0109/gs-mapper",
+      "withinLimit": true
+    }
+  ],
+  "socialImageUrl": "https://rsasaki0109.github.io/gs-mapper/images/demo-sweep/01_outdoor-demo.png",
+  "tagline": "External SLAM outputs to browser-viewable 3D Gaussian Splats.",
+  "topics": [
+    "3d-gaussian-splatting",
+    "3dgs",
+    "slam",
+    "visual-slam",
+    "robotics",
+    "autonomous-driving",
+    "mast3r",
+    "dust3r",
+    "vggt-slam",
+    "webgl",
+    "webgpu"
+  ]
+}

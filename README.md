@@ -24,7 +24,8 @@ load directly in the bundled WebGL / WebGPU viewers.
 Quick links: [live splat viewer](https://rsasaki0109.github.io/gs-mapper/splat.html),
 [Spark mobile / VR viewer](https://rsasaki0109.github.io/gs-mapper/splat_spark.html),
 [WebGPU viewer](https://rsasaki0109.github.io/gs-mapper/splat_webgpu.html), and
-[outdoor pipeline handoff](docs/plan_outdoor_gs.md). Release notes:
+[launch kit](https://rsasaki0109.github.io/gs-mapper/launch-kit.html). Project notes:
+[outdoor pipeline handoff](docs/plan_outdoor_gs.md), release notes
 [v0.1.0](docs/releases/v0.1.0.md).
 
 The repo ships **eight** production demo scenes that A/B-compare pose-free and
