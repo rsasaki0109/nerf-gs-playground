@@ -17,6 +17,7 @@ from .interfaces import (
     Pose3D,
     TrajectoryScore,
 )
+from .rendering import ObservationRenderer
 
 
 DEFAULT_ORIENTATION_XYZW = (0.0, 0.0, 0.0, 1.0)
@@ -39,10 +40,11 @@ class HeadlessEnvironmentState:
 
 
 class HeadlessPhysicalAIEnvironment(PhysicalAIEnvironment):
-    """Minimal environment that executes the simulation contract without a renderer."""
+    """Minimal environment that executes the simulation contract with optional rendering."""
 
-    def __init__(self, catalog: SimulationCatalog):
+    def __init__(self, catalog: SimulationCatalog, *, observation_renderer: ObservationRenderer | None = None):
         self.catalog = catalog
+        self.observation_renderer = observation_renderer
         self._state: HeadlessEnvironmentState | None = None
 
     @property
@@ -85,6 +87,8 @@ class HeadlessPhysicalAIEnvironment(PhysicalAIEnvironment):
         )
         if unsupported:
             raise ValueError(f"unsupported outputs for sensor {request.sensor_id}: {', '.join(unsupported)}")
+        if self.observation_renderer is not None and self.observation_renderer.can_render(scene, request):
+            return self.observation_renderer.render_observation(scene, request)
         return Observation(
             sensor_id=request.sensor_id,
             pose=request.pose,

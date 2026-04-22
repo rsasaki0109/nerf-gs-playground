@@ -70,7 +70,7 @@ Payload dataclasses are available for stable integration:
 
 ## Headless Backend
 
-`HeadlessPhysicalAIEnvironment` is the first executable backend. It does not render pixels or simulate dynamics yet; it gives agents a deterministic bounds-based environment that can reset scenes, sample goals, apply simple actions, reject out-of-bounds poses, and return metadata-only observations.
+`HeadlessPhysicalAIEnvironment` is the first executable backend. It does not simulate dynamics yet; it gives agents a deterministic bounds-based environment that can reset scenes, sample goals, apply simple actions, reject out-of-bounds poses, and return observations. Without an injected renderer, observations stay metadata-only.
 
 ```python
 from pathlib import Path
@@ -92,13 +92,39 @@ collision = env.query_collision(env.state.pose)
 observation = env.render_observation(ObservationRequest(pose=env.state.pose, sensor_id="rgb-forward"))
 ```
 
+For local renderer-backed RGB, inject `SplatAssetObservationRenderer`. It reads the same bundled `.splat` assets as the public viewer and returns JPEG-backed `rgb-forward` observations with camera metadata and depth coverage statistics.
+
+```python
+from pathlib import Path
+
+from gs_sim2real.sim import (
+    HeadlessPhysicalAIEnvironment,
+    ObservationRequest,
+    SplatAssetObservationRenderer,
+    SplatRenderConfig,
+    load_simulation_catalog_from_scene_picker,
+)
+
+docs_root = Path("docs")
+catalog = load_simulation_catalog_from_scene_picker(docs_root / "scenes-list.json")
+renderer = SplatAssetObservationRenderer(
+    docs_root,
+    config=SplatRenderConfig(width=320, height=240, far_clip=80.0, point_radius=1),
+)
+env = HeadlessPhysicalAIEnvironment(catalog, observation_renderer=renderer)
+
+env.reset("outdoor-demo")
+observation = env.render_observation(ObservationRequest(pose=env.state.pose, sensor_id="rgb-forward"))
+jpeg_base64 = observation.outputs["rgb"]["jpegBase64"]
+```
+
 Supported actions:
 
 - `twist`: `linearX`, `linearY`, `linearZ` or `vx`, `vy`, `vz`
 - `teleport`: absolute `x`, `y`, `z` plus optional `qx`, `qy`, `qz`, `qw`
 
-The backend blocks poses outside `SceneEnvironment.bounds`. This is not a replacement for collision geometry; it is the minimal runtime needed to let agent code exercise the same `reset/step/render/query/score` loop before renderer-backed RGB, depth, and ray queries are added.
+The backend blocks poses outside `SceneEnvironment.bounds`. This is not a replacement for collision geometry; it is the minimal runtime needed to let agent code exercise the same `reset/step/render/query/score` loop while renderer, depth, and ray-query fidelity improve independently.
 
 ## Next Implementation Layer
 
-The next useful layer is renderer-backed observation. `rgb-forward` should move from metadata-only responses to real offscreen splat renders, then `depth-proxy` and `lidar-ray-proxy` can be backed by renderer depth buffers or splat ray marching.
+The next useful layer is depth and ray-query backing. `depth-proxy` should move from contract-only to renderer depth-buffer output, then `lidar-ray-proxy` can be backed by splat ray marching or an acceleration structure over splat centers.

@@ -29,6 +29,15 @@ from .interfaces import (
     Pose3D,
     TrajectoryScore,
 )
+from .rendering import (
+    ObservationRenderer,
+    SplatAssetObservationRenderer,
+    SplatPointCloud,
+    SplatRenderConfig,
+    load_splat_point_cloud,
+    render_splat_point_cloud,
+    resolve_scene_asset_path,
+)
 
 __all__ = [
     "DEFAULT_SITE_URL",
@@ -40,18 +49,25 @@ __all__ = [
     "HeadlessEnvironmentState",
     "HeadlessPhysicalAIEnvironment",
     "Observation",
+    "ObservationRenderer",
     "ObservationRequest",
     "PhysicalAIEnvironment",
     "Pose3D",
     "SceneEnvironment",
     "SensorModel",
     "SensorRig",
+    "SplatAssetObservationRenderer",
+    "SplatPointCloud",
+    "SplatRenderConfig",
     "SimulationCatalog",
     "TrajectoryEpisode",
     "TrajectoryScore",
     "Vec3",
     "build_simulation_catalog",
     "load_scene_picker_catalog",
+    "load_splat_point_cloud",
     "load_simulation_catalog_from_scene_picker",
+    "render_splat_point_cloud",
     "render_simulation_catalog_json",
+    "resolve_scene_asset_path",
 ]
