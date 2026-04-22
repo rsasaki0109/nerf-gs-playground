@@ -1,19 +1,29 @@
 [build-system]
-requires = ["setuptools>=68.0", "setuptools-scm>=8.0", "wheel"]
+requires = ["setuptools>=68.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "gs-sim2real"
+name = "gs-mapper"
 version = "0.1.0"
-description = "Multi-dataset 3D Gaussian Splatting sim2real reconstruction toolkit"
+description = "Photos, robotics logs, and external SLAM outputs to browser-viewable 3D Gaussian Splats"
 authors = [{ name = "rsasaki0109" }]
 readme = "README.md"
-license = { text = "MIT" }
+license = "MIT"
 requires-python = ">=3.10"
-keywords = ["3d-gaussian-splatting", "nerf", "3d-reconstruction", "point-cloud", "robotics", "sim2real"]
+keywords = [
+    "3d-gaussian-splatting",
+    "3dgs",
+    "slam",
+    "visual-slam",
+    "3d-reconstruction",
+    "point-cloud",
+    "robotics",
+    "autonomous-driving",
+    "webgl",
+    "webgpu",
+]
 classifiers = [
     "Development Status :: 3 - Alpha",
-    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
@@ -32,9 +42,9 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/rsasaki0109/gs-sim2real"
-Documentation = "https://rsasaki0109.github.io/gs-sim2real/"
-Repository = "https://github.com/rsasaki0109/gs-sim2real"
+Homepage = "https://github.com/rsasaki0109/gs-mapper"
+Documentation = "https://rsasaki0109.github.io/gs-mapper/"
+Repository = "https://github.com/rsasaki0109/gs-mapper"
 
 [project.optional-dependencies]
 nerfstudio = ["nerfstudio"]
@@ -44,7 +54,9 @@ metrics = ["lpips"]
 dev = ["pytest", "ruff", "mypy"]
 
 [project.scripts]
+gs-mapper = "gs_sim2real.cli:main"
 gs-sim2real = "gs_sim2real.cli:main"
+gs-mapper-robotics-node = "gs_sim2real.robotics.ros2_bridge_node:main"
 gs-sim2real-robotics-node = "gs_sim2real.robotics.ros2_bridge_node:main"
 
 [tool.setuptools.packages.find]

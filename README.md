@@ -6,7 +6,7 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](pyproject.toml)
 [![Last commit](https://img.shields.io/github/last-commit/rsasaki0109/gs-mapper/main)](https://github.com/rsasaki0109/gs-mapper/commits/main)
 
-**Photos → interactive 3D Gaussian Splat in one command.**
+**Photos, robotics logs, and external SLAM outputs → trainable 3D Gaussian Splats → browser viewer.**
 
 ```bash
 gs-mapper photos-to-splat --images ./my_photos --output outputs/my_splat
@@ -15,13 +15,32 @@ gs-mapper photos-to-splat --images ./my_photos --output outputs/my_splat
 
 [![Scene picker cycling through bundled splats on github.io](docs/images/demo-sweep/hero.gif)](https://rsasaki0109.github.io/gs-mapper/splat.html)
 
-DUSt3R or MAST3R for pose-free preprocessing, gsplat for training, and an antimatter15/splat-compatible `.splat` binary out the other end. **Eight** production bundled demo scenes A/B-compare pose-free / external-SLAM outputs against supervised GNSS + LiDAR baselines — pick any from the scene dropdown on the [live viewer](https://rsasaki0109.github.io/gs-mapper/splat.html). The old MCD `tuhh_day_04` zero-GNSS artifact is retained only as a diagnostic file in this branch, not as a production picker item.
+GS Mapper is the glue layer between modern visual geometry front-ends and
+shipping 3DGS artifacts. It can run DUSt3R / MASt3R pose-free preprocessing,
+import MASt3R-SLAM / VGGT-SLAM 2.0 / Pi3 / LoGeR artifacts as external pose
+data, train with gsplat, and export antimatter15-compatible `.splat` files that
+load directly in the bundled WebGL / WebGPU viewers.
+
+Quick links: [live splat viewer](https://rsasaki0109.github.io/gs-mapper/splat.html),
+[Spark mobile / VR viewer](https://rsasaki0109.github.io/gs-mapper/splat_spark.html),
+[WebGPU viewer](https://rsasaki0109.github.io/gs-mapper/splat_webgpu.html), and
+[outdoor pipeline handoff](docs/plan_outdoor_gs.md). Release notes:
+[v0.1.0](docs/releases/v0.1.0.md).
+
+The repo ships **eight** production demo scenes that A/B-compare pose-free and
+external-SLAM outputs against supervised GNSS + LiDAR baselines. Pick any scene
+from the dropdown in the [live viewer](https://rsasaki0109.github.io/gs-mapper/splat.html).
+The old MCD `tuhh_day_04` zero-GNSS artifact is retained only as a diagnostic
+file in this branch, not as a production picker item.
 
 Table thumbnails are **full-canvas grabs** from `splat.html` (UI chrome hidden) so they stay readable when GitHub scales them down. The table, hero GIF, preview capture script, and viewer pickers are checked against `docs/scenes-list.json`. Regenerate with `DISPLAY=:0 python3 scripts/capture_readme_splat_previews.py` after adding or changing a `.splat` (requires Playwright + GPU-backed WebGL).
 
 ---
 
-ロボティクス・自動運転データセットから 3D Gaussian Splatting の学習、Web ビューアでの可視化までをワンコマンドで実行できるツールです。Python モジュール名は `gs_sim2real` のまま維持し、旧 CLI の `gs-sim2real` も互換エイリアスとして残します。
+ロボティクス・自動運転データセット、写真フォルダ、外部 SLAM の出力から
+3D Gaussian Splatting の学習と Web ビューア可視化までをつなぐツールです。
+Python モジュール名は `gs_sim2real` のまま維持し、旧 CLI の `gs-sim2real`
+も互換エイリアスとして残します。
 
 ## Live Demo
 
@@ -230,6 +249,22 @@ Pi3/LoGeR-style `.pt` or `.npz` containers with dense `points` plus optional
 `conf` / `images` arrays can also be flattened into a `.npy` point-cloud seed
 inside the import output directory.
 
+| System | CLI key | Trajectory candidates | Point-cloud candidates | Preflight support |
+|--------|---------|-----------------------|------------------------|-------------------|
+| MASt3R-SLAM | `mast3r-slam` | `poses.txt`, `trajectory.txt`, `*.tum`, `*.txt` | `reconstruction.ply`, `map.ply`, `*.ply` | dry-run manifest, gate failure details, selected artifact trace |
+| VGGT-SLAM 2.0 | `vggt-slam` | `poses.txt`, `trajectory.txt`, `*.tum`, `*.txt` | `*_points.pcd`, `points.pcd`, `*.ply`, `*.pcd` | dry-run manifest, gate failure details, selected artifact trace |
+| Pi3 / Pi3X | `pi3` | `poses.*`, `camera_poses.*`, `prediction.npz`, `predictions.*`, `result.npz`, `outputs.npz`, `*.tum`, `*.txt` | `result.ply`, `points.*`, `points3d.*`, `pointcloud.*`, `prediction.npz`, `predictions.*`, `result.npz`, `outputs.npz` | dry-run manifest, pose tensor import, dense point tensor flattening |
+| LoGeR | `loger` | `trajectory.txt`, `pred_traj.txt`, `poses.*`, `output_txt.txt`, `camera_poses.*`, `results.pth`, `output.*`, `result.*`, `*.tum`, `*.txt` | `points.*`, `points3d.*`, `pointcloud.*`, `predictions.*`, `results.*`, `output.*`, `result.*`, `*.ply`, `*.pcd` | dry-run manifest, pose tensor import, dense point tensor flattening |
+| Generic external SLAM | `generic` | TUM/KITTI/NMEA text, `poses.*`, `camera_poses.*`, `prediction.*`, `result.*`, `output.*` | `points.*`, `pointcloud.*`, `map.ply`, `reconstruction.ply`, `*.ply`, `*.npy`, `*.pcd` | dry-run manifest, candidate-resolution trace |
+
+Run the bundled preflight plan before spending GPU time on training:
+
+```bash
+python3 scripts/plan_external_slam_imports.py --format shell > /tmp/external_slam_preflight.sh
+bash /tmp/external_slam_preflight.sh
+python3 scripts/collect_external_slam_imports.py --format markdown
+```
+
 ```bash
 gs-mapper preprocess \
   --images ./frames \
@@ -322,7 +357,7 @@ Gaussian splat worlds.
 - `shared/` contains code shared across prototypes.
 - `docs/prototypes/dreamwalker-live.md` documents the streamer/photo/browser residency direction.
 - `docs/prototypes/dreamwalker-robotics.md` documents the sibling robotics simulation direction.
-- `gs-sim2real robotics-node` provides a ROS2-side scaffold that consumes DreamWalker relay topics.
+- `gs-mapper robotics-node` provides a ROS2-side scaffold that consumes DreamWalker relay topics.
 - `configs/robotics/dreamwalker_zones.sample.json` is a starter semantic-zone / costmap config for ROS2-side navigation experiments.
 
 ## Experiment-Driven Development
@@ -399,7 +434,7 @@ python scripts/run_dust3r.py --image-dir ./my_photos --output outputs/my_dust3r 
 ## Project Structure
 
 ```
-gs-sim2real/
+gs-mapper/
 ├── apps/                # Browser-native prototypes
 ├── docs/                # Prototype notes and setup docs
 ├── projects/            # Unity-native prototypes

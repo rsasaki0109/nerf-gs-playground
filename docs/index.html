@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>3D Gaussian Splatting Playground</title>
+<title>GS Mapper - 3D Gaussian Splatting for SLAM and Robotics</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
@@ -104,27 +104,102 @@ nav a:hover { color: var(--text); background: rgba(255,255,255,0.06); }
 
 /* Hero */
 .hero {
-  text-align: center;
-  padding: 5rem 2rem 3rem;
-  max-width: 900px;
+  position: relative;
+  min-height: min(560px, calc(100vh - 80px));
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  padding: 5rem 2rem 4rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.hero-bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0.42;
+}
+
+.hero::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, rgba(13,17,23,0.96) 0%, rgba(13,17,23,0.76) 48%, rgba(13,17,23,0.42) 100%);
+}
+
+.hero-inner {
+  position: relative;
+  z-index: 1;
+  width: min(920px, 100%);
   margin: 0 auto;
 }
 
 .hero h1 {
-  font-size: clamp(2rem, 5vw, 3.2rem);
+  font-size: clamp(2.8rem, 8vw, 6.4rem);
   font-weight: 700;
-  background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  margin-bottom: 1rem;
+  line-height: 0.95;
+  margin-bottom: 1.1rem;
+  text-shadow: 0 2px 30px rgba(0,0,0,0.55);
 }
 
 .hero p {
   font-size: 1.15rem;
-  color: var(--text-muted);
-  max-width: 600px;
-  margin: 0 auto;
+  color: rgba(230,237,243,0.88);
+  max-width: 680px;
+}
+
+.hero-kicker {
+  color: var(--accent-green);
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 1rem;
+}
+
+.hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 2rem;
+}
+
+.hero-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 9px 14px;
+  border-radius: 6px;
+  border: 1px solid rgba(230,237,243,0.24);
+  color: var(--text);
+  text-decoration: none;
+  font-size: 0.92rem;
+  background: rgba(13,17,23,0.5);
+}
+
+.hero-action.primary {
+  background: var(--accent-green);
+  border-color: var(--accent-green);
+  color: #06120a;
+  font-weight: 700;
+}
+
+.hero-proof {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 1.6rem;
+  color: rgba(230,237,243,0.82);
+  font-size: 0.86rem;
+  font-family: var(--font-mono);
+}
+
+.hero-proof span {
+  border-left: 2px solid var(--accent-blue);
+  padding-left: 10px;
 }
 
 /* Sections */
@@ -505,6 +580,13 @@ footer a:hover { text-decoration: underline; }
 /* Responsive */
 @media (max-width: 768px) {
   nav { display: none; }
+  .hero { min-height: auto; padding: 2.5rem 1.2rem 1.8rem; }
+  .hero::after { background: rgba(13,17,23,0.78); }
+  .hero h1 { font-size: 2.7rem; }
+  .hero p { font-size: 1rem; }
+  .hero-actions { flex-direction: column; align-items: stretch; }
+  .hero-action { justify-content: center; min-height: 36px; padding: 7px 12px; }
+  .hero-proof { margin-top: 1rem; font-size: 0.78rem; }
   .pipeline-flow { flex-direction: column; }
   .pipeline-arrow { transform: rotate(90deg); }
   #viewer-canvas { height: 400px; }
@@ -528,16 +610,16 @@ footer a:hover { text-decoration: underline; }
       <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <circle cx="12" cy="12" r="3"/><path d="M12 2v4m0 12v4M2 12h4m12 0h4m-2.83-7.17l-2.83 2.83m-5.66 5.66l-2.83 2.83m11.32 0l-2.83-2.83M7.17 7.17L4.34 4.34"/>
       </svg>
-      <span>3DGS Playground</span>
+      <span>GS Mapper</span>
     </a>
     <nav>
-      <a href="#viewer-section">3D Viewer</a>
+      <a href="splat.html">Live Splat</a>
       <a href="#pipeline-section">Pipeline</a>
       <a href="#metrics-section">Metrics</a>
       <a href="#datasets-section">Datasets</a>
       <a href="#gallery-section">Gallery</a>
     </nav>
-    <a href="https://github.com/rsasaki0109/gs-sim2real" class="gh-link" target="_blank">
+    <a href="https://github.com/rsasaki0109/gs-mapper" class="gh-link" target="_blank">
       <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
       GitHub
     </a>
@@ -546,14 +628,28 @@ footer a:hover { text-decoration: underline; }
 
 <!-- Hero -->
 <div class="hero">
-  <h1>3D Gaussian Splatting Playground</h1>
-  <p>Interactive 3D scene reconstruction from robotics datasets. Explore point clouds, training metrics, and novel view synthesis results.</p>
+  <img class="hero-bg" src="images/demo-sweep/hero.gif" alt="GS Mapper bundled splat scenes cycling in the browser viewer">
+  <div class="hero-inner">
+    <div class="hero-kicker">External SLAM to browser-viewable 3DGS</div>
+    <h1>GS Mapper</h1>
+    <p>Photos, robotics logs, and MASt3R-SLAM / VGGT-SLAM / Pi3 / LoGeR outputs become trainable Gaussian Splats that open directly in WebGL, Spark, or WebGPU viewers.</p>
+    <div class="hero-actions">
+      <a class="hero-action primary" href="splat.html">Open live splat viewer &rarr;</a>
+      <a class="hero-action" href="splat_spark.html">Spark mobile / VR &rarr;</a>
+      <a class="hero-action" href="https://github.com/rsasaki0109/gs-mapper">GitHub &rarr;</a>
+    </div>
+    <div class="hero-proof">
+      <span>8 bundled demos</span>
+      <span>DUSt3R / MASt3R pose-free</span>
+      <span>external SLAM preflight manifests</span>
+    </div>
+  </div>
 </div>
 
 <!-- Section 1: 3D Viewer -->
 <section id="viewer-section">
-  <h2 class="section-title">Interactive 3D Point Cloud Viewer</h2>
-  <p class="section-sub">Click and drag to orbit. Scroll to zoom. Right-click to pan. Published GitHub Pages assets and local exported files are both supported. Real Gaussian Splat viewers: <a href="splat.html" style="color:var(--accent-green);text-decoration:none;font-weight:500;">antimatter15/splat (WebGL)</a> · <a href="splat_spark.html" style="color:var(--accent-blue);text-decoration:none;font-weight:500;">Spark (WebGL / ESM)</a> · <a href="splat_webgpu.html" style="color:#f59e0b;text-decoration:none;font-weight:500;">shrekshao (WebGPU, compute-sort)</a>.</p>
+  <h2 class="section-title">Point Cloud Viewer</h2>
+  <p class="section-sub">This fallback viewer loads the lightweight point bundles. The production splat viewers are <a href="splat.html" style="color:var(--accent-green);text-decoration:none;font-weight:500;">antimatter15/splat (WebGL)</a> · <a href="splat_spark.html" style="color:var(--accent-blue);text-decoration:none;font-weight:500;">Spark (WebGL / ESM)</a> · <a href="splat_webgpu.html" style="color:#f59e0b;text-decoration:none;font-weight:500;">shrekshao (WebGPU, compute-sort)</a>.</p>
   <div class="viewer-container">
     <div class="viewer-toolbar">
       <div class="scene-tabs">
@@ -765,11 +861,11 @@ footer a:hover { text-decoration: underline; }
 <!-- Footer -->
 <footer>
   <div class="footer-links">
-    <a href="https://github.com/rsasaki0109/gs-sim2real">GitHub</a>
+    <a href="https://github.com/rsasaki0109/gs-mapper">GitHub</a>
     <a href="https://repo-rasterizer.github.io/3d-gaussian-splatting/">3DGS Paper</a>
     <a href="#viewer-section">Back to Top</a>
   </div>
-  <p>3D Gaussian Splatting Playground &mdash; Built for exploring 3D reconstruction from robotics datasets.</p>
+  <p>GS Mapper &mdash; Photos, robotics logs, and external SLAM outputs to browser-viewable 3D Gaussian Splats.</p>
 </footer>
 
 <script>
