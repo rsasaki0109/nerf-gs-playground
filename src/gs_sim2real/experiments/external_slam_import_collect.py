@@ -43,6 +43,9 @@ def collect_external_slam_import_preflight_run_result(run: ExternalSLAMImportRun
     trajectory = _nested_dict(manifest, "trajectory")
     alignment = _nested_dict(manifest, "alignment")
     pointcloud = _nested_dict(manifest, "pointcloud")
+    resolution = _nested_dict(manifest, "resolution")
+    trajectory_resolution = _nested_dict(resolution, "trajectory")
+    pointcloud_resolution = _nested_dict(resolution, "pointcloud")
     gate = _nested_dict(manifest, "gate")
     error = _nested_dict(manifest, "error")
     missing = _missing_manifest_fields(manifest_exists, manifest_valid, gate, error)
@@ -60,6 +63,10 @@ def collect_external_slam_import_preflight_run_result(run: ExternalSLAMImportRun
         "ready": _optional_bool(manifest.get("ready")) if manifest is not None else None,
         "errorType": _optional_string(error.get("type")),
         "errorMessage": _optional_string(error.get("message")),
+        "trajectorySelectedPath": _optional_string(trajectory_resolution.get("selectedPath")),
+        "pointcloudSelectedPath": _optional_string(pointcloud_resolution.get("selectedPath")),
+        "trajectoryResolutionReason": _optional_string(trajectory_resolution.get("reason")),
+        "pointcloudResolutionReason": _optional_string(pointcloud_resolution.get("reason")),
         "gatePassed": _optional_bool(gate.get("passed")),
         "imageCount": _optional_int(images.get("imageCount")),
         "poseCount": _optional_int(trajectory.get("poseCount")),
@@ -88,8 +95,11 @@ def render_external_slam_import_report_markdown(report: dict[str, Any]) -> str:
             f"{report['manifestCount']}/{report['runCount']} manifests present"
         ),
         "",
-        "| Run | System | Gate | Images | Poses | Aligned | Dropped | Unused | Points | Missing | Error |",
-        "| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- |",
+        (
+            "| Run | System | Gate | Images | Poses | Aligned | Points | Trajectory | "
+            "Pointcloud | Reason | Missing | Error |"
+        ),
+        "| --- | --- | --- | ---: | ---: | ---: | ---: | --- | --- | --- | --- | --- |",
     ]
     for run in report["runs"]:
         missing = ", ".join(run["missing"]) or "none"
@@ -103,9 +113,10 @@ def render_external_slam_import_report_markdown(report: dict[str, Any]) -> str:
                     _format_optional_int(run["imageCount"]),
                     _format_optional_int(run["poseCount"]),
                     _format_optional_int(run["alignedFrameCount"]),
-                    _format_optional_int(run["droppedImageCount"]),
-                    _format_optional_int(run["unusedPoseCount"]),
                     _format_optional_int(run["pointCount"]),
+                    _format_path_basename(run["trajectorySelectedPath"]),
+                    _format_path_basename(run["pointcloudSelectedPath"]),
+                    _format_resolution_reason(run),
                     missing,
                     _format_error(run["errorMessage"]),
                 ]
@@ -185,6 +196,19 @@ def _format_gate_status(run: dict[str, Any]) -> str:
 
 def _format_optional_int(value: int | None) -> str:
     return "n/a" if value is None else str(value)
+
+
+def _format_path_basename(value: str | None) -> str:
+    if not value:
+        return "n/a"
+    return Path(value).name.replace("|", "/")
+
+
+def _format_resolution_reason(run: dict[str, Any]) -> str:
+    reason = run.get("trajectoryResolutionReason") or run.get("pointcloudResolutionReason")
+    if not reason:
+        return "n/a"
+    return str(reason).replace("|", "/")
 
 
 def _format_error(value: str | None) -> str:

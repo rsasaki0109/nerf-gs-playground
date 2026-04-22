@@ -114,6 +114,16 @@ def test_collect_external_slam_import_preflight_results_reads_saved_manifests(tm
                 "system": "mast3r-slam",
                 "images": {"imageCount": 3},
                 "trajectory": {"poseCount": 3},
+                "resolution": {
+                    "trajectory": {
+                        "selectedPath": "/tmp/artifacts/mast3r/camera_poses.npz",
+                        "reason": "selected_candidate",
+                    },
+                    "pointcloud": {
+                        "selectedPath": "/tmp/artifacts/mast3r/pointcloud.npz",
+                        "reason": "selected_candidate",
+                    },
+                },
                 "alignment": {
                     "alignedFrameCount": 3,
                     "droppedImageCount": 0,
@@ -138,10 +148,17 @@ def test_collect_external_slam_import_preflight_results_reads_saved_manifests(tm
     assert first["poseCount"] == 3
     assert first["alignedFrameCount"] == 3
     assert first["pointCount"] == 123
+    assert first["trajectorySelectedPath"] == "/tmp/artifacts/mast3r/camera_poses.npz"
+    assert first["pointcloudSelectedPath"] == "/tmp/artifacts/mast3r/pointcloud.npz"
+    assert first["trajectoryResolutionReason"] == "selected_candidate"
     assert first["missing"] == []
     assert "# External SLAM Import Preflight Results" in markdown
     assert "1/4 gates passed" in markdown
+    assert "camera_poses.npz" in markdown
+    assert "pointcloud.npz" in markdown
+    assert "/tmp/artifacts/mast3r/camera_poses.npz" not in markdown
     assert payload["type"] == "external-slam-import-preflight-report"
+    assert payload["runs"][0]["trajectorySelectedPath"] == "/tmp/artifacts/mast3r/camera_poses.npz"
 
 
 def test_collect_external_slam_import_preflight_results_reads_error_manifests(tmp_path) -> None:
@@ -155,6 +172,16 @@ def test_collect_external_slam_import_preflight_results_reads_error_manifests(tm
                 "system": "mast3r-slam",
                 "displayName": "MASt3R-SLAM",
                 "images": {"imageCount": 2},
+                "resolution": {
+                    "trajectory": {
+                        "selectedPath": None,
+                        "reason": "no_candidate_match",
+                    },
+                    "pointcloud": {
+                        "selectedPath": None,
+                        "reason": "no_candidate_match",
+                    },
+                },
                 "trajectory": None,
                 "pointcloud": None,
                 "alignment": {"status": "unknown"},
@@ -178,8 +205,10 @@ def test_collect_external_slam_import_preflight_results_reads_error_manifests(tm
     assert first["ready"] is False
     assert first["errorType"] == "FileNotFoundError"
     assert first["errorMessage"] == "Could not find MASt3R-SLAM trajectory"
+    assert first["trajectoryResolutionReason"] == "no_candidate_match"
     assert first["missing"] == ["error"]
     assert "| Bag6 MASt3R-SLAM | mast3r-slam | error |" in markdown
+    assert "no_candidate_match" in markdown
     assert "Could not find MASt3R-SLAM trajectory" in markdown
 
 
