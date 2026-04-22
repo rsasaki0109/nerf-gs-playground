@@ -1,4 +1,4 @@
-"""Bounds-based headless Physical AI environment."""
+"""Headless Physical AI environment."""
 
 from __future__ import annotations
 
@@ -17,6 +17,7 @@ from .interfaces import (
     Pose3D,
     TrajectoryScore,
 )
+from .occupancy import VoxelOccupancyGrid
 from .rendering import ObservationRenderer
 
 
@@ -42,10 +43,22 @@ class HeadlessEnvironmentState:
 class HeadlessPhysicalAIEnvironment(PhysicalAIEnvironment):
     """Minimal environment that executes the simulation contract with optional rendering."""
 
-    def __init__(self, catalog: SimulationCatalog, *, observation_renderer: ObservationRenderer | None = None):
+    def __init__(
+        self,
+        catalog: SimulationCatalog,
+        *,
+        observation_renderer: ObservationRenderer | None = None,
+        occupancy_grid: VoxelOccupancyGrid | None = None,
+    ):
         self.catalog = catalog
         self.observation_renderer = observation_renderer
+        self.occupancy_grid = occupancy_grid
         self._state: HeadlessEnvironmentState | None = None
+
+    def set_occupancy_grid(self, occupancy_grid: VoxelOccupancyGrid | None) -> None:
+        """Set or clear the occupancy grid used by collision queries."""
+
+        self.occupancy_grid = occupancy_grid
 
     @property
     def state(self) -> HeadlessEnvironmentState:
@@ -103,18 +116,33 @@ class HeadlessPhysicalAIEnvironment(PhysicalAIEnvironment):
     def query_collision(self, pose: Pose3D) -> CollisionQuery:
         scene = self.catalog.scene_by_id(self.state.scene_id)
         point = Vec3.from_sequence(pose.position)
-        if scene.bounds.contains(point):
+        if not scene.bounds.contains(point):
+            return CollisionQuery(
+                pose=pose,
+                collides=True,
+                reason="outside-bounds",
+                clearance_meters=0.0,
+            )
+        if self.occupancy_grid is not None:
+            occupancy = self.occupancy_grid.query_pose(pose)
+            if occupancy.occupied:
+                return CollisionQuery(
+                    pose=pose,
+                    collides=True,
+                    reason=f"{occupancy.reason}:{self.occupancy_grid.source}",
+                    clearance_meters=occupancy.clearance_meters,
+                )
             return CollisionQuery(
                 pose=pose,
                 collides=False,
-                reason="inside-bounds",
-                clearance_meters=_bounds_clearance(scene.bounds, point),
+                reason=f"{occupancy.reason}:{self.occupancy_grid.source}",
+                clearance_meters=occupancy.clearance_meters,
             )
         return CollisionQuery(
             pose=pose,
-            collides=True,
-            reason="outside-bounds",
-            clearance_meters=0.0,
+            collides=False,
+            reason="inside-bounds",
+            clearance_meters=_bounds_clearance(scene.bounds, point),
         )
 
     def sample_goal(self, scene_id: str, *, seed: int | None = None) -> Pose3D:

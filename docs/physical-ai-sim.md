@@ -38,7 +38,7 @@ print([task.task_id for task in scene.evaluation_tasks])
 
 ## Current Readiness
 
-`rgb-forward` is ready through the existing splat viewers and the local `.splat` observation renderer. `depth-proxy` is backed by the same local rasterizer and returns float32 depth plus a validity mask. `lidar-ray-proxy` samples that depth image into LiDAR-like ranges and world-frame points.
+`rgb-forward` is ready through the existing splat viewers and the local `.splat` observation renderer. `depth-proxy` is backed by the same local rasterizer and returns float32 depth plus a validity mask. `lidar-ray-proxy` samples that depth image into LiDAR-like ranges and world-frame points. Those ray points can be converted into a sparse voxel occupancy grid for geometry-aware collision checks.
 
 Metric and estimated-metric scenes expose navigation and mapping tasks. Relative-scale scenes expose localization and viewpoint-planning tasks, but avoid waypoint-navigation scoring until a metric alignment is provided.
 
@@ -138,13 +138,28 @@ ranges_base64 = lidar.outputs["ranges"]["rangesBase64"]
 points_base64 = lidar.outputs["points"]["pointsBase64"]
 ```
 
+To turn those ray points into lightweight collision geometry, build an occupancy grid and inject it into the headless environment:
+
+```python
+from gs_sim2real.sim import build_occupancy_grid_from_lidar_observation
+
+occupancy = build_occupancy_grid_from_lidar_observation(
+    lidar,
+    voxel_size_meters=0.5,
+    inflation_radius_meters=0.5,
+)
+env.set_occupancy_grid(occupancy)
+
+collision = env.query_collision(env.state.pose)
+```
+
 Supported actions:
 
 - `twist`: `linearX`, `linearY`, `linearZ` or `vx`, `vy`, `vz`
 - `teleport`: absolute `x`, `y`, `z` plus optional `qx`, `qy`, `qz`, `qw`
 
-The backend blocks poses outside `SceneEnvironment.bounds`. This is not a replacement for collision geometry; it is the minimal runtime needed to let agent code exercise the same `reset/step/render/query/score` loop while renderer, depth, and ray-query fidelity improve independently.
+The backend always blocks poses outside `SceneEnvironment.bounds`. When a `VoxelOccupancyGrid` is set, in-bounds collision checks also reject poses that fall into occupied voxels. This is still point-pose collision rather than a full robot body model, but it gives agent code a deterministic `reset/step/render/query/score` loop with geometry-aware blocking.
 
 ## Next Implementation Layer
 
-The next useful layer is geometry-aware occupancy. Collision checks can move from scene bounds to occupancy built from the generated ray points or from an acceleration structure over splat centers.
+The next useful layer is footprint-aware planning: expand point-pose queries into robot body footprints, cache occupancy per scene and viewpoint, and add trajectory scoring that reports clearance, costmap coverage, and repeated collision causes.
