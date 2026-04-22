@@ -27,6 +27,10 @@ def test_default_launch_kit_has_core_links_and_bounded_social_post() -> None:
     assert "https://github.com/rsasaki0109/gs-mapper" in link_urls
     assert "vggt-slam" in kit.topics
 
+    snippet_keys = {snippet.key for snippet in kit.snippets}
+    assert {destination.snippet_key for destination in kit.destinations} <= snippet_keys
+    assert "hacker-news" in {destination.key for destination in kit.destinations}
+
     short = next(snippet for snippet in kit.snippets if snippet.key == "short-social")
     assert short.max_chars == 280
     assert short.is_within_limit
@@ -41,11 +45,14 @@ def test_launch_kit_renderers_include_copy_blocks_and_metadata() -> None:
     payload = json.loads(render_launch_kit_json(kit))
 
     assert '<meta property="og:image"' in html
+    assert "Where To Post" in html
     assert "data-copy-target" in html
     assert "snippet-short-social" in html
     assert "GS Mapper Launch Kit" in markdown
+    assert "## Where To Post" in markdown
     assert "```text" in markdown
     assert payload["project"] == "GS Mapper"
+    assert payload["destinations"][0]["snippetKey"] == "short-social"
     assert payload["snippets"][0]["withinLimit"] is True
 
 

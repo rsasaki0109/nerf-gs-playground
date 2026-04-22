@@ -58,6 +58,28 @@ class LaunchSnippet:
 
 
 @dataclass(frozen=True, slots=True)
+class LaunchDestination:
+    """One suggested outreach target and the copy angle to use there."""
+
+    key: str
+    label: str
+    url: str
+    audience: str
+    angle: str
+    snippet_key: str
+
+    def to_dict(self) -> dict[str, str]:
+        return {
+            "key": self.key,
+            "label": self.label,
+            "url": self.url,
+            "audience": self.audience,
+            "angle": self.angle,
+            "snippetKey": self.snippet_key,
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class LaunchKit:
     """Complete launch collateral bundle."""
 
@@ -70,6 +92,7 @@ class LaunchKit:
     social_image_url: str
     links: tuple[LaunchLink, ...]
     snippets: tuple[LaunchSnippet, ...]
+    destinations: tuple[LaunchDestination, ...]
     topics: tuple[str, ...]
 
     def to_dict(self) -> dict[str, Any]:
@@ -83,6 +106,7 @@ class LaunchKit:
             "socialImageUrl": self.social_image_url,
             "links": [link.to_dict() for link in self.links],
             "snippets": [snippet.to_dict() for snippet in self.snippets],
+            "destinations": [destination.to_dict() for destination in self.destinations],
             "topics": list(self.topics),
         }
 
@@ -169,6 +193,56 @@ def build_default_launch_kit() -> LaunchKit:
             ),
         ),
     )
+    destinations = (
+        LaunchDestination(
+            key="x-twitter",
+            label="X / Twitter",
+            url="https://x.com/intent/tweet",
+            audience="3DGS, SLAM, robotics, and WebGPU builders who want a fast demo link.",
+            angle="Lead with the live viewer and keep it visual. Use the short social post.",
+            snippet_key="short-social",
+        ),
+        LaunchDestination(
+            key="hacker-news",
+            label="Hacker News Show HN",
+            url="https://news.ycombinator.com/submit",
+            audience="Graphics, mapping, robotics, and developer-tool readers who inspect repos.",
+            angle="Frame it as a small open-source bridge from external SLAM artifacts to browser demos.",
+            snippet_key="community-post",
+        ),
+        LaunchDestination(
+            key="linkedin",
+            label="LinkedIn",
+            url="https://www.linkedin.com/feed/",
+            audience="Robotics, autonomy, geospatial, and simulation engineers.",
+            angle="Emphasize the practical handoff from research SLAM outputs to reviewable artifacts.",
+            snippet_key="technical-social",
+        ),
+        LaunchDestination(
+            key="reddit-communities",
+            label="Reddit communities",
+            url="https://www.reddit.com/search/?q=3D%20Gaussian%20Splatting%20SLAM&type=communities",
+            audience="Subreddits around Gaussian Splatting, photogrammetry, 3D scanning, and robotics.",
+            angle="Pick one relevant community, check its rules, and post the community copy with screenshots.",
+            snippet_key="community-post",
+        ),
+        LaunchDestination(
+            key="github-awesome-lists",
+            label="GitHub awesome lists",
+            url="https://github.com/search?q=awesome+3d+gaussian+splatting&type=repositories",
+            audience="Maintainers of curated 3DGS, SLAM, NeRF, robotics, and WebGPU resource lists.",
+            angle="Open a small PR with the awesome-list entry and link directly to the live demo.",
+            snippet_key="awesome-list",
+        ),
+        LaunchDestination(
+            key="japanese-robotics",
+            label="Japanese robotics channels",
+            url=DEFAULT_SITE_URL,
+            audience="Japanese robotics, mapping, autonomy, and computer-vision builders.",
+            angle="Use the Japanese announcement and point people to the live splat viewer first.",
+            snippet_key="japanese",
+        ),
+    )
     topics = (
         "3d-gaussian-splatting",
         "3dgs",
@@ -192,6 +266,7 @@ def build_default_launch_kit() -> LaunchKit:
         social_image_url=DEFAULT_SOCIAL_IMAGE_URL,
         links=links,
         snippets=snippets,
+        destinations=destinations,
         topics=topics,
     )
 
@@ -217,6 +292,19 @@ def render_launch_kit_markdown(kit: LaunchKit) -> str:
     ]
     for link in kit.links:
         lines.append(f"- [{link.label}]({link.url}) - {link.description}")
+    lines.extend(["", "## Where To Post", ""])
+    for destination in kit.destinations:
+        lines.extend(
+            [
+                f"### {destination.label}",
+                "",
+                f"- URL: {destination.url}",
+                f"- Audience: {destination.audience}",
+                f"- Angle: {destination.angle}",
+                f"- Copy block: `{destination.snippet_key}`",
+                "",
+            ]
+        )
     lines.extend(["", "## Copy Blocks", ""])
     for snippet in kit.snippets:
         limit = f" ({snippet.char_count}/{snippet.max_chars} chars)" if snippet.max_chars else ""
@@ -236,6 +324,7 @@ def render_launch_kit_html(kit: LaunchKit) -> str:
         )
         for link in kit.links
     )
+    destination_blocks = "\n".join(_render_destination_html(destination) for destination in kit.destinations)
     snippet_blocks = "\n".join(_render_snippet_html(snippet) for snippet in kit.snippets)
     topics = "\n".join(f"      <span>{html.escape(topic)}</span>" for topic in kit.topics)
     title = f"{kit.project} Launch Kit"
@@ -278,6 +367,11 @@ main {{ width: min(1180px, 100%); margin: 0 auto; padding: 3.5rem 1.5rem 4rem; }
 .link-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 0.85rem; margin-bottom: 3rem; }}
 .link-row {{ display: flex; flex-direction: column; gap: 0.3rem; min-height: 116px; padding: 1rem; border: 1px solid #30363d; border-radius: 8px; background: #161b22; text-decoration: none; }}
 .link-row span {{ color: #8b949e; font-size: 0.92rem; }}
+.destination-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: 1rem; margin-bottom: 3rem; }}
+.destination {{ display: flex; flex-direction: column; gap: 0.65rem; min-height: 230px; padding: 1rem; border: 1px solid #30363d; border-radius: 8px; background: #161b22; }}
+.destination a {{ font-weight: 800; text-decoration: none; color: #f0f6fc; }}
+.destination p {{ margin: 0; color: #8b949e; font-size: 0.92rem; }}
+.destination code {{ width: fit-content; padding: 0.18rem 0.4rem; color: #3fb950; border: 1px solid rgba(63,185,80,0.35); border-radius: 4px; background: rgba(63,185,80,0.08); }}
 .snippet-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); gap: 1rem; }}
 .snippet {{ border: 1px solid #30363d; border-radius: 8px; background: #161b22; overflow: hidden; }}
 .snippet-header {{ display: flex; justify-content: space-between; gap: 1rem; align-items: center; padding: 0.85rem 1rem; border-bottom: 1px solid #30363d; }}
@@ -318,6 +412,15 @@ footer {{ padding: 2rem 1.5rem; border-top: 1px solid #30363d; color: #8b949e; t
   </section>
   <section>
     <div class="section-head">
+      <h2>Where To Post</h2>
+      <p>Suggested launch targets with the audience, angle, and copy block to start from.</p>
+    </div>
+    <div class="destination-grid">
+{destination_blocks}
+    </div>
+  </section>
+  <section>
+    <div class="section-head">
       <h2>Copy Blocks</h2>
       <p>Channel-specific copy for launch posts, community threads, and awesome-list pull requests.</p>
     </div>
@@ -343,6 +446,21 @@ for (const button of document.querySelectorAll("[data-copy-target]")) {{
 </body>
 </html>
 """
+
+
+def _render_destination_html(destination: LaunchDestination) -> str:
+    return """      <article class="destination">
+        <a href="{url}">{label}</a>
+        <p><strong>Audience:</strong> {audience}</p>
+        <p><strong>Angle:</strong> {angle}</p>
+        <code>{snippet_key}</code>
+      </article>""".format(
+        url=html.escape(destination.url, quote=True),
+        label=html.escape(destination.label),
+        audience=html.escape(destination.audience),
+        angle=html.escape(destination.angle),
+        snippet_key=html.escape(destination.snippet_key),
+    )
 
 
 def _render_snippet_html(snippet: LaunchSnippet) -> str:

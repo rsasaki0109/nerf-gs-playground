@@ -36,6 +36,11 @@ main { width: min(1180px, 100%); margin: 0 auto; padding: 3.5rem 1.5rem 4rem; }
 .link-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 0.85rem; margin-bottom: 3rem; }
 .link-row { display: flex; flex-direction: column; gap: 0.3rem; min-height: 116px; padding: 1rem; border: 1px solid #30363d; border-radius: 8px; background: #161b22; text-decoration: none; }
 .link-row span { color: #8b949e; font-size: 0.92rem; }
+.destination-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: 1rem; margin-bottom: 3rem; }
+.destination { display: flex; flex-direction: column; gap: 0.65rem; min-height: 230px; padding: 1rem; border: 1px solid #30363d; border-radius: 8px; background: #161b22; }
+.destination a { font-weight: 800; text-decoration: none; color: #f0f6fc; }
+.destination p { margin: 0; color: #8b949e; font-size: 0.92rem; }
+.destination code { width: fit-content; padding: 0.18rem 0.4rem; color: #3fb950; border: 1px solid rgba(63,185,80,0.35); border-radius: 4px; background: rgba(63,185,80,0.08); }
 .snippet-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); gap: 1rem; }
 .snippet { border: 1px solid #30363d; border-radius: 8px; background: #161b22; overflow: hidden; }
 .snippet-header { display: flex; justify-content: space-between; gap: 1rem; align-items: center; padding: 0.85rem 1rem; border-bottom: 1px solid #30363d; }
@@ -76,6 +81,50 @@ footer { padding: 2rem 1.5rem; border-top: 1px solid #30363d; color: #8b949e; te
       <a class="link-row" href="https://rsasaki0109.github.io/gs-mapper/splat_spark.html"><strong>Spark mobile / VR viewer</strong><span>Spark viewer for mobile and WebXR-capable devices.</span></a>
       <a class="link-row" href="https://rsasaki0109.github.io/gs-mapper/splat_webgpu.html"><strong>WebGPU viewer</strong><span>GPU-sort viewer for Chrome, Edge, and WebGPU-enabled browsers.</span></a>
       <a class="link-row" href="https://github.com/rsasaki0109/gs-mapper"><strong>GitHub repository</strong><span>Source, README benchmarks, external SLAM import docs, and tests.</span></a>
+    </div>
+  </section>
+  <section>
+    <div class="section-head">
+      <h2>Where To Post</h2>
+      <p>Suggested launch targets with the audience, angle, and copy block to start from.</p>
+    </div>
+    <div class="destination-grid">
+      <article class="destination">
+        <a href="https://x.com/intent/tweet">X / Twitter</a>
+        <p><strong>Audience:</strong> 3DGS, SLAM, robotics, and WebGPU builders who want a fast demo link.</p>
+        <p><strong>Angle:</strong> Lead with the live viewer and keep it visual. Use the short social post.</p>
+        <code>short-social</code>
+      </article>
+      <article class="destination">
+        <a href="https://news.ycombinator.com/submit">Hacker News Show HN</a>
+        <p><strong>Audience:</strong> Graphics, mapping, robotics, and developer-tool readers who inspect repos.</p>
+        <p><strong>Angle:</strong> Frame it as a small open-source bridge from external SLAM artifacts to browser demos.</p>
+        <code>community-post</code>
+      </article>
+      <article class="destination">
+        <a href="https://www.linkedin.com/feed/">LinkedIn</a>
+        <p><strong>Audience:</strong> Robotics, autonomy, geospatial, and simulation engineers.</p>
+        <p><strong>Angle:</strong> Emphasize the practical handoff from research SLAM outputs to reviewable artifacts.</p>
+        <code>technical-social</code>
+      </article>
+      <article class="destination">
+        <a href="https://www.reddit.com/search/?q=3D%20Gaussian%20Splatting%20SLAM&amp;type=communities">Reddit communities</a>
+        <p><strong>Audience:</strong> Subreddits around Gaussian Splatting, photogrammetry, 3D scanning, and robotics.</p>
+        <p><strong>Angle:</strong> Pick one relevant community, check its rules, and post the community copy with screenshots.</p>
+        <code>community-post</code>
+      </article>
+      <article class="destination">
+        <a href="https://github.com/search?q=awesome+3d+gaussian+splatting&amp;type=repositories">GitHub awesome lists</a>
+        <p><strong>Audience:</strong> Maintainers of curated 3DGS, SLAM, NeRF, robotics, and WebGPU resource lists.</p>
+        <p><strong>Angle:</strong> Open a small PR with the awesome-list entry and link directly to the live demo.</p>
+        <code>awesome-list</code>
+      </article>
+      <article class="destination">
+        <a href="https://rsasaki0109.github.io/gs-mapper/">Japanese robotics channels</a>
+        <p><strong>Audience:</strong> Japanese robotics, mapping, autonomy, and computer-vision builders.</p>
+        <p><strong>Angle:</strong> Use the Japanese announcement and point people to the live splat viewer first.</p>
+        <code>japanese</code>
+      </article>
     </div>
   </section>
   <section>

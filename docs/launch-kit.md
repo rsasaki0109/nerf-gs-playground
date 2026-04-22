@@ -12,6 +12,51 @@ GS Mapper turns photos, robotics logs, and MASt3R-SLAM / VGGT-SLAM 2.0 / Pi3 / L
 - [WebGPU viewer](https://rsasaki0109.github.io/gs-mapper/splat_webgpu.html) - GPU-sort viewer for Chrome, Edge, and WebGPU-enabled browsers.
 - [GitHub repository](https://github.com/rsasaki0109/gs-mapper) - Source, README benchmarks, external SLAM import docs, and tests.
 
+## Where To Post
+
+### X / Twitter
+
+- URL: https://x.com/intent/tweet
+- Audience: 3DGS, SLAM, robotics, and WebGPU builders who want a fast demo link.
+- Angle: Lead with the live viewer and keep it visual. Use the short social post.
+- Copy block: `short-social`
+
+### Hacker News Show HN
+
+- URL: https://news.ycombinator.com/submit
+- Audience: Graphics, mapping, robotics, and developer-tool readers who inspect repos.
+- Angle: Frame it as a small open-source bridge from external SLAM artifacts to browser demos.
+- Copy block: `community-post`
+
+### LinkedIn
+
+- URL: https://www.linkedin.com/feed/
+- Audience: Robotics, autonomy, geospatial, and simulation engineers.
+- Angle: Emphasize the practical handoff from research SLAM outputs to reviewable artifacts.
+- Copy block: `technical-social`
+
+### Reddit communities
+
+- URL: https://www.reddit.com/search/?q=3D%20Gaussian%20Splatting%20SLAM&type=communities
+- Audience: Subreddits around Gaussian Splatting, photogrammetry, 3D scanning, and robotics.
+- Angle: Pick one relevant community, check its rules, and post the community copy with screenshots.
+- Copy block: `community-post`
+
+### GitHub awesome lists
+
+- URL: https://github.com/search?q=awesome+3d+gaussian+splatting&type=repositories
+- Audience: Maintainers of curated 3DGS, SLAM, NeRF, robotics, and WebGPU resource lists.
+- Angle: Open a small PR with the awesome-list entry and link directly to the live demo.
+- Copy block: `awesome-list`
+
+### Japanese robotics channels
+
+- URL: https://rsasaki0109.github.io/gs-mapper/
+- Audience: Japanese robotics, mapping, autonomy, and computer-vision builders.
+- Angle: Use the Japanese announcement and point people to the live splat viewer first.
+- Copy block: `japanese`
+
+
 ## Copy Blocks
 
 ### Short social post (233/280 chars)

@@ -1,6 +1,7 @@
 """Public launch and outreach helpers for GS Mapper."""
 
 from .launch_kit import (
+    LaunchDestination,
     LaunchKit,
     LaunchLink,
     LaunchSnippet,
@@ -11,6 +12,7 @@ from .launch_kit import (
 )
 
 __all__ = [
+    "LaunchDestination",
     "LaunchKit",
     "LaunchLink",
     "LaunchSnippet",

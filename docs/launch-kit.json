@@ -1,5 +1,55 @@
 {
   "description": "GS Mapper turns photos, robotics logs, and MASt3R-SLAM / VGGT-SLAM 2.0 / Pi3 / LoGeR artifacts into trainable 3DGS outputs with WebGL, Spark, and WebGPU viewers.",
+  "destinations": [
+    {
+      "angle": "Lead with the live viewer and keep it visual. Use the short social post.",
+      "audience": "3DGS, SLAM, robotics, and WebGPU builders who want a fast demo link.",
+      "key": "x-twitter",
+      "label": "X / Twitter",
+      "snippetKey": "short-social",
+      "url": "https://x.com/intent/tweet"
+    },
+    {
+      "angle": "Frame it as a small open-source bridge from external SLAM artifacts to browser demos.",
+      "audience": "Graphics, mapping, robotics, and developer-tool readers who inspect repos.",
+      "key": "hacker-news",
+      "label": "Hacker News Show HN",
+      "snippetKey": "community-post",
+      "url": "https://news.ycombinator.com/submit"
+    },
+    {
+      "angle": "Emphasize the practical handoff from research SLAM outputs to reviewable artifacts.",
+      "audience": "Robotics, autonomy, geospatial, and simulation engineers.",
+      "key": "linkedin",
+      "label": "LinkedIn",
+      "snippetKey": "technical-social",
+      "url": "https://www.linkedin.com/feed/"
+    },
+    {
+      "angle": "Pick one relevant community, check its rules, and post the community copy with screenshots.",
+      "audience": "Subreddits around Gaussian Splatting, photogrammetry, 3D scanning, and robotics.",
+      "key": "reddit-communities",
+      "label": "Reddit communities",
+      "snippetKey": "community-post",
+      "url": "https://www.reddit.com/search/?q=3D%20Gaussian%20Splatting%20SLAM&type=communities"
+    },
+    {
+      "angle": "Open a small PR with the awesome-list entry and link directly to the live demo.",
+      "audience": "Maintainers of curated 3DGS, SLAM, NeRF, robotics, and WebGPU resource lists.",
+      "key": "github-awesome-lists",
+      "label": "GitHub awesome lists",
+      "snippetKey": "awesome-list",
+      "url": "https://github.com/search?q=awesome+3d+gaussian+splatting&type=repositories"
+    },
+    {
+      "angle": "Use the Japanese announcement and point people to the live splat viewer first.",
+      "audience": "Japanese robotics, mapping, autonomy, and computer-vision builders.",
+      "key": "japanese-robotics",
+      "label": "Japanese robotics channels",
+      "snippetKey": "japanese",
+      "url": "https://rsasaki0109.github.io/gs-mapper/"
+    }
+  ],
   "heroImage": "images/demo-sweep/hero.gif",
   "links": [
     {

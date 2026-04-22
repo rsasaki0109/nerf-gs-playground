@@ -6,12 +6,24 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](pyproject.toml)
 [![Last commit](https://img.shields.io/github/last-commit/rsasaki0109/gs-mapper/main)](https://github.com/rsasaki0109/gs-mapper/commits/main)
 
-**Photos, robotics logs, and external SLAM outputs → trainable 3D Gaussian Splats → browser viewer.**
+**Photos, robotics logs, and external SLAM outputs -> trainable 3D Gaussian Splats -> browser viewer.**
 
 ```bash
+git clone https://github.com/rsasaki0109/gs-mapper.git
+cd gs-mapper
+pip install -e ".[dev]"
 gs-mapper photos-to-splat --images ./my_photos --output outputs/my_splat
 # -> outputs/my_splat/my_photos.splat  (open in splat.html?url=...)
 ```
+
+Open first: [live splat viewer](https://rsasaki0109.github.io/gs-mapper/splat.html),
+[Spark mobile / VR viewer](https://rsasaki0109.github.io/gs-mapper/splat_spark.html),
+[WebGPU viewer](https://rsasaki0109.github.io/gs-mapper/splat_webgpu.html), and
+[launch kit](https://rsasaki0109.github.io/gs-mapper/launch-kit.html).
+
+Star/watch this repo if you want updates on MASt3R-SLAM / VGGT-SLAM 2.0 / Pi3 / LoGeR
+artifact import, reproducible outdoor robotics 3DGS comparisons, and browser-ready WebGL /
+Spark / WebGPU splat viewers.
 
 [![Scene picker cycling through bundled splats on github.io](docs/images/demo-sweep/hero.gif)](https://rsasaki0109.github.io/gs-mapper/splat.html)
 
@@ -21,11 +33,7 @@ import MASt3R-SLAM / VGGT-SLAM 2.0 / Pi3 / LoGeR artifacts as external pose
 data, train with gsplat, and export antimatter15-compatible `.splat` files that
 load directly in the bundled WebGL / WebGPU viewers.
 
-Quick links: [live splat viewer](https://rsasaki0109.github.io/gs-mapper/splat.html),
-[Spark mobile / VR viewer](https://rsasaki0109.github.io/gs-mapper/splat_spark.html),
-[WebGPU viewer](https://rsasaki0109.github.io/gs-mapper/splat_webgpu.html), and
-[launch kit](https://rsasaki0109.github.io/gs-mapper/launch-kit.html). Project notes:
-[outdoor pipeline handoff](docs/plan_outdoor_gs.md), release notes
+Project notes: [outdoor pipeline handoff](docs/plan_outdoor_gs.md), release notes
 [v0.1.0](docs/releases/v0.1.0.md).
 
 The repo ships **eight** production demo scenes that A/B-compare pose-free and
