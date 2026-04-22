@@ -16,6 +16,7 @@ from .contract import (
     load_simulation_catalog_from_scene_picker,
     render_simulation_catalog_json,
 )
+from .footprint import RobotFootprint
 from .headless import (
     HeadlessEnvironmentState,
     HeadlessPhysicalAIEnvironment,
@@ -61,6 +62,7 @@ __all__ = [
     "OccupancyQuery",
     "PhysicalAIEnvironment",
     "Pose3D",
+    "RobotFootprint",
     "SceneEnvironment",
     "SensorModel",
     "SensorRig",

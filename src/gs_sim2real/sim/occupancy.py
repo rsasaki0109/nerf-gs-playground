@@ -24,6 +24,7 @@ class OccupancyQuery:
     cell: VoxelCell
     reason: str
     clearance_meters: float | None = None
+    checked_cell_count: int = 1
 
 
 @dataclass(frozen=True, slots=True)
@@ -77,13 +78,41 @@ class VoxelOccupancyGrid:
         """Query occupancy for a pose position."""
 
         cell = point_to_voxel_cell(pose.position, self.voxel_size_meters)
-        if cell in self.occupied_cells:
-            return OccupancyQuery(occupied=True, cell=cell, reason="occupied-voxel", clearance_meters=0.0)
+        return self.query_cells(
+            (cell,),
+            reference_cell=cell,
+            occupied_reason="occupied-voxel",
+            free_reason="free-voxel",
+        )
+
+    def query_cells(
+        self,
+        cells: Iterable[VoxelCell],
+        *,
+        reference_cell: VoxelCell,
+        occupied_reason: str = "occupied-voxel",
+        free_reason: str = "free-voxel",
+    ) -> OccupancyQuery:
+        """Query occupancy for a set of cells."""
+
+        checked_cells = tuple(dict.fromkeys(cells))
+        if not checked_cells:
+            raise ValueError("cells must contain at least one voxel cell")
+        for cell in checked_cells:
+            if cell in self.occupied_cells:
+                return OccupancyQuery(
+                    occupied=True,
+                    cell=cell,
+                    reason=occupied_reason,
+                    clearance_meters=0.0,
+                    checked_cell_count=len(checked_cells),
+                )
         return OccupancyQuery(
             occupied=False,
-            cell=cell,
-            reason="free-voxel",
-            clearance_meters=self._nearest_cell_center_distance(cell),
+            cell=reference_cell,
+            reason=free_reason,
+            clearance_meters=self._nearest_cell_set_distance(checked_cells),
+            checked_cell_count=len(checked_cells),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -95,12 +124,13 @@ class VoxelOccupancyGrid:
             "cellCount": self.cell_count,
         }
 
-    def _nearest_cell_center_distance(self, cell: VoxelCell) -> float | None:
+    def _nearest_cell_set_distance(self, cells: Sequence[VoxelCell]) -> float | None:
         if not self.occupied_cells:
             return None
-        cx, cy, cz = cell
         nearest = min(
-            math.dist((cx, cy, cz), occupied_cell) * self.voxel_size_meters for occupied_cell in self.occupied_cells
+            math.dist(cell, occupied_cell) * self.voxel_size_meters
+            for cell in cells
+            for occupied_cell in self.occupied_cells
         )
         return float(nearest)
 

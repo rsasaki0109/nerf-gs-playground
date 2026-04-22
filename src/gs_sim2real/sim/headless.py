@@ -17,7 +17,8 @@ from .interfaces import (
     Pose3D,
     TrajectoryScore,
 )
-from .occupancy import VoxelOccupancyGrid
+from .footprint import RobotFootprint
+from .occupancy import OccupancyQuery, VoxelOccupancyGrid, point_to_voxel_cell
 from .rendering import ObservationRenderer
 
 
@@ -49,16 +50,23 @@ class HeadlessPhysicalAIEnvironment(PhysicalAIEnvironment):
         *,
         observation_renderer: ObservationRenderer | None = None,
         occupancy_grid: VoxelOccupancyGrid | None = None,
+        robot_footprint: RobotFootprint | None = None,
     ):
         self.catalog = catalog
         self.observation_renderer = observation_renderer
         self.occupancy_grid = occupancy_grid
+        self.robot_footprint = robot_footprint
         self._state: HeadlessEnvironmentState | None = None
 
     def set_occupancy_grid(self, occupancy_grid: VoxelOccupancyGrid | None) -> None:
         """Set or clear the occupancy grid used by collision queries."""
 
         self.occupancy_grid = occupancy_grid
+
+    def set_robot_footprint(self, robot_footprint: RobotFootprint | None) -> None:
+        """Set or clear the robot footprint used by occupancy collision queries."""
+
+        self.robot_footprint = robot_footprint
 
     @property
     def state(self) -> HeadlessEnvironmentState:
@@ -124,7 +132,7 @@ class HeadlessPhysicalAIEnvironment(PhysicalAIEnvironment):
                 clearance_meters=0.0,
             )
         if self.occupancy_grid is not None:
-            occupancy = self.occupancy_grid.query_pose(pose)
+            occupancy = self._query_occupancy(pose)
             if occupancy.occupied:
                 return CollisionQuery(
                     pose=pose,
@@ -143,6 +151,19 @@ class HeadlessPhysicalAIEnvironment(PhysicalAIEnvironment):
             collides=False,
             reason="inside-bounds",
             clearance_meters=_bounds_clearance(scene.bounds, point),
+        )
+
+    def _query_occupancy(self, pose: Pose3D) -> OccupancyQuery:
+        if self.occupancy_grid is None:
+            raise RuntimeError("occupancy grid has not been set")
+        if self.robot_footprint is None:
+            return self.occupancy_grid.query_pose(pose)
+        reference_cell = point_to_voxel_cell(pose.position, self.occupancy_grid.voxel_size_meters)
+        return self.occupancy_grid.query_cells(
+            self.robot_footprint.cells_for_pose(pose, self.occupancy_grid.voxel_size_meters),
+            reference_cell=reference_cell,
+            occupied_reason="occupied-footprint-voxel",
+            free_reason="free-footprint",
         )
 
     def sample_goal(self, scene_id: str, *, seed: int | None = None) -> Pose3D:

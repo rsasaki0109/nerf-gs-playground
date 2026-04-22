@@ -138,10 +138,10 @@ ranges_base64 = lidar.outputs["ranges"]["rangesBase64"]
 points_base64 = lidar.outputs["points"]["pointsBase64"]
 ```
 
-To turn those ray points into lightweight collision geometry, build an occupancy grid and inject it into the headless environment:
+To turn those ray points into lightweight collision geometry, build an occupancy grid and inject it into the headless environment. The backend can query either the pose point or a conservative circular robot footprint.
 
 ```python
-from gs_sim2real.sim import build_occupancy_grid_from_lidar_observation
+from gs_sim2real.sim import RobotFootprint, build_occupancy_grid_from_lidar_observation
 
 occupancy = build_occupancy_grid_from_lidar_observation(
     lidar,
@@ -149,6 +149,7 @@ occupancy = build_occupancy_grid_from_lidar_observation(
     inflation_radius_meters=0.5,
 )
 env.set_occupancy_grid(occupancy)
+env.set_robot_footprint(RobotFootprint(radius_meters=0.45, height_meters=1.2))
 
 collision = env.query_collision(env.state.pose)
 ```
@@ -158,8 +159,8 @@ Supported actions:
 - `twist`: `linearX`, `linearY`, `linearZ` or `vx`, `vy`, `vz`
 - `teleport`: absolute `x`, `y`, `z` plus optional `qx`, `qy`, `qz`, `qw`
 
-The backend always blocks poses outside `SceneEnvironment.bounds`. When a `VoxelOccupancyGrid` is set, in-bounds collision checks also reject poses that fall into occupied voxels. This is still point-pose collision rather than a full robot body model, but it gives agent code a deterministic `reset/step/render/query/score` loop with geometry-aware blocking.
+The backend always blocks poses outside `SceneEnvironment.bounds`. When a `VoxelOccupancyGrid` is set, in-bounds collision checks also reject poses that fall into occupied voxels. When a `RobotFootprint` is set, the occupancy query checks every voxel touched by the circular body radius and height instead of only the pose point.
 
 ## Next Implementation Layer
 
-The next useful layer is footprint-aware planning: expand point-pose queries into robot body footprints, cache occupancy per scene and viewpoint, and add trajectory scoring that reports clearance, costmap coverage, and repeated collision causes.
+The next useful layer is costmap-aware planning: cache occupancy per scene and viewpoint, add clearance/costmap summaries to trajectory scoring, and keep repeated collision causes visible to policy evaluation.
