@@ -71,6 +71,13 @@ from .policy_feedback import (
     build_route_policy_sample,
     score_route_policy_reward,
 )
+from .policy_benchmark import (
+    ROUTE_POLICY_BENCHMARK_VERSION,
+    RoutePolicyBenchmarkReport,
+    render_route_policy_benchmark_markdown,
+    run_route_policy_imitation_benchmark,
+    write_route_policy_benchmark_report_json,
+)
 from .policy_quality import (
     ROUTE_POLICY_QUALITY_VERSION,
     RoutePolicyBaselineEvaluation,
@@ -89,6 +96,9 @@ from .policy_imitation import (
     decode_route_policy_action_vector,
     evaluate_route_policy_imitation_model,
     fit_route_policy_imitation_model,
+    load_route_policy_imitation_model_json,
+    route_policy_imitation_model_from_dict,
+    write_route_policy_imitation_model_json,
 )
 from .policy_replay import (
     ROUTE_POLICY_REPLAY_VERSION,
@@ -155,12 +165,14 @@ __all__ = [
     "Pose3D",
     "PlanningViewpointKey",
     "RobotFootprint",
+    "ROUTE_POLICY_BENCHMARK_VERSION",
     "ROUTE_POLICY_DATASET_VERSION",
     "ROUTE_POLICY_IMITATION_VERSION",
     "ROUTE_POLICY_QUALITY_VERSION",
     "ROUTE_POLICY_REPLAY_VERSION",
     "RoutePolicyAction",
     "RoutePolicyActionDecoderConfig",
+    "RoutePolicyBenchmarkReport",
     "RoutePolicyBaselineEvaluation",
     "RoutePolicyBaselineResult",
     "RoutePolicyCallable",
@@ -220,6 +232,7 @@ __all__ = [
     "iter_route_policy_replay_batches",
     "last_applied_route_pose",
     "load_route_policy_dataset_json",
+    "load_route_policy_imitation_model_json",
     "load_scene_picker_catalog",
     "load_route_policy_transitions_jsonl",
     "load_splat_point_cloud",
@@ -227,6 +240,7 @@ __all__ = [
     "make_route_policy_env",
     "render_splat_point_cloud",
     "render_simulation_catalog_json",
+    "render_route_policy_benchmark_markdown",
     "render_route_policy_quality_markdown",
     "point_to_voxel_cell",
     "reanchor_route_candidates",
@@ -234,6 +248,8 @@ __all__ = [
     "resolve_scene_asset_path",
     "rollout_route",
     "rollout_route_with_replanning",
+    "route_policy_imitation_model_from_dict",
+    "run_route_policy_imitation_benchmark",
     "route_policy_dataset_from_dict",
     "route_policy_transition_table_from_dataset",
     "route_policy_transition_table_from_rows",
@@ -242,5 +258,7 @@ __all__ = [
     "select_best_route",
     "summarize_collision_queries",
     "write_route_policy_dataset_json",
+    "write_route_policy_benchmark_report_json",
+    "write_route_policy_imitation_model_json",
     "write_route_policy_transitions_jsonl",
 ]

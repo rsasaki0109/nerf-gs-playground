@@ -158,14 +158,19 @@ from gs_sim2real.sim import (
     evaluate_route_policy_dataset_quality,
     evaluate_route_policy_imitation_model,
     fit_route_policy_imitation_model,
+    load_route_policy_imitation_model_json,
     iter_route_policy_replay_batches,
     load_route_policy_transitions_jsonl,
     replan_after_blocked_rollout,
+    render_route_policy_benchmark_markdown,
     render_route_policy_quality_markdown,
+    run_route_policy_imitation_benchmark,
     rollout_route,
     rollout_route_with_replanning,
     select_best_route,
+    write_route_policy_benchmark_report_json,
     write_route_policy_dataset_json,
+    write_route_policy_imitation_model_json,
     write_route_policy_transitions_jsonl,
 )
 
@@ -353,6 +358,39 @@ imitation_eval = evaluate_route_policy_imitation_model(
 print(imitation_eval.best_policy_name)
 ```
 
+Persist fitted imitation models when the benchmark needs to run in a separate job from replay collection. The saved model contains the replay schema and training vectors, so it can be loaded without the original JSONL file.
+
+```python
+write_route_policy_imitation_model_json("runs/outdoor-imitation-model.json", imitation_model)
+loaded_model = load_route_policy_imitation_model_json("runs/outdoor-imitation-model.json")
+
+benchmark_report = run_route_policy_imitation_benchmark(
+    (policy_env,),
+    loaded_model,
+    episode_count=16,
+    benchmark_id="outdoor-demo-policy-benchmark",
+    include_direct_baseline=True,
+    seed_start=100,
+)
+write_route_policy_benchmark_report_json("runs/outdoor-policy-benchmark.json", benchmark_report)
+print(render_route_policy_benchmark_markdown(benchmark_report))
+```
+
+The same flow is available from the CLI:
+
+```bash
+gs-mapper route-policy-benchmark \
+  --transitions-jsonl runs/outdoor-policy-transitions.jsonl \
+  --scene-catalog docs/scenes-list.json \
+  --scene-id outdoor-demo \
+  --action-keys payload.target.position.0 payload.target.position.1 payload.target.position.2 \
+  --episode-count 16 \
+  --include-direct-baseline \
+  --model-output runs/outdoor-imitation-model.json \
+  --output runs/outdoor-policy-benchmark.json \
+  --markdown-output runs/outdoor-policy-benchmark.md
+```
+
 Supported actions:
 
 - `twist`: `linearX`, `linearY`, `linearZ` or `vx`, `vy`, `vz`
@@ -362,4 +400,4 @@ The backend always blocks poses outside `SceneEnvironment.bounds`. When a `Voxel
 
 ## Next Implementation Layer
 
-The next useful layer is policy persistence plus a CLI benchmark runner: write/read fitted policy summaries, evaluate one or more policies against fixed goal suites, and emit comparable JSON/Markdown reports for CI.
+The next useful layer is a small policy registry and named goal-suite files: load several saved policies by name, share fixed evaluation goals across runs, and keep policy comparison inputs versioned outside ad hoc CLI flags.

@@ -25,6 +25,9 @@ from gs_sim2real.sim import (
     decode_route_policy_action_vector,
     evaluate_route_policy_imitation_model,
     fit_route_policy_imitation_model,
+    load_route_policy_imitation_model_json,
+    route_policy_imitation_model_from_dict,
+    write_route_policy_imitation_model_json,
 )
 
 
@@ -148,6 +151,30 @@ def test_fit_route_policy_imitation_model_rejects_empty_batches() -> None:
 
     with pytest.raises(ValueError, match="at least one replay sample"):
         fit_route_policy_imitation_model(RoutePolicyReplayBatch(schema=schema, samples=()))
+
+
+def test_route_policy_imitation_model_json_round_trips_predictable_policy(tmp_path: Path) -> None:
+    goals = (unit_pose((0.25, 0.0, 0.0)),)
+    dataset = collect_route_policy_dataset(
+        (build_adapter(),),
+        direct_goal_policy,
+        episode_count=1,
+        dataset_id="unit-imitation-save",
+        goals=goals,
+    )
+    schema = build_route_policy_replay_schema(dataset, action_keys=target_position_keys())
+    model = fit_route_policy_imitation_model(build_route_policy_replay_batch(dataset, schema=schema))
+    path = write_route_policy_imitation_model_json(tmp_path / "model.json", model)
+
+    loaded = load_route_policy_imitation_model_json(path)
+    from_payload = route_policy_imitation_model_from_dict(loaded.to_dict())
+
+    assert loaded.sample_count == 1
+    assert loaded.schema.action_keys == target_position_keys()
+    assert loaded.predict_action_vector(dataset.episodes[0].transitions[0].observation) == pytest.approx(
+        (0.25, 0.0, 0.0)
+    )
+    assert from_payload.to_dict() == loaded.to_dict()
 
 
 def replay_sample(

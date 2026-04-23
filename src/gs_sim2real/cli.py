@@ -1045,6 +1045,49 @@ def build_parser() -> argparse.ArgumentParser:
     sb.add_argument("--max-frames", type=int, default=None, help="Optional cap on the number of matched frames")
     sb.add_argument("--output", default=None, help="Optional path for the full benchmark report JSON")
 
+    # route policy benchmark
+    rpb = subparsers.add_parser(
+        "route-policy-benchmark",
+        help="Fit or evaluate route policy imitation baselines in the Physical AI simulator",
+    )
+    source_group = rpb.add_mutually_exclusive_group(required=True)
+    source_group.add_argument("--transitions-jsonl", default=None, help="Replay transition JSONL used to fit imitation")
+    source_group.add_argument("--dataset-json", default=None, help="Replay episode dataset JSON used to fit imitation")
+    source_group.add_argument("--model", default=None, help="Previously saved imitation model JSON")
+    rpb.add_argument("--model-output", default=None, help="Optional path to write the fitted imitation model JSON")
+    rpb.add_argument(
+        "--output", default="outputs/route_policy_benchmark/report.json", help="Benchmark report JSON path"
+    )
+    rpb.add_argument("--markdown-output", default=None, help="Optional Markdown summary output path")
+    rpb.add_argument("--scene-catalog", default="docs/scenes-list.json", help="Scene picker catalog JSON")
+    rpb.add_argument(
+        "--site-url", default="https://rsasaki0109.github.io/gs-mapper/", help="Base site URL for scene assets"
+    )
+    rpb.add_argument(
+        "--scene-id", default=None, help="Scene id to evaluate (default: outdoor-demo or first catalog scene)"
+    )
+    rpb.add_argument("--benchmark-id", default="route-policy-benchmark", help="Benchmark/evaluation id")
+    rpb.add_argument("--policy-name", default="imitation", help="Policy name for the fitted or loaded imitation model")
+    rpb.add_argument("--episode-count", type=int, default=16, help="Number of evaluation episodes")
+    rpb.add_argument("--seed-start", type=int, default=100, help="First evaluation seed")
+    rpb.add_argument("--max-steps", type=int, default=None, help="Override route policy max steps")
+    rpb.add_argument(
+        "--goal",
+        action="append",
+        nargs=3,
+        type=float,
+        metavar=("X", "Y", "Z"),
+        help="Fixed goal position; repeat for a goal suite",
+    )
+    rpb.add_argument("--neighbor-count", type=int, default=1, help="k for fitted k-NN imitation")
+    rpb.add_argument("--action-keys", nargs="+", default=None, help="Pinned replay action keys for target decoding")
+    rpb.add_argument("--include-direct-baseline", action="store_true", help="Compare against a direct-goal baseline")
+    rpb.add_argument("--min-success-rate", type=float, default=None, help="Optional quality threshold")
+    rpb.add_argument("--max-collision-rate", type=float, default=None, help="Optional quality threshold")
+    rpb.add_argument("--max-truncation-rate", type=float, default=None, help="Optional quality threshold")
+    rpb.add_argument("--min-episode-count", type=int, default=None, help="Optional quality threshold")
+    rpb.add_argument("--min-transition-count", type=int, default=None, help="Optional quality threshold")
+
     # experiment labs — specs drive a nested `experiment` subparser plus
     # hidden top-level aliases for back-compat.
     experiment_specs: list[tuple[str, str, str]] = [
@@ -1934,6 +1977,13 @@ def cmd_sim2real_benchmark_images(args: argparse.Namespace) -> None:
     run_cli(args)
 
 
+def cmd_route_policy_benchmark(args: argparse.Namespace) -> None:
+    """Handle the route-policy-benchmark subcommand."""
+    from gs_sim2real.sim.policy_benchmark import run_cli
+
+    run_cli(args)
+
+
 def cmd_experiment(args: argparse.Namespace) -> None:
     """Handle the nested `experiment` subcommand by deferring to the legacy handler."""
     handler_map = {
@@ -2110,6 +2160,7 @@ def main(argv: list[str] | None = None) -> None:
         "sim2real-server": cmd_sim2real_server,
         "sim2real-query": cmd_sim2real_query,
         "sim2real-benchmark-images": cmd_sim2real_benchmark_images,
+        "route-policy-benchmark": cmd_route_policy_benchmark,
         "experiment": cmd_experiment,
     }
 

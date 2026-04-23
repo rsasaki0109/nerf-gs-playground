@@ -134,6 +134,12 @@ class TestCLIHelp:
             main(["sim2real-benchmark-images", "--help"])
         assert exc_info.value.code == 0
 
+    def test_cli_route_policy_benchmark_help(self) -> None:
+        """Running route-policy-benchmark --help raises SystemExit(0)."""
+        with pytest.raises(SystemExit) as exc_info:
+            main(["route-policy-benchmark", "--help"])
+        assert exc_info.value.code == 0
+
     def test_cli_experiment_localization_alignment_help(self) -> None:
         """Running experiment-localization-alignment --help raises SystemExit(0)."""
         with pytest.raises(SystemExit) as exc_info:
@@ -1719,6 +1725,63 @@ class TestCLIHelp:
         assert args.timeout_ms == 2500
         assert args.max_frames == 12
         assert args.output == "report.json"
+
+    def test_cli_route_policy_benchmark_flags(self) -> None:
+        """route-policy-benchmark parser accepts replay, goal, and threshold settings."""
+        args = build_parser().parse_args(
+            [
+                "route-policy-benchmark",
+                "--transitions-jsonl",
+                "transitions.jsonl",
+                "--scene-catalog",
+                "scenes.json",
+                "--scene-id",
+                "unit-scene",
+                "--benchmark-id",
+                "unit-benchmark",
+                "--episode-count",
+                "4",
+                "--seed-start",
+                "10",
+                "--max-steps",
+                "8",
+                "--goal",
+                "1.0",
+                "2.0",
+                "3.0",
+                "--neighbor-count",
+                "3",
+                "--action-keys",
+                "payload.target.position.0",
+                "payload.target.position.1",
+                "payload.target.position.2",
+                "--include-direct-baseline",
+                "--min-success-rate",
+                "0.9",
+                "--output",
+                "report.json",
+                "--model-output",
+                "model.json",
+            ]
+        )
+        assert args.transitions_jsonl == "transitions.jsonl"
+        assert args.scene_catalog == "scenes.json"
+        assert args.scene_id == "unit-scene"
+        assert args.benchmark_id == "unit-benchmark"
+        assert args.episode_count == 4
+        assert args.seed_start == 10
+        assert args.max_steps == 8
+        assert args.goal == [[1.0, 2.0, 3.0]]
+        assert args.neighbor_count == 3
+        assert args.action_keys == [
+            "payload.target.position.0",
+            "payload.target.position.1",
+            "payload.target.position.2",
+        ]
+        assert args.include_direct_baseline is True
+        assert args.min_success_rate == 0.9
+        assert args.output == "report.json"
+        assert args.model_output == "model.json"
 
     def test_cli_experiment_localization_alignment_flags(self) -> None:
         """experiment-localization-alignment parser accepts evaluation settings."""

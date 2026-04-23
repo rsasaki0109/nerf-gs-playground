@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
+import json
 import math
 from pathlib import Path
 from typing import Any, cast
@@ -16,6 +17,7 @@ from .policy_quality import (
     evaluate_route_policy_baselines,
 )
 from .policy_replay import (
+    ROUTE_POLICY_REPLAY_VERSION,
     RoutePolicyReplayBatch,
     RoutePolicyReplayFeatureSchema,
     RoutePolicyReplaySample,
@@ -181,6 +183,7 @@ class RoutePolicyImitationModel:
             "schema": self.schema.to_dict(),
             "config": self.config.to_dict(),
             "trainingSampleRefs": [_sample_ref(sample) for sample in self.samples],
+            "samples": [sample.to_dict() for sample in self.samples],
             "metadata": _json_mapping(self.metadata),
         }
 
@@ -286,6 +289,48 @@ def evaluate_route_policy_imitation_model(
     )
 
 
+def route_policy_imitation_model_from_dict(payload: Mapping[str, Any]) -> RoutePolicyImitationModel:
+    """Rebuild a fitted imitation model from its stable JSON artifact."""
+
+    _record_type(payload, "route-policy-imitation-model")
+    version = str(payload.get("version", ROUTE_POLICY_IMITATION_VERSION))
+    if version != ROUTE_POLICY_IMITATION_VERSION:
+        raise ValueError(f"unsupported route policy imitation model version: {version}")
+    samples = tuple(
+        _replay_sample_from_payload(_mapping(item, "sample"))
+        for item in _sequence(payload.get("samples", ()), "samples")
+    )
+    expected_sample_count = payload.get("sampleCount")
+    if expected_sample_count is not None and int(expected_sample_count) != len(samples):
+        raise ValueError("sampleCount does not match loaded samples")
+    return RoutePolicyImitationModel(
+        schema=_replay_schema_from_payload(_mapping(payload.get("schema", {}), "schema")),
+        samples=samples,
+        config=_fit_config_from_payload(_mapping(payload.get("config", {}), "config")),
+        metadata=_json_mapping(_mapping(payload.get("metadata", {}), "metadata")),
+        version=version,
+    )
+
+
+def write_route_policy_imitation_model_json(path: str | Path, model: RoutePolicyImitationModel) -> Path:
+    """Write a fitted imitation model artifact that can be loaded for evaluation."""
+
+    output_path = Path(path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(
+        json.dumps(model.to_dict(), ensure_ascii=False, indent=2, sort_keys=True, allow_nan=False) + "\n",
+        encoding="utf-8",
+    )
+    return output_path
+
+
+def load_route_policy_imitation_model_json(path: str | Path) -> RoutePolicyImitationModel:
+    """Load a fitted imitation model artifact written by ``write_route_policy_imitation_model_json``."""
+
+    payload = json.loads(Path(path).read_text(encoding="utf-8"))
+    return route_policy_imitation_model_from_dict(_mapping(payload, "model"))
+
+
 def _replay_batches_from_source(
     source: RoutePolicyImitationSource,
     *,
@@ -301,6 +346,61 @@ def _replay_batches_from_source(
             return cast(tuple[RoutePolicyReplayBatch, ...], items)
         return (build_route_policy_replay_batch(_transition_records(items), schema=schema),)
     return (build_route_policy_replay_batch(source, schema=schema),)
+
+
+def _replay_schema_from_payload(payload: Mapping[str, Any]) -> RoutePolicyReplayFeatureSchema:
+    _record_type(payload, "route-policy-replay-feature-schema")
+    return RoutePolicyReplayFeatureSchema(
+        observation_keys=tuple(str(item) for item in _sequence(payload.get("observationKeys", ()), "observationKeys")),
+        action_keys=tuple(str(item) for item in _sequence(payload.get("actionKeys", ()), "actionKeys")),
+        next_observation_keys=tuple(
+            str(item) for item in _sequence(payload.get("nextObservationKeys", ()), "nextObservationKeys")
+        ),
+        metadata=_json_mapping(_mapping(payload.get("metadata", {}), "metadata")),
+        version=str(payload.get("version", ROUTE_POLICY_REPLAY_VERSION)),
+    )
+
+
+def _replay_sample_from_payload(payload: Mapping[str, Any]) -> RoutePolicyReplaySample:
+    _record_type(payload, "route-policy-replay-sample")
+    return RoutePolicyReplaySample(
+        dataset_id=str(payload["datasetId"]),
+        episode_id=str(payload["episodeId"]),
+        scene_id=str(payload["sceneId"]),
+        episode_index=int(payload["episodeIndex"]),
+        step_index=int(payload["stepIndex"]),
+        observation_vector=_finite_vector(
+            _sequence(payload.get("observationVector", ()), "observationVector"), "observationVector"
+        ),
+        action_vector=_finite_vector(_sequence(payload.get("actionVector", ()), "actionVector"), "actionVector"),
+        reward=_finite_float(payload.get("reward", 0.0), "reward"),
+        next_observation_vector=_finite_vector(
+            _sequence(payload.get("nextObservationVector", ()), "nextObservationVector"),
+            "nextObservationVector",
+        ),
+        terminated=_bool_value(payload.get("terminated", False), "terminated"),
+        truncated=_bool_value(payload.get("truncated", False), "truncated"),
+        metadata=_json_mapping(_mapping(payload.get("metadata", {}), "metadata")),
+    )
+
+
+def _fit_config_from_payload(payload: Mapping[str, Any]) -> RoutePolicyImitationFitConfig:
+    return RoutePolicyImitationFitConfig(
+        neighbor_count=int(payload.get("neighborCount", 1)),
+        distance_epsilon=float(payload.get("distanceEpsilon", 1e-9)),
+        action_decoder=_action_decoder_config_from_payload(_mapping(payload.get("actionDecoder", {}), "actionDecoder")),
+    )
+
+
+def _action_decoder_config_from_payload(payload: Mapping[str, Any]) -> RoutePolicyActionDecoderConfig:
+    target_keys = payload.get("targetKeys")
+    return RoutePolicyActionDecoderConfig(
+        target_keys=None
+        if target_keys is None
+        else _target_key_tuple(_sequence(target_keys, "targetKeys"), "targetKeys"),
+        route_id_prefix=str(payload.get("routeIdPrefix", "imitation-route")),
+        target_frame_id=None if payload.get("targetFrameId") is None else str(payload["targetFrameId"]),
+    )
 
 
 def _transition_records(items: Sequence[Any]) -> tuple[RoutePolicyTransitionRecord, ...]:
@@ -382,6 +482,18 @@ def _mapping_or_empty(value: Any) -> Mapping[str, Any]:
     return value if isinstance(value, Mapping) else {}
 
 
+def _record_type(payload: Mapping[str, Any], expected: str) -> None:
+    record_type = payload.get("recordType")
+    if record_type != expected:
+        raise ValueError(f"expected {expected!r}, got {record_type!r}")
+
+
+def _mapping(value: Any, field_name: str) -> Mapping[str, Any]:
+    if isinstance(value, Mapping):
+        return value
+    raise TypeError(f"{field_name} must be a mapping")
+
+
 def _sequence(value: Any, field_name: str) -> Sequence[Any]:
     if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
         return value
@@ -438,6 +550,12 @@ def _finite_float(value: Any, field_name: str) -> float:
     if not math.isfinite(normalized):
         raise ValueError(f"{field_name} must be finite")
     return normalized
+
+
+def _bool_value(value: Any, field_name: str) -> bool:
+    if isinstance(value, bool):
+        return value
+    raise TypeError(f"{field_name} must be a boolean")
 
 
 def _positive_float(value: float, field_name: str) -> float:
