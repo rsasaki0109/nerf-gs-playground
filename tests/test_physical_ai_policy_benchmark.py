@@ -17,21 +17,31 @@ from gs_sim2real.sim import (
     RoutePolicyGoalSuite,
     RoutePolicyEnvConfig,
     RoutePolicyGymAdapter,
+    RoutePolicyMatrixConfigSpec,
+    RoutePolicyMatrixGoalSuiteSpec,
+    RoutePolicyMatrixRegistrySpec,
+    RoutePolicyMatrixSceneSpec,
     RoutePolicyRegistry,
     RoutePolicyRegistryEntry,
+    RoutePolicyScenarioMatrix,
     RoutePolicyScenarioSet,
     RoutePolicyScenarioSpec,
     RouteRewardWeights,
     build_route_policy_benchmark_history,
     build_simulation_catalog,
     collect_route_policy_dataset,
+    expand_route_policy_scenario_matrix,
+    expand_route_policy_scenario_matrix_to_directory,
     load_route_policy_benchmark_history_json,
     load_route_policy_goal_suite_json,
     load_route_policy_imitation_model_json,
     load_route_policy_registry_json,
+    load_route_policy_scenario_matrix_expansion_json,
+    load_route_policy_scenario_matrix_json,
     load_route_policy_scenario_set_run_json,
     render_route_policy_benchmark_history_markdown,
     render_route_policy_benchmark_markdown,
+    render_route_policy_scenario_matrix_markdown,
     render_route_policy_scenario_set_markdown,
     run_route_policy_imitation_benchmark,
     run_route_policy_registry_benchmark,
@@ -40,6 +50,8 @@ from gs_sim2real.sim import (
     write_route_policy_goal_suite_json,
     write_route_policy_imitation_model_json,
     write_route_policy_registry_json,
+    write_route_policy_scenario_matrix_expansion_json,
+    write_route_policy_scenario_matrix_json,
     write_route_policy_scenario_set_json,
     write_route_policy_scenario_set_run_json,
     write_route_policy_transitions_jsonl,
@@ -608,6 +620,148 @@ def test_route_policy_scenario_set_cli_writes_reports_and_history(tmp_path: Path
     assert history["reportCount"] == 2
     assert "Route Policy Scenario Set: unit-cli-scenarios" in markdown_path.read_text(encoding="utf-8")
     assert "Route Policy Benchmark History" in history_markdown_path.read_text(encoding="utf-8")
+
+
+def test_route_policy_scenario_matrix_expands_to_registry_scenario_sets(tmp_path: Path) -> None:
+    catalog_path = write_unit_scene_catalog(tmp_path / "scenes.json")
+    write_route_policy_registry_json(
+        tmp_path / "direct-registry.json",
+        RoutePolicyRegistry(
+            registry_id="direct-registry",
+            policies=(RoutePolicyRegistryEntry(policy_name="direct", policy_type="direct-goal"),),
+        ),
+    )
+    write_route_policy_registry_json(
+        tmp_path / "baseline-registry.json",
+        RoutePolicyRegistry(
+            registry_id="baseline-registry",
+            policies=(RoutePolicyRegistryEntry(policy_name="direct", policy_type="direct-goal"),),
+        ),
+    )
+    write_route_policy_goal_suite_json(
+        tmp_path / "near-goals.json",
+        RoutePolicyGoalSuite(
+            suite_id="near-goals",
+            scene_id="unit-scene",
+            frame_id="generic_world",
+            goals=(RoutePolicyGoalSpec("near", (0.25, 0.0, 0.0)),),
+        ),
+    )
+    write_route_policy_goal_suite_json(
+        tmp_path / "far-goals.json",
+        RoutePolicyGoalSuite(
+            suite_id="far-goals",
+            scene_id="unit-scene",
+            frame_id="generic_world",
+            goals=(RoutePolicyGoalSpec("far", (0.5, 0.0, 0.0)),),
+        ),
+    )
+    matrix = RoutePolicyScenarioMatrix(
+        matrix_id="unit-matrix",
+        registries=(
+            RoutePolicyMatrixRegistrySpec("direct", "direct-registry.json"),
+            RoutePolicyMatrixRegistrySpec("baseline", "baseline-registry.json"),
+        ),
+        scenes=(RoutePolicyMatrixSceneSpec("unit", catalog_path.name, scene_id="unit-scene"),),
+        goal_suites=(
+            RoutePolicyMatrixGoalSuiteSpec("near", "near-goals.json"),
+            RoutePolicyMatrixGoalSuiteSpec("far", "far-goals.json"),
+        ),
+        configs=(
+            RoutePolicyMatrixConfigSpec("short", episode_count=1, seed_start=0, max_steps=4),
+            RoutePolicyMatrixConfigSpec("long", episode_count=2, seed_start=10, max_steps=8),
+        ),
+        episode_count=3,
+        seed_start=100,
+        max_steps=6,
+    )
+    matrix_path = write_route_policy_scenario_matrix_json(tmp_path / "matrix.json", matrix)
+    loaded_matrix = load_route_policy_scenario_matrix_json(matrix_path)
+    scenario_sets = expand_route_policy_scenario_matrix(loaded_matrix)
+
+    assert [scenario_set.scenario_set_id for scenario_set in scenario_sets] == [
+        "unit-matrix-direct",
+        "unit-matrix-baseline",
+    ]
+    assert [scenario_set.scenario_count for scenario_set in scenario_sets] == [4, 4]
+    assert [scenario.scenario_id for scenario in scenario_sets[0].scenarios] == [
+        "unit-near-short",
+        "unit-near-long",
+        "unit-far-short",
+        "unit-far-long",
+    ]
+
+    expansion = expand_route_policy_scenario_matrix_to_directory(
+        loaded_matrix,
+        tmp_path / "generated",
+        matrix_base_path=tmp_path,
+    )
+    expansion_path = write_route_policy_scenario_matrix_expansion_json(tmp_path / "expansion.json", expansion)
+    loaded_expansion = load_route_policy_scenario_matrix_expansion_json(expansion_path)
+
+    assert loaded_expansion.scenario_set_count == 2
+    assert loaded_expansion.scenario_count == 8
+    assert loaded_expansion.scenario_sets[0].policy_registry_path == "../direct-registry.json"
+    assert all(output.scenario_set_path is not None for output in loaded_expansion.outputs)
+    assert all(Path(output.scenario_set_path or "").exists() for output in loaded_expansion.outputs)
+    assert "Route Policy Scenario Matrix: unit-matrix" in render_route_policy_scenario_matrix_markdown(loaded_expansion)
+
+
+def test_route_policy_scenario_matrix_cli_writes_generated_sets(tmp_path: Path) -> None:
+    catalog_path = write_unit_scene_catalog(tmp_path / "scenes.json")
+    write_route_policy_registry_json(
+        tmp_path / "direct-registry.json",
+        RoutePolicyRegistry(
+            registry_id="direct-registry",
+            policies=(RoutePolicyRegistryEntry(policy_name="direct", policy_type="direct-goal"),),
+        ),
+    )
+    write_route_policy_goal_suite_json(
+        tmp_path / "near-goals.json",
+        RoutePolicyGoalSuite(
+            suite_id="near-goals",
+            scene_id="unit-scene",
+            frame_id="generic_world",
+            goals=(RoutePolicyGoalSpec("near", (0.25, 0.0, 0.0)),),
+        ),
+    )
+    matrix_path = write_route_policy_scenario_matrix_json(
+        tmp_path / "matrix.json",
+        RoutePolicyScenarioMatrix(
+            matrix_id="unit-cli-matrix",
+            registries=(RoutePolicyMatrixRegistrySpec("direct", "direct-registry.json"),),
+            scenes=(RoutePolicyMatrixSceneSpec("unit", catalog_path.name, scene_id="unit-scene"),),
+            goal_suites=(RoutePolicyMatrixGoalSuiteSpec("near", "near-goals.json"),),
+            configs=(RoutePolicyMatrixConfigSpec("short", episode_count=1, seed_start=0, max_steps=4),),
+        ),
+    )
+    index_path = tmp_path / "matrix-expansion.json"
+    markdown_path = tmp_path / "matrix-expansion.md"
+
+    args = build_parser().parse_args(
+        [
+            "route-policy-scenario-matrix",
+            "--matrix",
+            str(matrix_path),
+            "--output-dir",
+            str(tmp_path / "generated"),
+            "--index-output",
+            str(index_path),
+            "--markdown-output",
+            str(markdown_path),
+        ]
+    )
+
+    cli.cmd_route_policy_scenario_matrix(args)
+
+    expansion = json.loads(index_path.read_text(encoding="utf-8"))
+
+    assert expansion["recordType"] == "route-policy-scenario-matrix-expansion"
+    assert expansion["matrixId"] == "unit-cli-matrix"
+    assert expansion["scenarioSetCount"] == 1
+    assert expansion["scenarioCount"] == 1
+    assert Path(expansion["outputs"][0]["scenarioSetPath"]).exists()
+    assert "Route Policy Scenario Matrix: unit-cli-matrix" in markdown_path.read_text(encoding="utf-8")
 
 
 def target_position_keys() -> tuple[str, str, str]:

@@ -151,9 +151,14 @@ from gs_sim2real.sim import (
     RoutePolicyGymAdapter,
     RoutePolicyImitationFitConfig,
     RoutePolicyBenchmarkRegressionThresholds,
+    RoutePolicyMatrixConfigSpec,
+    RoutePolicyMatrixGoalSuiteSpec,
+    RoutePolicyMatrixRegistrySpec,
+    RoutePolicyMatrixSceneSpec,
     RoutePolicyQualityThresholds,
     RoutePolicyRegistry,
     RoutePolicyRegistryEntry,
+    RoutePolicyScenarioMatrix,
     RoutePolicyScenarioSet,
     RoutePolicyScenarioSpec,
     build_route_policy_benchmark_history,
@@ -165,11 +170,13 @@ from gs_sim2real.sim import (
     evaluate_route_policy_baselines,
     evaluate_route_policy_dataset_quality,
     evaluate_route_policy_imitation_model,
+    expand_route_policy_scenario_matrix_to_directory,
     fit_route_policy_imitation_model,
     load_route_policy_benchmark_history_json,
     load_route_policy_goal_suite_json,
     load_route_policy_imitation_model_json,
     load_route_policy_registry_json,
+    load_route_policy_scenario_matrix_json,
     load_route_policy_scenario_set_json,
     load_route_policy_scenario_set_run_json,
     iter_route_policy_replay_batches,
@@ -178,6 +185,7 @@ from gs_sim2real.sim import (
     render_route_policy_benchmark_history_markdown,
     render_route_policy_benchmark_markdown,
     render_route_policy_quality_markdown,
+    render_route_policy_scenario_matrix_markdown,
     render_route_policy_scenario_set_markdown,
     run_route_policy_imitation_benchmark,
     run_route_policy_scenario_set,
@@ -190,6 +198,8 @@ from gs_sim2real.sim import (
     write_route_policy_goal_suite_json,
     write_route_policy_imitation_model_json,
     write_route_policy_registry_json,
+    write_route_policy_scenario_matrix_expansion_json,
+    write_route_policy_scenario_matrix_json,
     write_route_policy_scenario_set_json,
     write_route_policy_scenario_set_run_json,
     write_route_policy_transitions_jsonl,
@@ -552,6 +562,53 @@ gs-mapper route-policy-scenario-set \
   --fail-on-regression
 ```
 
+For broader coverage, create a scenario matrix and expand it into one scenario-set JSON per policy registry. The matrix is a Cartesian product over scene catalogs, goal suites, and simulator/evaluation configs, while keeping policy registries as separate scenario-set artifacts. Matrix paths are authored relative to the matrix JSON directory; generated scenario-set files are rewritten so their paths resolve from the generated file directory.
+
+```python
+matrix = RoutePolicyScenarioMatrix(
+    matrix_id="outdoor-demo-matrix",
+    registries=(
+        RoutePolicyMatrixRegistrySpec("direct", "outdoor-policies-direct.json"),
+        RoutePolicyMatrixRegistrySpec("imitation", "outdoor-policies-imitation.json"),
+    ),
+    scenes=(
+        RoutePolicyMatrixSceneSpec(
+            "outdoor-demo",
+            "../docs/scenes-list.json",
+            scene_id="outdoor-demo",
+        ),
+    ),
+    goal_suites=(
+        RoutePolicyMatrixGoalSuiteSpec("short", "outdoor-short-goals.json"),
+        RoutePolicyMatrixGoalSuiteSpec("long", "outdoor-long-goals.json"),
+    ),
+    configs=(
+        RoutePolicyMatrixConfigSpec("fast", episode_count=8, seed_start=100, max_steps=64),
+        RoutePolicyMatrixConfigSpec("stress", episode_count=32, seed_start=1000, max_steps=96),
+    ),
+    episode_count=16,
+    seed_start=100,
+)
+write_route_policy_scenario_matrix_json("runs/scenarios/outdoor-matrix.json", matrix)
+
+loaded_matrix = load_route_policy_scenario_matrix_json("runs/scenarios/outdoor-matrix.json")
+expansion = expand_route_policy_scenario_matrix_to_directory(
+    loaded_matrix,
+    "runs/scenarios/generated",
+    matrix_base_path="runs/scenarios",
+)
+write_route_policy_scenario_matrix_expansion_json("runs/scenarios/matrix-expansion.json", expansion)
+print(render_route_policy_scenario_matrix_markdown(expansion))
+```
+
+```bash
+gs-mapper route-policy-scenario-matrix \
+  --matrix runs/scenarios/outdoor-matrix.json \
+  --output-dir runs/scenarios/generated \
+  --index-output runs/scenarios/matrix-expansion.json \
+  --markdown-output runs/scenarios/matrix-expansion.md
+```
+
 Supported actions:
 
 - `twist`: `linearX`, `linearY`, `linearZ` or `vx`, `vy`, `vz`
@@ -561,4 +618,4 @@ The backend always blocks poses outside `SceneEnvironment.bounds`. When a `Voxel
 
 ## Next Implementation Layer
 
-The next useful layer is scenario matrix generation: expand a compact matrix of scenes, goal suites, simulator configs, and policy registries into versioned scenario-set JSON files so CI can cover broader Physical AI environment distributions without hand-authoring every case.
+The next useful layer is scenario execution sharding: split generated scenario sets into CI-sized shards, run them independently, and merge their history gates into one release-quality Physical AI benchmark summary.

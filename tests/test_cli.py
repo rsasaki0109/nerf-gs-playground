@@ -152,6 +152,12 @@ class TestCLIHelp:
             main(["route-policy-scenario-set", "--help"])
         assert exc_info.value.code == 0
 
+    def test_cli_route_policy_scenario_matrix_help(self) -> None:
+        """Running route-policy-scenario-matrix --help raises SystemExit(0)."""
+        with pytest.raises(SystemExit) as exc_info:
+            main(["route-policy-scenario-matrix", "--help"])
+        assert exc_info.value.code == 0
+
     def test_cli_experiment_localization_alignment_help(self) -> None:
         """Running experiment-localization-alignment --help raises SystemExit(0)."""
         with pytest.raises(SystemExit) as exc_info:
@@ -1915,6 +1921,26 @@ class TestCLIHelp:
         assert args.allow_report_failures is True
         assert args.no_markdown is True
         assert args.fail_on_regression is True
+
+    def test_cli_route_policy_scenario_matrix_flags(self) -> None:
+        """route-policy-scenario-matrix parser accepts matrix expansion settings."""
+        args = build_parser().parse_args(
+            [
+                "route-policy-scenario-matrix",
+                "--matrix",
+                "matrix.json",
+                "--output-dir",
+                "generated",
+                "--index-output",
+                "matrix-expansion.json",
+                "--markdown-output",
+                "matrix-expansion.md",
+            ]
+        )
+        assert args.matrix == "matrix.json"
+        assert args.output_dir == "generated"
+        assert args.index_output == "matrix-expansion.json"
+        assert args.markdown_output == "matrix-expansion.md"
 
     def test_cli_experiment_localization_alignment_flags(self) -> None:
         """experiment-localization-alignment parser accepts evaluation settings."""

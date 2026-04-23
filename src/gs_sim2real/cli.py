@@ -1207,6 +1207,24 @@ def build_parser() -> argparse.ArgumentParser:
         help="Exit with status 2 when a scenario or history regression gate fails",
     )
 
+    # route policy scenario matrix
+    rpm = subparsers.add_parser(
+        "route-policy-scenario-matrix",
+        help="Expand a compact route policy scenario matrix into scenario-set JSON files",
+    )
+    rpm.add_argument("--matrix", required=True, help="Route policy scenario-matrix JSON")
+    rpm.add_argument(
+        "--output-dir",
+        default="outputs/route_policy_scenarios/generated",
+        help="Directory for generated scenario-set JSON files",
+    )
+    rpm.add_argument(
+        "--index-output",
+        default="outputs/route_policy_scenarios/scenario_matrix_expansion.json",
+        help="Scenario-matrix expansion index JSON path",
+    )
+    rpm.add_argument("--markdown-output", default=None, help="Optional scenario-matrix Markdown summary path")
+
     # experiment labs — specs drive a nested `experiment` subparser plus
     # hidden top-level aliases for back-compat.
     experiment_specs: list[tuple[str, str, str]] = [
@@ -2117,6 +2135,13 @@ def cmd_route_policy_scenario_set(args: argparse.Namespace) -> None:
     run_cli(args)
 
 
+def cmd_route_policy_scenario_matrix(args: argparse.Namespace) -> None:
+    """Handle the route-policy-scenario-matrix subcommand."""
+    from gs_sim2real.sim.policy_scenario_matrix import run_cli
+
+    run_cli(args)
+
+
 def cmd_experiment(args: argparse.Namespace) -> None:
     """Handle the nested `experiment` subcommand by deferring to the legacy handler."""
     handler_map = {
@@ -2295,6 +2320,7 @@ def main(argv: list[str] | None = None) -> None:
         "sim2real-benchmark-images": cmd_sim2real_benchmark_images,
         "route-policy-benchmark": cmd_route_policy_benchmark,
         "route-policy-benchmark-history": cmd_route_policy_benchmark_history,
+        "route-policy-scenario-matrix": cmd_route_policy_scenario_matrix,
         "route-policy-scenario-set": cmd_route_policy_scenario_set,
         "experiment": cmd_experiment,
     }
