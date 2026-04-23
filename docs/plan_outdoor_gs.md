@@ -1,6 +1,6 @@
 # 屋外 3D Gaussian Splatting / Physical AI Simulation 開発計画
 
-更新日: 2026-04-23（Physical AI scenario CI / workflow review publishing / trigger promotion gate 反映）
+更新日: 2026-04-24（Physical AI scenario CI / workflow trigger promotion gate / Claude handoff 反映）
 
 この文書は、GS Mapper の屋外 3DGS パイプラインと、その上に載せる Physical AI simulation / policy benchmark / scenario CI の現行計画をまとめる長めの handoff です。
 
@@ -22,8 +22,9 @@
 - MCD `tuhh_day_04` の supervised GNSS 成功扱いは撤回済み。`/vn200/GPS` が all-zero なので production picker には入れない。
 - Valid GNSS supervised MCD demo は `ntu_day_02`。production asset は `docs/assets/outdoor-demo/mcd-ntu-day02-supervised.splat`。
 - External SLAM import は VGGT-SLAM 2.0 / MASt3R-SLAM comparison splat まで実走済み。Pi3 / LoGeR profile も artifact resolver 側に候補追加済み。
-- 2026-04-23 時点では、屋外 3DGS だけでなく **Physical AI simulation benchmark environment** を目指す方向へ拡張中。
+- 2026-04-24 時点では、屋外 3DGS だけでなく **Physical AI simulation benchmark environment** を目指す方向へ拡張中。
 - Route policy benchmark 系は、dataset / imitation / registry / benchmark / history / scenario-set / matrix / sharding / CI manifest / workflow materialization / validation / activation / review bundle / workflow trigger promotion gate まで分割済み。
+- 最新の pushed commit は `dc08c2f`。scenario CI workflow promotion gate を追加し、local full pytest / GitHub Actions CI / Pages deploy は green。
 - 次に自然なのは、promotion report PASS 後に trigger-enabled workflow を再 materialize / activate する smoke recipe。matrix から promotion までを tiny fixture で一周できるようにする。
 
 ## 2. 現在の主戦場
@@ -46,6 +47,10 @@
 
 | Commit | 内容 |
 | --- | --- |
+| `dc08c2f` | Scenario CI workflow promotion gate を追加。review URL / trigger mode / branch policy / active workflow path を promotion report に閉じ込め、local validation・CI・Pages まで green。 |
+| `7bf7e4d` | README / Pages / launch-kit を Physical AI benchmark repo として再配置。 |
+| `1336f8d` | `query_source_identity` runtime benchmark の flaky failure を安定化。 |
+| `89b2c99` | 本 handoff plan を Physical AI / scenario CI 主軸に更新。 |
 | `6e68151` | Route policy scenario CI review publishing を追加。shard merge / validation / activation を Pages review bundle に集約。 |
 | `09f67d4` | Workflow activation guardrails を追加。validation PASS と `.github/workflows/` path などを gate 化。 |
 | `8c5e9b0` | Generated workflow validation を追加。YAML parse、matrix、commands、artifact paths を manifest と照合。 |
@@ -58,6 +63,23 @@
 | `aa8a60b` | Route policy registry artifacts を追加。policy registry と benchmark surface を分離。 |
 
 この chain は、Physical AI simulation の「検証単位を小さくする」ための土台です。
+
+### 3.1 Claude handoff snapshot
+
+- 基準にする pushed state は `main @ dc08c2f`。
+- `dc08c2f` 時点では working tree は clean、origin/main と同期済み。Claude に渡す前の doc 更新で差分があるなら、まず `docs/plan_outdoor_gs.md` のみか確認する。
+- GitHub Actions:
+  - CI `24834259595` success on 2026-04-24
+  - Deploy to GitHub Pages `24834259592` success on 2026-04-24
+- local validation snapshot:
+  - `python3 -m ruff check src/ tests/ scripts/`
+  - `python3 -m ruff format --check src/ tests/ scripts/`
+  - `git diff --check`
+  - `python3 -m pytest tests/ -q` => `552 passed`
+- mypy note:
+  - `python3 -m mypy src/gs_sim2real/sim/policy_scenario_ci_promotion.py` は pass。
+  - `src/gs_sim2real/cli.py` を含む mypy は Waymo / MCD 周辺の既知型不整合で落ちる。promotion gate の regression ではない。
+- Claude が最初に触るなら、promotion gate 自体の作り直しではなく、**matrix -> review -> promotion を一周する smoke recipe** を優先する。
 
 ## 4. System Map
 
@@ -440,6 +462,23 @@ Promotion checks:
 - branches が literal branch name policy を満たす。
 - active workflow path が `.github/workflows/*.yml` / `.yaml` に閉じている。
 
+### 9.6 Claude に渡す最初の slice
+
+最初の 1 task は `scripts/smoke_route_policy_scenario_ci.py` がよい。
+
+狙い:
+
+- tiny fixture で `scenario matrix -> shard plan -> CI manifest -> workflow -> validation -> activation -> review -> promotion` を一周させる。
+- workflow activation は repo 本物の `.github/workflows/` を触らず、tmpdir 配下の synthetic path に閉じる。
+- review bundle / promotion report の JSON / Markdown をまとめて出し、chain 全体の integration smoke とする。
+- promotion report PASS 後に trigger-enabled workflow を再 materialize する adoption docs は、その smoke script ができてから書く方が安全。
+
+期待する完成形:
+
+1. script 単体で tmpdir に最小 artifact 群を吐ける。
+2. 失敗時にどの gate で止まったかが標準出力で分かる。
+3. targeted test か snapshot assert を 1 本追加して、CI で壊れにくくする。
+
 ## 10. Public / Launch Track
 
 ### 10.1 現状
@@ -486,12 +525,15 @@ ruff check src/ tests/ scripts/
 ruff format --check src/ tests/ scripts/
 mypy src/gs_sim2real/sim/policy_scenario_ci_review.py \
   src/gs_sim2real/sim/policy_scenario_ci_activation.py \
+  src/gs_sim2real/sim/policy_scenario_ci_promotion.py \
   src/gs_sim2real/sim/policy_scenario_ci_workflow.py \
   src/gs_sim2real/sim/__init__.py
 python3 -m compileall -q src/gs_sim2real tests
 pytest -q
 git diff --check
 ```
+
+`src/gs_sim2real/cli.py` を含む mypy full pass は、現状では Waymo / MCD loader 周辺の既知型エラーが残っている。scenario CI slice の型確認は module 単位で切る。
 
 ### 11.3 Outdoor / Pages まわり
 
@@ -556,10 +598,10 @@ python3 scripts/collect_mcd_quality_runs.py --format gate --fail-on-gate
 
 | Task | Why | Suggested slice |
 | --- | --- | --- |
-| Promotion-backed workflow adoption recipe | promotion report PASS 後に trigger-enabled workflow を安全に再 materialize / activate する手順が必要 | docs + tiny smoke fixture |
+| Route policy CI smoke recipe | matrix→shard→manifest→workflow→review→promotion を tiny fixture で一周させたい | `scripts/smoke_route_policy_scenario_ci.py` |
+| Promotion-backed workflow adoption recipe | promotion report PASS 後に trigger-enabled workflow を安全に再 materialize / activate する手順が必要 | docs + smoke recipe に基づく手順固定 |
 | Scenario CI docs tightening | `physical-ai-sim.md` に実装はあるが、README からの導線は薄い | README に Physical AI benchmark section を追加 |
 | Review bundle sample under docs | Synthetic fixture でもよいので Pages の `/reviews/` 例を置くか判断 | まず generated sample は commit しない方針で検討 |
-| Route policy CI smoke recipe | 最小 fixture で matrix→shard→manifest→workflow→review を一周する script | `scripts/smoke_route_policy_scenario_ci.py` |
 
 ### 12.2 B: Physical AI env hardening
 
