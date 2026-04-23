@@ -3,17 +3,17 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>GS Mapper - 3D Gaussian Splatting for SLAM and Robotics</title>
-<meta name="description" content="GS Mapper turns photos, robotics logs, and external SLAM outputs into browser-viewable 3D Gaussian Splats.">
+<title>GS Mapper - Gaussian-splat Physical AI benchmarks</title>
+<meta name="description" content="GS Mapper turns real robot data and external SLAM outputs into browser-viewable Gaussian splats, scene contracts, policy benchmarks, and CI review bundles.">
 <link rel="canonical" href="https://rsasaki0109.github.io/gs-mapper/">
-<meta property="og:title" content="GS Mapper - External SLAM to browser-viewable 3DGS">
-<meta property="og:description" content="Photos, robotics logs, and MASt3R-SLAM / VGGT-SLAM / Pi3 / LoGeR outputs become trainable Gaussian Splats for WebGL, Spark, and WebGPU viewers.">
+<meta property="og:title" content="GS Mapper - Robot data to Physical AI benchmarks">
+<meta property="og:description" content="Photos, robotics logs, and MASt3R-SLAM / VGGT-SLAM / Pi3 / LoGeR outputs become Gaussian-splat scenes, route-policy benchmark artifacts, and CI review bundles.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://rsasaki0109.github.io/gs-mapper/">
 <meta property="og:image" content="https://rsasaki0109.github.io/gs-mapper/images/demo-sweep/01_outdoor-demo.png">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="GS Mapper - External SLAM to browser-viewable 3DGS">
-<meta name="twitter:description" content="Photos, robotics logs, and MASt3R-SLAM / VGGT-SLAM / Pi3 / LoGeR outputs become trainable Gaussian Splats for WebGL, Spark, and WebGPU viewers.">
+<meta name="twitter:title" content="GS Mapper - Robot data to Physical AI benchmarks">
+<meta name="twitter:description" content="Photos, robotics logs, and MASt3R-SLAM / VGGT-SLAM / Pi3 / LoGeR outputs become Gaussian-splat scenes, route-policy benchmark artifacts, and CI review bundles.">
 <meta name="twitter:image" content="https://rsasaki0109.github.io/gs-mapper/images/demo-sweep/01_outdoor-demo.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -625,6 +625,7 @@ footer a:hover { text-decoration: underline; }
     </a>
     <nav>
       <a href="splat.html">Live Splat</a>
+      <a href="https://github.com/rsasaki0109/gs-mapper/blob/main/docs/physical-ai-sim.md">Physical AI</a>
       <a href="launch-kit.html">Launch Kit</a>
       <a href="#pipeline-section">Pipeline</a>
       <a href="#metrics-section">Metrics</a>
@@ -642,19 +643,21 @@ footer a:hover { text-decoration: underline; }
 <div class="hero">
   <img class="hero-bg" src="images/demo-sweep/hero.gif" alt="GS Mapper bundled splat scenes cycling in the browser viewer">
   <div class="hero-inner">
-    <div class="hero-kicker">External SLAM to browser-viewable 3DGS</div>
+    <div class="hero-kicker">Robot data to Physical AI benchmarks</div>
     <h1>GS Mapper</h1>
-    <p>Photos, robotics logs, and MASt3R-SLAM / VGGT-SLAM / Pi3 / LoGeR outputs become trainable Gaussian Splats that open directly in WebGL, Spark, or WebGPU viewers.</p>
+    <p>Photos, robotics logs, and MASt3R-SLAM / VGGT-SLAM / Pi3 / LoGeR outputs become browser-viewable Gaussian splats, route-policy benchmark artifacts, scenario shards, and CI review bundles.</p>
     <div class="hero-actions">
       <a class="hero-action primary" href="splat.html">Open live splat viewer &rarr;</a>
+      <a class="hero-action" href="https://github.com/rsasaki0109/gs-mapper/blob/main/docs/physical-ai-sim.md">Physical AI docs &rarr;</a>
       <a class="hero-action" href="splat_spark.html">Spark mobile / VR &rarr;</a>
       <a class="hero-action" href="launch-kit.html">Launch kit &rarr;</a>
       <a class="hero-action" href="https://github.com/rsasaki0109/gs-mapper">GitHub &rarr;</a>
     </div>
     <div class="hero-proof">
       <span>8 bundled demos</span>
-      <span>DUSt3R / MASt3R pose-free</span>
       <span>external SLAM preflight manifests</span>
+      <span>route-policy scenario CI</span>
+      <span>Pages review bundles</span>
     </div>
   </div>
 </div>
@@ -697,48 +700,48 @@ footer a:hover { text-decoration: underline; }
 
 <!-- Section 2: Pipeline -->
 <section id="pipeline-section">
-  <h2 class="section-title">3DGS Pipeline</h2>
-  <p class="section-sub">Click each step to learn more about the reconstruction pipeline.</p>
+  <h2 class="section-title">Real Data To Benchmark Pipeline</h2>
+  <p class="section-sub">Click each step to see how robot data becomes a viewer scene and a policy-evaluation artifact.</p>
   <div class="pipeline-wrapper">
     <div class="pipeline-flow">
       <div class="pipeline-step active" data-step="images">
         <div class="pipeline-icon" style="background:rgba(88,166,255,0.15);color:var(--accent-blue);">
           <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
         </div>
-        <span class="pipeline-step-label">Input Images</span>
+        <span class="pipeline-step-label">Robot Data</span>
       </div>
       <span class="pipeline-arrow">&rarr;</span>
       <div class="pipeline-step" data-step="colmap">
         <div class="pipeline-icon" style="background:rgba(63,185,80,0.15);color:var(--accent-green);">
           <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 22 12 18.27 5.82 22 7 14.14l-5-4.87 6.91-1.01z"/></svg>
         </div>
-        <span class="pipeline-step-label">COLMAP SfM</span>
+        <span class="pipeline-step-label">Geometry Import</span>
       </div>
       <span class="pipeline-arrow">&rarr;</span>
       <div class="pipeline-step" data-step="pointcloud">
         <div class="pipeline-icon" style="background:rgba(210,153,34,0.15);color:var(--accent-orange);">
           <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="6" cy="6" r="1"/><circle cx="18" cy="6" r="1"/><circle cx="6" cy="18" r="1"/><circle cx="18" cy="18" r="1"/><circle cx="12" cy="4" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="20" cy="12" r="1"/><circle cx="12" cy="20" r="1"/></svg>
         </div>
-        <span class="pipeline-step-label">Point Cloud</span>
+        <span class="pipeline-step-label">Splat Scene</span>
       </div>
       <span class="pipeline-arrow">&rarr;</span>
       <div class="pipeline-step" data-step="training">
         <div class="pipeline-icon" style="background:rgba(188,140,255,0.15);color:var(--accent-purple);">
           <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
         </div>
-        <span class="pipeline-step-label">3DGS Training</span>
+        <span class="pipeline-step-label">Sim Contract</span>
       </div>
       <span class="pipeline-arrow">&rarr;</span>
       <div class="pipeline-step" data-step="synthesis">
         <div class="pipeline-icon" style="background:rgba(248,81,73,0.15);color:var(--accent-red);">
           <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
         </div>
-        <span class="pipeline-step-label">Novel Views</span>
+        <span class="pipeline-step-label">Policy CI</span>
       </div>
     </div>
     <div class="pipeline-desc" id="pipeline-desc">
-      <h3>Input Images</h3>
-      <p>Multi-view images are captured from different camera poses around a scene. For autonomous driving datasets, these come from vehicle-mounted cameras. The images should have sufficient overlap for feature matching and cover the scene from diverse viewpoints.</p>
+      <h3>Robot Data</h3>
+      <p>Image folders, rosbags, GNSS/LiDAR traces, and external SLAM artifacts enter as data, while heavy SLAM front-ends stay outside the repository.</p>
     </div>
   </div>
 </section>
@@ -879,7 +882,7 @@ footer a:hover { text-decoration: underline; }
     <a href="https://repo-rasterizer.github.io/3d-gaussian-splatting/">3DGS Paper</a>
     <a href="#viewer-section">Back to Top</a>
   </div>
-  <p>GS Mapper &mdash; Photos, robotics logs, and external SLAM outputs to browser-viewable 3D Gaussian Splats.</p>
+  <p>GS Mapper &mdash; Real robot data to Gaussian-splat Physical AI benchmarks.</p>
 </footer>
 
 <script>
@@ -1739,24 +1742,24 @@ footer a:hover { text-decoration: underline; }
 (function() {
   const descriptions = {
     images: {
-      title: 'Input Images',
-      text: 'Multi-view images are captured from different camera poses around a scene. For autonomous driving datasets, these come from vehicle-mounted cameras. The images should have sufficient overlap for feature matching and cover the scene from diverse viewpoints.'
+      title: 'Robot Data',
+      text: 'Image folders, rosbags, GNSS/LiDAR traces, and external SLAM artifacts enter as data. MASt3R-SLAM, VGGT-SLAM, Pi3, and LoGeR stay outside the repository while GS Mapper imports their exported poses and point clouds.'
     },
     colmap: {
-      title: 'COLMAP Structure-from-Motion',
-      text: 'COLMAP performs feature extraction (SIFT), feature matching across image pairs, and incremental Structure-from-Motion to estimate camera intrinsics, extrinsics, and a sparse 3D point cloud. This provides the initial geometry and camera parameters needed for Gaussian initialization.'
+      title: 'Geometry Import',
+      text: 'COLMAP, GNSS/LiDAR pose import, DUSt3R/MASt3R pose-free preprocessing, and external-SLAM artifacts all normalize into a COLMAP-style sparse scene with aligned cameras and seed geometry.'
     },
     pointcloud: {
-      title: 'Initial Point Cloud',
-      text: 'The sparse point cloud from COLMAP serves as initialization for the 3D Gaussians. Each point becomes the center of an initial Gaussian with learnable parameters: position (mean), covariance (shape/orientation), opacity, and spherical harmonics coefficients (color).'
+      title: 'Splat Scene',
+      text: 'gsplat training and export produce antimatter15-compatible .splat assets plus scene metadata. The same artifacts load in the WebGL, Spark, and WebGPU viewers.'
     },
     training: {
-      title: '3DGS Optimization',
-      text: 'The Gaussian parameters are optimized via gradient descent to minimize the rendering loss (L1 + D-SSIM) against ground truth images. Adaptive density control periodically densifies (clones/splits) under-reconstructed regions and prunes transparent or oversized Gaussians. Training typically runs for 30,000 iterations.'
+      title: 'Simulation Contract',
+      text: 'The public scene picker feeds a Physical AI scene catalog with bounds, coordinate frames, sensor rigs, observations, collision queries, goals, and trajectory scoring.'
     },
     synthesis: {
-      title: 'Novel View Synthesis',
-      text: 'The trained Gaussians are rendered from arbitrary viewpoints using differentiable tile-based rasterization. Gaussians are projected to 2D, sorted by depth, and alpha-composited front-to-back. This achieves real-time rendering (100+ FPS) at high quality, enabling interactive scene exploration.'
+      title: 'Policy CI',
+      text: 'Route-policy benchmarks expand into scenario sets, matrix artifacts, CI shards, generated workflows, validation reports, activation reports, and review bundles that can be published on Pages.'
     }
   };
 

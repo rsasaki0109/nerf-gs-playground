@@ -6,36 +6,64 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](pyproject.toml)
 [![Last commit](https://img.shields.io/github/last-commit/rsasaki0109/gs-mapper/main)](https://github.com/rsasaki0109/gs-mapper/commits/main)
 
-**Photos, robotics logs, and external SLAM outputs -> trainable 3D Gaussian Splats -> browser viewer.**
+**Turn real outdoor robot data into Gaussian-splat scenes, Physical AI policy benchmarks, and CI review artifacts.**
 
 ```bash
 git clone https://github.com/rsasaki0109/gs-mapper.git
 cd gs-mapper
 pip install -e ".[dev]"
+
+# Fast visual proof: photos -> .splat -> browser viewer
 gs-mapper photos-to-splat --images ./my_photos --output outputs/my_splat
-# -> outputs/my_splat/my_photos.splat  (open in splat.html?url=...)
+
+# Simulation catalog proof: public 3DGS scenes -> Physical AI scene contract
+python3 scripts/generate_sim_catalog.py --output docs/sim-scenes.json
 ```
 
 Open first: [live splat viewer](https://rsasaki0109.github.io/gs-mapper/splat.html),
 [Spark mobile / VR viewer](https://rsasaki0109.github.io/gs-mapper/splat_spark.html),
 [WebGPU viewer](https://rsasaki0109.github.io/gs-mapper/splat_webgpu.html), and
-[launch kit](https://rsasaki0109.github.io/gs-mapper/launch-kit.html).
+[Physical AI contract](docs/physical-ai-sim.md).
 
-Star/watch this repo if you want updates on MASt3R-SLAM / VGGT-SLAM 2.0 / Pi3 / LoGeR
-artifact import, reproducible outdoor robotics 3DGS comparisons, and browser-ready WebGL /
-Spark / WebGPU splat viewers.
+Star/watch this repo if you want updates on real-world robotics logs becoming
+browser-viewable 3DGS scenes, route-policy benchmark artifacts, and reviewable
+scenario CI gates.
 
 [![Scene picker cycling through bundled splats on github.io](docs/images/demo-sweep/hero.gif)](https://rsasaki0109.github.io/gs-mapper/splat.html)
 
 GS Mapper is the glue layer between modern visual geometry front-ends and
-shipping 3DGS artifacts. It can run DUSt3R / MASt3R pose-free preprocessing,
-import MASt3R-SLAM / VGGT-SLAM 2.0 / Pi3 / LoGeR artifacts as external pose
-data, train with gsplat, and export antimatter15-compatible `.splat` files that
-load directly in the bundled WebGL / WebGPU viewers.
+Physical AI evaluation workflows. It can run DUSt3R / MASt3R pose-free
+preprocessing, import MASt3R-SLAM / VGGT-SLAM 2.0 / Pi3 / LoGeR artifacts as
+external pose data, train with gsplat, export browser-ready `.splat` files, and
+wrap those scenes in route-policy benchmark and scenario-CI artifacts.
+
+What makes it different:
+
+- **Real data first**: robotics logs, outdoor photos, and external SLAM outputs
+  are first-class inputs.
+- **Scene artifacts are inspectable**: every production splat opens in the
+  bundled WebGL / Spark / WebGPU viewers.
+- **Policy evaluation is part of the repo**: scene contracts, observations,
+  collision checks, route-policy baselines, imitation benchmarks, history gates,
+  scenario sets, matrix expansion, sharding, CI manifests, workflow validation,
+  activation, and review bundles are split into testable modules.
+- **CI is designed as a product surface**: benchmark execution is broken into
+  small shardable artifacts instead of one giant opaque end-to-end job.
+
+```mermaid
+flowchart LR
+  A[Photos / rosbags / external SLAM] --> B[COLMAP-style sparse scene]
+  B --> C[gsplat training + .splat export]
+  C --> D[Browser viewer + scene catalog]
+  D --> E[Physical AI environment]
+  E --> F[Route-policy benchmark]
+  F --> G[Scenario matrix + shards]
+  G --> H[CI workflow + Pages review bundle]
+```
 
 Project notes: [Physical AI sim contract](docs/physical-ai-sim.md),
-[outdoor pipeline handoff](docs/plan_outdoor_gs.md), release notes
-[v0.1.0](docs/releases/v0.1.0.md).
+[outdoor pipeline handoff](docs/plan_outdoor_gs.md), [launch kit](docs/launch-kit.md),
+release notes [v0.1.0](docs/releases/v0.1.0.md).
 
 The repo ships **eight** production demo scenes that A/B-compare pose-free and
 external-SLAM outputs against supervised GNSS + LiDAR baselines. Pick any scene
@@ -43,14 +71,55 @@ from the dropdown in the [live viewer](https://rsasaki0109.github.io/gs-mapper/s
 The old MCD `tuhh_day_04` zero-GNSS artifact is retained only as a diagnostic
 file in this branch, not as a production picker item.
 
-Table thumbnails are **full-canvas grabs** from `splat.html` (UI chrome hidden) so they stay readable when GitHub scales them down. The table, hero GIF, preview capture script, and viewer pickers are checked against `docs/scenes-list.json`. Regenerate with `DISPLAY=:0 python3 scripts/capture_readme_splat_previews.py` after adding or changing a `.splat` (requires Playwright + GPU-backed WebGL).
-
----
+Table thumbnails are **full-canvas grabs** from `splat.html` (UI chrome hidden)
+so they stay readable when GitHub scales them down. The table, hero GIF,
+preview capture script, and viewer pickers are checked against
+`docs/scenes-list.json`. Regenerate with
+`DISPLAY=:0 python3 scripts/capture_readme_splat_previews.py` after adding or
+changing a `.splat` (requires Playwright + GPU-backed WebGL).
 
 ロボティクス・自動運転データセット、写真フォルダ、外部 SLAM の出力から
-3D Gaussian Splatting の学習と Web ビューア可視化までをつなぐツールです。
-Python モジュール名は `gs_sim2real` のまま維持し、旧 CLI の `gs-sim2real`
-も互換エイリアスとして残します。
+3D Gaussian Splatting の学習、Web ビューア、Physical AI policy benchmark
+までをつなぐツールです。Python モジュール名は `gs_sim2real` のまま維持し、
+旧 CLI の `gs-sim2real` も互換エイリアスとして残します。
+
+## Physical AI benchmark path
+
+The public splat scenes are also versioned simulation inputs. Start with the
+scene catalog, then run policy benchmarks and scale them into scenario CI.
+
+```bash
+# Keep the Physical AI scene catalog synchronized with the public viewer picker.
+python3 scripts/generate_sim_catalog.py --output docs/sim-scenes.json
+
+# Evaluate a pinned policy registry against fixed goals.
+gs-mapper route-policy-benchmark \
+  --policy-registry runs/scenarios/outdoor-policies.json \
+  --goal-suite runs/scenarios/outdoor-goals.json \
+  --scene-catalog docs/scenes-list.json \
+  --scene-id outdoor-demo \
+  --episode-count 16 \
+  --output runs/scenarios/outdoor-policy-benchmark.json \
+  --markdown-output runs/scenarios/outdoor-policy-benchmark.md
+
+# Scale benchmark definitions into CI-sized shards and a reviewable workflow.
+gs-mapper route-policy-scenario-matrix \
+  --matrix runs/scenarios/outdoor-matrix.json \
+  --output-dir runs/scenarios/generated \
+  --index-output runs/scenarios/matrix-expansion.json
+gs-mapper route-policy-scenario-shards \
+  --expansion runs/scenarios/matrix-expansion.json \
+  --max-scenarios-per-shard 4 \
+  --output-dir runs/scenarios/shards \
+  --index-output runs/scenarios/shard-plan.json
+gs-mapper route-policy-scenario-ci-manifest \
+  --shard-plan runs/scenarios/shard-plan.json \
+  --output runs/scenarios/ci-manifest.json
+```
+
+See [docs/physical-ai-sim.md](docs/physical-ai-sim.md) for the full
+matrix -> shard -> manifest -> generated workflow -> validation -> activation
+-> Pages review-bundle chain.
 
 ## Live Demo
 

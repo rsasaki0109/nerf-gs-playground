@@ -114,10 +114,11 @@ class LaunchKit:
 def build_default_launch_kit() -> LaunchKit:
     """Return the canonical GS Mapper launch kit."""
 
-    tagline = "External SLAM outputs to browser-viewable 3D Gaussian Splats."
+    tagline = "Real robot data to Gaussian-splat Physical AI benchmarks."
     description = (
         "GS Mapper turns photos, robotics logs, and MASt3R-SLAM / VGGT-SLAM 2.0 / Pi3 / LoGeR "
-        "artifacts into trainable 3DGS outputs with WebGL, Spark, and WebGPU viewers."
+        "artifacts into browser-viewable Gaussian splats, scene contracts, route-policy benchmarks, "
+        "and CI review bundles for Physical AI evaluation."
     )
     links = (
         LaunchLink(
@@ -133,7 +134,9 @@ def build_default_launch_kit() -> LaunchKit:
             "WebGPU viewer", DEFAULT_WEBGPU_VIEWER_URL, "GPU-sort viewer for Chrome, Edge, and WebGPU-enabled browsers."
         ),
         LaunchLink(
-            "GitHub repository", DEFAULT_REPO_URL, "Source, README benchmarks, external SLAM import docs, and tests."
+            "GitHub repository",
+            DEFAULT_REPO_URL,
+            "Source, Physical AI benchmark docs, external SLAM import docs, and tests.",
         ),
     )
     snippets = (
@@ -142,34 +145,36 @@ def build_default_launch_kit() -> LaunchKit:
             label="Short social post",
             max_chars=280,
             text=(
-                "GS Mapper turns photos, robotics logs, and external SLAM outputs "
-                "(MASt3R-SLAM, VGGT-SLAM 2.0, Pi3, LoGeR) into browser-viewable 3D Gaussian Splats.\n\n"
+                "GS Mapper turns robot logs and MASt3R-SLAM / VGGT-SLAM outputs into browser-viewable "
+                "3D Gaussian Splats plus CI-friendly Physical AI policy benchmarks.\n\n"
                 f"Live demos: {DEFAULT_LIVE_VIEWER_URL}\n"
-                "#3DGS #SLAM #Robotics"
+                "#3DGS #Robotics #PhysicalAI"
             ),
         ),
         LaunchSnippet(
             key="technical-social",
             label="Technical social post",
             text=(
-                "I released GS Mapper: a glue layer from DUSt3R / MASt3R pose-free preprocessing and "
-                "MASt3R-SLAM / VGGT-SLAM 2.0 / Pi3 / LoGeR exported artifacts into gsplat training "
-                "and browser-viewable .splat demos.\n\n"
-                "It ships external SLAM dry-run manifests, candidate-resolution traces, and eight "
-                f"public comparison scenes.\n\n{DEFAULT_REPO_URL}"
+                "I released GS Mapper: an open-source pipeline for turning real outdoor robot data, "
+                "DUSt3R / MASt3R pose-free reconstructions, and MASt3R-SLAM / VGGT-SLAM 2.0 / Pi3 / "
+                "LoGeR artifacts into Gaussian-splat scenes and Physical AI policy benchmark artifacts.\n\n"
+                "It ships eight public comparison scenes, external SLAM dry-run manifests, route-policy "
+                "benchmarks, scenario matrix expansion, CI sharding, generated workflow validation, "
+                f"activation guards, and review bundles.\n\n{DEFAULT_REPO_URL}"
             ),
         ),
         LaunchSnippet(
             key="community-post",
             label="Community post",
             text=(
-                "GS Mapper is a small open-source bridge for turning visual geometry outputs into "
-                "3D Gaussian Splatting demos. It accepts image folders, robotics logs, and external "
-                "SLAM artifacts, then trains or exports browser-viewable .splat files.\n\n"
+                "GS Mapper is an open-source pipeline for turning real robot data into Gaussian-splat "
+                "Physical AI evaluation artifacts. It accepts image folders, robotics logs, and external "
+                "SLAM artifacts, then produces browser-viewable .splat files, scene contracts, policy "
+                "benchmark reports, scenario shards, and review bundles.\n\n"
                 "The current demo set compares supervised GNSS + LiDAR, DUSt3R, MASt3R, VGGT-SLAM 2.0, "
-                "and MASt3R-SLAM outputs on outdoor robotics scenes. The external SLAM import path "
-                "has dry-run manifests so missing trajectories, point clouds, and image-directory "
-                f"mismatches are caught before GPU training.\n\nLive demo: {DEFAULT_LIVE_VIEWER_URL}\n"
+                "and MASt3R-SLAM outputs on outdoor robotics scenes. The benchmark stack keeps dataset, "
+                "policy registry, scenario matrix, CI manifest, workflow validation, activation, and "
+                f"review publishing as separate testable artifacts.\n\nLive demo: {DEFAULT_LIVE_VIEWER_URL}\n"
                 f"Repo: {DEFAULT_REPO_URL}"
             ),
         ),
@@ -178,8 +183,8 @@ def build_default_launch_kit() -> LaunchKit:
             label="Awesome-list entry",
             text=(
                 "- [GS Mapper](https://github.com/rsasaki0109/gs-mapper) - Converts photos, robotics logs, "
-                "and MASt3R-SLAM / VGGT-SLAM / Pi3 / LoGeR artifacts into trainable 3DGS outputs and "
-                "browser-viewable WebGL / WebGPU splat demos."
+                "and MASt3R-SLAM / VGGT-SLAM / Pi3 / LoGeR artifacts into browser-viewable Gaussian splats, "
+                "Physical AI route-policy benchmarks, and CI review bundles."
             ),
         ),
         LaunchSnippet(
@@ -187,8 +192,8 @@ def build_default_launch_kit() -> LaunchKit:
             label="Japanese announcement",
             text=(
                 "GS Mapper を公開しました。写真フォルダ、ロボティクスログ、MASt3R-SLAM / VGGT-SLAM 2.0 / "
-                "Pi3 / LoGeR の出力を、学習可能な 3D Gaussian Splatting と WebGL / WebGPU ビューアに"
-                f"つなぐツールです。\n\nLive demo: {DEFAULT_LIVE_VIEWER_URL}\n"
+                "Pi3 / LoGeR の出力を、Web で見られる 3D Gaussian Splatting、Physical AI policy "
+                f"benchmark、scenario CI review bundle につなぐ OSS です。\n\nLive demo: {DEFAULT_LIVE_VIEWER_URL}\n"
                 f"GitHub: {DEFAULT_REPO_URL}"
             ),
         ),
@@ -198,16 +203,16 @@ def build_default_launch_kit() -> LaunchKit:
             key="x-twitter",
             label="X / Twitter",
             url="https://x.com/intent/tweet",
-            audience="3DGS, SLAM, robotics, and WebGPU builders who want a fast demo link.",
-            angle="Lead with the live viewer and keep it visual. Use the short social post.",
+            audience="3DGS, SLAM, robotics, and Physical AI builders who want a fast demo link.",
+            angle="Lead with the live viewer, then mention policy benchmarks and CI artifacts.",
             snippet_key="short-social",
         ),
         LaunchDestination(
             key="hacker-news",
             label="Hacker News Show HN",
             url="https://news.ycombinator.com/submit",
-            audience="Graphics, mapping, robotics, and developer-tool readers who inspect repos.",
-            angle="Frame it as a small open-source bridge from external SLAM artifacts to browser demos.",
+            audience="Graphics, mapping, robotics, simulation, and developer-tool readers who inspect repos.",
+            angle="Frame it as an open-source bridge from real robot data to reproducible evaluation artifacts.",
             snippet_key="community-post",
         ),
         LaunchDestination(
@@ -215,14 +220,14 @@ def build_default_launch_kit() -> LaunchKit:
             label="LinkedIn",
             url="https://www.linkedin.com/feed/",
             audience="Robotics, autonomy, geospatial, and simulation engineers.",
-            angle="Emphasize the practical handoff from research SLAM outputs to reviewable artifacts.",
+            angle="Emphasize policy regression, reviewable simulation artifacts, and SLAM-to-benchmark handoff.",
             snippet_key="technical-social",
         ),
         LaunchDestination(
             key="reddit-communities",
             label="Reddit communities",
             url="https://www.reddit.com/search/?q=3D%20Gaussian%20Splatting%20SLAM&type=communities",
-            audience="Subreddits around Gaussian Splatting, photogrammetry, 3D scanning, and robotics.",
+            audience="Subreddits around Gaussian Splatting, photogrammetry, 3D scanning, robotics, and ML systems.",
             angle="Pick one relevant community, check its rules, and post the community copy with screenshots.",
             snippet_key="community-post",
         ),
@@ -230,8 +235,8 @@ def build_default_launch_kit() -> LaunchKit:
             key="github-awesome-lists",
             label="GitHub awesome lists",
             url="https://github.com/search?q=awesome+3d+gaussian+splatting&type=repositories",
-            audience="Maintainers of curated 3DGS, SLAM, NeRF, robotics, and WebGPU resource lists.",
-            angle="Open a small PR with the awesome-list entry and link directly to the live demo.",
+            audience="Maintainers of curated 3DGS, SLAM, robotics, simulation, and Physical AI resource lists.",
+            angle="Open a small PR with the awesome-list entry and link directly to the live demo and README.",
             snippet_key="awesome-list",
         ),
         LaunchDestination(
@@ -239,7 +244,7 @@ def build_default_launch_kit() -> LaunchKit:
             label="Japanese robotics channels",
             url=DEFAULT_SITE_URL,
             audience="Japanese robotics, mapping, autonomy, and computer-vision builders.",
-            angle="Use the Japanese announcement and point people to the live splat viewer first.",
+            angle="Use the Japanese announcement and point people to the live splat viewer and benchmark docs.",
             snippet_key="japanese",
         ),
     )
@@ -249,6 +254,9 @@ def build_default_launch_kit() -> LaunchKit:
         "slam",
         "visual-slam",
         "robotics",
+        "physical-ai",
+        "simulation",
+        "benchmark",
         "autonomous-driving",
         "mast3r",
         "dust3r",
