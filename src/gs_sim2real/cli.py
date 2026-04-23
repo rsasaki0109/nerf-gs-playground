@@ -1142,6 +1142,71 @@ def build_parser() -> argparse.ArgumentParser:
         help="Exit with status 2 when the history regression gate fails",
     )
 
+    # route policy scenario set
+    rps = subparsers.add_parser(
+        "route-policy-scenario-set",
+        help="Run one policy registry across a versioned route policy scenario set",
+    )
+    rps.add_argument("--scenario-set", required=True, help="Route policy scenario-set JSON")
+    rps.add_argument(
+        "--policy-registry",
+        default=None,
+        help="Policy registry JSON override; defaults to policyRegistryPath in the scenario set",
+    )
+    rps.add_argument(
+        "--report-dir",
+        default="outputs/route_policy_scenarios/reports",
+        help="Directory for per-scenario benchmark reports",
+    )
+    rps.add_argument(
+        "--output",
+        default="outputs/route_policy_scenarios/scenario_set_run.json",
+        help="Scenario-set run report JSON path",
+    )
+    rps.add_argument("--markdown-output", default=None, help="Optional scenario-set Markdown summary path")
+    rps.add_argument(
+        "--history-output",
+        default="outputs/route_policy_scenarios/history.json",
+        help="Benchmark history JSON path for generated scenario reports",
+    )
+    rps.add_argument("--history-markdown-output", default=None, help="Optional benchmark history Markdown path")
+    rps.add_argument("--baseline-report", default=None, help="Blessed baseline report JSON for history gates")
+    rps.add_argument("--max-success-rate-drop", type=float, default=0.0, help="Allowed baseline success-rate drop")
+    rps.add_argument(
+        "--max-collision-rate-increase",
+        type=float,
+        default=0.0,
+        help="Allowed baseline collision-rate increase",
+    )
+    rps.add_argument(
+        "--max-truncation-rate-increase",
+        type=float,
+        default=0.0,
+        help="Allowed baseline truncation-rate increase",
+    )
+    rps.add_argument(
+        "--max-mean-reward-drop",
+        type=float,
+        default=None,
+        help="Optional allowed baseline mean-reward drop",
+    )
+    rps.add_argument(
+        "--allow-missing-policies",
+        action="store_true",
+        help="Do not fail the history gate when a baseline policy is absent from a scenario report",
+    )
+    rps.add_argument(
+        "--allow-report-failures",
+        action="store_true",
+        help="Do not fail the history gate when a scenario benchmark report itself failed",
+    )
+    rps.add_argument("--no-markdown", action="store_true", help="Skip per-scenario Markdown benchmark summaries")
+    rps.add_argument(
+        "--fail-on-regression",
+        action="store_true",
+        help="Exit with status 2 when a scenario or history regression gate fails",
+    )
+
     # experiment labs — specs drive a nested `experiment` subparser plus
     # hidden top-level aliases for back-compat.
     experiment_specs: list[tuple[str, str, str]] = [
@@ -2045,6 +2110,13 @@ def cmd_route_policy_benchmark_history(args: argparse.Namespace) -> None:
     run_cli(args)
 
 
+def cmd_route_policy_scenario_set(args: argparse.Namespace) -> None:
+    """Handle the route-policy-scenario-set subcommand."""
+    from gs_sim2real.sim.policy_scenario_set import run_cli
+
+    run_cli(args)
+
+
 def cmd_experiment(args: argparse.Namespace) -> None:
     """Handle the nested `experiment` subcommand by deferring to the legacy handler."""
     handler_map = {
@@ -2223,6 +2295,7 @@ def main(argv: list[str] | None = None) -> None:
         "sim2real-benchmark-images": cmd_sim2real_benchmark_images,
         "route-policy-benchmark": cmd_route_policy_benchmark,
         "route-policy-benchmark-history": cmd_route_policy_benchmark_history,
+        "route-policy-scenario-set": cmd_route_policy_scenario_set,
         "experiment": cmd_experiment,
     }
 

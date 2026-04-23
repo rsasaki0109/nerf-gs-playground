@@ -154,6 +154,8 @@ from gs_sim2real.sim import (
     RoutePolicyQualityThresholds,
     RoutePolicyRegistry,
     RoutePolicyRegistryEntry,
+    RoutePolicyScenarioSet,
+    RoutePolicyScenarioSpec,
     build_route_policy_benchmark_history,
     build_occupancy_grid_from_lidar_observation,
     build_route_policy_replay_batch,
@@ -168,13 +170,17 @@ from gs_sim2real.sim import (
     load_route_policy_goal_suite_json,
     load_route_policy_imitation_model_json,
     load_route_policy_registry_json,
+    load_route_policy_scenario_set_json,
+    load_route_policy_scenario_set_run_json,
     iter_route_policy_replay_batches,
     load_route_policy_transitions_jsonl,
     replan_after_blocked_rollout,
     render_route_policy_benchmark_history_markdown,
     render_route_policy_benchmark_markdown,
     render_route_policy_quality_markdown,
+    render_route_policy_scenario_set_markdown,
     run_route_policy_imitation_benchmark,
+    run_route_policy_scenario_set,
     rollout_route,
     rollout_route_with_replanning,
     select_best_route,
@@ -184,6 +190,8 @@ from gs_sim2real.sim import (
     write_route_policy_goal_suite_json,
     write_route_policy_imitation_model_json,
     write_route_policy_registry_json,
+    write_route_policy_scenario_set_json,
+    write_route_policy_scenario_set_run_json,
     write_route_policy_transitions_jsonl,
 )
 
@@ -482,6 +490,68 @@ gs-mapper route-policy-benchmark-history \
   --fail-on-regression
 ```
 
+To scale beyond one scene, define a scenario set. Each scenario pins a scene catalog, optional scene id, optional goal suite, and optional simulator/evaluation overrides. The runner executes the same policy registry for every scenario, writes one benchmark report per scenario, and sends those reports into the history gate. Relative scenario paths and the embedded `policyRegistryPath` resolve from the scenario-set JSON directory.
+
+```python
+scenario_set = RoutePolicyScenarioSet(
+    scenario_set_id="outdoor-demo-scenarios",
+    policy_registry_path="outdoor-policies.json",
+    episode_count=16,
+    seed_start=100,
+    max_steps=64,
+    scenarios=(
+        RoutePolicyScenarioSpec(
+            scenario_id="short-goals",
+            scene_catalog="../docs/scenes-list.json",
+            scene_id="outdoor-demo",
+            goal_suite_path="outdoor-short-goals.json",
+        ),
+        RoutePolicyScenarioSpec(
+            scenario_id="long-goals",
+            scene_catalog="../docs/scenes-list.json",
+            scene_id="outdoor-demo",
+            goal_suite_path="outdoor-long-goals.json",
+            max_steps=96,
+        ),
+    ),
+)
+write_route_policy_scenario_set_json("runs/scenarios/outdoor-scenarios.json", scenario_set)
+
+loaded_scenarios = load_route_policy_scenario_set_json("runs/scenarios/outdoor-scenarios.json")
+registry = load_route_policy_registry_json("runs/scenarios/outdoor-policies.json")
+scenario_report = run_route_policy_scenario_set(
+    loaded_scenarios,
+    registry,
+    report_dir="runs/scenarios/reports",
+    scenario_set_base_path="runs/scenarios",
+    registry_base_path="runs/scenarios",
+    policy_registry_path="runs/scenarios/outdoor-policies.json",
+    history_output="runs/scenarios/history.json",
+)
+write_route_policy_scenario_set_run_json("runs/scenarios/scenario-run.json", scenario_report)
+print(render_route_policy_scenario_set_markdown(scenario_report))
+
+loaded_run = load_route_policy_scenario_set_run_json("runs/scenarios/scenario-run.json")
+assert loaded_run.passed
+```
+
+The CLI keeps the same artifact boundaries:
+
+```bash
+gs-mapper route-policy-scenario-set \
+  --scenario-set runs/scenarios/outdoor-scenarios.json \
+  --report-dir runs/scenarios/reports \
+  --output runs/scenarios/scenario-run.json \
+  --markdown-output runs/scenarios/scenario-run.md \
+  --history-output runs/scenarios/history.json \
+  --history-markdown-output runs/scenarios/history.md \
+  --baseline-report runs/baseline/outdoor-policy-registry-benchmark.json \
+  --max-success-rate-drop 0.05 \
+  --max-collision-rate-increase 0.01 \
+  --max-truncation-rate-increase 0.02 \
+  --fail-on-regression
+```
+
 Supported actions:
 
 - `twist`: `linearX`, `linearY`, `linearZ` or `vx`, `vy`, `vz`
@@ -491,4 +561,4 @@ The backend always blocks poses outside `SceneEnvironment.bounds`. When a `Voxel
 
 ## Next Implementation Layer
 
-The next useful layer is scenario-set execution: run the same policy registry across multiple scene catalogs, goal suites, and simulator configuration variants, then feed those reports into the history gate as separate datasets.
+The next useful layer is scenario matrix generation: expand a compact matrix of scenes, goal suites, simulator configs, and policy registries into versioned scenario-set JSON files so CI can cover broader Physical AI environment distributions without hand-authoring every case.

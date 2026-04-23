@@ -146,6 +146,12 @@ class TestCLIHelp:
             main(["route-policy-benchmark-history", "--help"])
         assert exc_info.value.code == 0
 
+    def test_cli_route_policy_scenario_set_help(self) -> None:
+        """Running route-policy-scenario-set --help raises SystemExit(0)."""
+        with pytest.raises(SystemExit) as exc_info:
+            main(["route-policy-scenario-set", "--help"])
+        assert exc_info.value.code == 0
+
     def test_cli_experiment_localization_alignment_help(self) -> None:
         """Running experiment-localization-alignment --help raises SystemExit(0)."""
         with pytest.raises(SystemExit) as exc_info:
@@ -1857,6 +1863,58 @@ class TestCLIHelp:
         assert args.fail_on_regression is True
         assert args.output == "history.json"
         assert args.markdown_output == "history.md"
+
+    def test_cli_route_policy_scenario_set_flags(self) -> None:
+        """route-policy-scenario-set parser accepts scenario execution and history gate settings."""
+        args = build_parser().parse_args(
+            [
+                "route-policy-scenario-set",
+                "--scenario-set",
+                "scenarios.json",
+                "--policy-registry",
+                "registry.json",
+                "--report-dir",
+                "reports",
+                "--output",
+                "scenario-run.json",
+                "--markdown-output",
+                "scenario-run.md",
+                "--history-output",
+                "history.json",
+                "--history-markdown-output",
+                "history.md",
+                "--baseline-report",
+                "baseline.json",
+                "--max-success-rate-drop",
+                "0.05",
+                "--max-collision-rate-increase",
+                "0.01",
+                "--max-truncation-rate-increase",
+                "0.02",
+                "--max-mean-reward-drop",
+                "0.25",
+                "--allow-missing-policies",
+                "--allow-report-failures",
+                "--no-markdown",
+                "--fail-on-regression",
+            ]
+        )
+        assert args.scenario_set == "scenarios.json"
+        assert args.policy_registry == "registry.json"
+        assert args.report_dir == "reports"
+        assert args.output == "scenario-run.json"
+        assert args.markdown_output == "scenario-run.md"
+        assert args.history_output == "history.json"
+        assert args.history_markdown_output == "history.md"
+        assert args.baseline_report == "baseline.json"
+        assert args.max_success_rate_drop == 0.05
+        assert args.max_collision_rate_increase == 0.01
+        assert args.max_truncation_rate_increase == 0.02
+        assert args.max_mean_reward_drop == 0.25
+        assert args.allow_missing_policies is True
+        assert args.allow_report_failures is True
+        assert args.no_markdown is True
+        assert args.fail_on_regression is True
 
     def test_cli_experiment_localization_alignment_flags(self) -> None:
         """experiment-localization-alignment parser accepts evaluation settings."""

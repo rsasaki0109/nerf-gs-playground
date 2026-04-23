@@ -19,6 +19,8 @@ from gs_sim2real.sim import (
     RoutePolicyGymAdapter,
     RoutePolicyRegistry,
     RoutePolicyRegistryEntry,
+    RoutePolicyScenarioSet,
+    RoutePolicyScenarioSpec,
     RouteRewardWeights,
     build_route_policy_benchmark_history,
     build_simulation_catalog,
@@ -27,14 +29,19 @@ from gs_sim2real.sim import (
     load_route_policy_goal_suite_json,
     load_route_policy_imitation_model_json,
     load_route_policy_registry_json,
+    load_route_policy_scenario_set_run_json,
     render_route_policy_benchmark_history_markdown,
     render_route_policy_benchmark_markdown,
+    render_route_policy_scenario_set_markdown,
     run_route_policy_imitation_benchmark,
     run_route_policy_registry_benchmark,
+    run_route_policy_scenario_set,
     write_route_policy_benchmark_history_json,
     write_route_policy_goal_suite_json,
     write_route_policy_imitation_model_json,
     write_route_policy_registry_json,
+    write_route_policy_scenario_set_json,
+    write_route_policy_scenario_set_run_json,
     write_route_policy_transitions_jsonl,
 )
 
@@ -444,6 +451,163 @@ def test_route_policy_benchmark_history_cli_exits_on_regression(tmp_path: Path) 
     assert exc_info.value.code == 2
     history = json.loads(output_path.read_text(encoding="utf-8"))
     assert history["passed"] is False
+
+
+def test_route_policy_scenario_set_runs_registry_across_goal_suites(tmp_path: Path) -> None:
+    catalog_path = write_unit_scene_catalog(tmp_path / "scenes.json")
+    registry_path = write_route_policy_registry_json(
+        tmp_path / "registry.json",
+        RoutePolicyRegistry(
+            registry_id="unit-scenario-registry",
+            policies=(RoutePolicyRegistryEntry(policy_name="direct", policy_type="direct-goal"),),
+        ),
+    )
+    near_goals = write_route_policy_goal_suite_json(
+        tmp_path / "near-goals.json",
+        RoutePolicyGoalSuite(
+            suite_id="near-goals",
+            scene_id="unit-scene",
+            frame_id="generic_world",
+            goals=(RoutePolicyGoalSpec("near", (0.25, 0.0, 0.0)),),
+        ),
+    )
+    far_goals = write_route_policy_goal_suite_json(
+        tmp_path / "far-goals.json",
+        RoutePolicyGoalSuite(
+            suite_id="far-goals",
+            scene_id="unit-scene",
+            frame_id="generic_world",
+            goals=(RoutePolicyGoalSpec("far", (0.5, 0.0, 0.0)),),
+        ),
+    )
+    scenario_set = RoutePolicyScenarioSet(
+        scenario_set_id="unit-scenarios",
+        policy_registry_path=registry_path.name,
+        episode_count=1,
+        seed_start=0,
+        max_steps=4,
+        scenarios=(
+            RoutePolicyScenarioSpec(
+                scenario_id="near",
+                scene_catalog=catalog_path.name,
+                goal_suite_path=near_goals.name,
+            ),
+            RoutePolicyScenarioSpec(
+                scenario_id="far",
+                scene_catalog=catalog_path.name,
+                goal_suite_path=far_goals.name,
+            ),
+        ),
+    )
+    registry = load_route_policy_registry_json(registry_path)
+
+    report = run_route_policy_scenario_set(
+        scenario_set,
+        registry,
+        report_dir=tmp_path / "reports",
+        scenario_set_base_path=tmp_path,
+        registry_base_path=tmp_path,
+        policy_registry_path=registry_path,
+        history_output=tmp_path / "history.json",
+        history_markdown_output=tmp_path / "history.md",
+    )
+    run_path = write_route_policy_scenario_set_run_json(tmp_path / "scenario-run.json", report)
+    loaded = load_route_policy_scenario_set_run_json(run_path)
+
+    assert loaded.passed
+    assert loaded.scenario_count == 2
+    assert loaded.history.to_dict()["reportCount"] == 2
+    assert [result.scenario_id for result in loaded.scenario_results] == ["near", "far"]
+    assert all(Path(result.report_path).exists() for result in loaded.scenario_results)
+    assert (tmp_path / "history.json").exists()
+    assert "Route Policy Scenario Set: unit-scenarios" in render_route_policy_scenario_set_markdown(loaded)
+
+
+def test_route_policy_scenario_set_cli_writes_reports_and_history(tmp_path: Path) -> None:
+    catalog_path = write_unit_scene_catalog(tmp_path / "scenes.json")
+    write_route_policy_registry_json(
+        tmp_path / "registry.json",
+        RoutePolicyRegistry(
+            registry_id="unit-cli-scenario-registry",
+            policies=(RoutePolicyRegistryEntry(policy_name="direct", policy_type="direct-goal"),),
+        ),
+    )
+    write_route_policy_goal_suite_json(
+        tmp_path / "near-goals.json",
+        RoutePolicyGoalSuite(
+            suite_id="near-goals",
+            scene_id="unit-scene",
+            frame_id="generic_world",
+            goals=(RoutePolicyGoalSpec("near", (0.25, 0.0, 0.0)),),
+        ),
+    )
+    write_route_policy_goal_suite_json(
+        tmp_path / "far-goals.json",
+        RoutePolicyGoalSuite(
+            suite_id="far-goals",
+            scene_id="unit-scene",
+            frame_id="generic_world",
+            goals=(RoutePolicyGoalSpec("far", (0.5, 0.0, 0.0)),),
+        ),
+    )
+    scenario_set_path = write_route_policy_scenario_set_json(
+        tmp_path / "scenarios.json",
+        RoutePolicyScenarioSet(
+            scenario_set_id="unit-cli-scenarios",
+            policy_registry_path="registry.json",
+            episode_count=1,
+            seed_start=0,
+            max_steps=4,
+            scenarios=(
+                RoutePolicyScenarioSpec(
+                    scenario_id="near",
+                    scene_catalog=catalog_path.name,
+                    goal_suite_path="near-goals.json",
+                ),
+                RoutePolicyScenarioSpec(
+                    scenario_id="far",
+                    scene_catalog=catalog_path.name,
+                    goal_suite_path="far-goals.json",
+                ),
+            ),
+        ),
+    )
+    output_path = tmp_path / "scenario-run.json"
+    markdown_path = tmp_path / "scenario-run.md"
+    history_path = tmp_path / "history.json"
+    history_markdown_path = tmp_path / "history.md"
+
+    args = build_parser().parse_args(
+        [
+            "route-policy-scenario-set",
+            "--scenario-set",
+            str(scenario_set_path),
+            "--report-dir",
+            str(tmp_path / "reports"),
+            "--output",
+            str(output_path),
+            "--markdown-output",
+            str(markdown_path),
+            "--history-output",
+            str(history_path),
+            "--history-markdown-output",
+            str(history_markdown_path),
+        ]
+    )
+
+    cli.cmd_route_policy_scenario_set(args)
+
+    report = json.loads(output_path.read_text(encoding="utf-8"))
+    history = json.loads(history_path.read_text(encoding="utf-8"))
+
+    assert report["recordType"] == "route-policy-scenario-set-run"
+    assert report["passed"] is True
+    assert report["scenarioSetId"] == "unit-cli-scenarios"
+    assert [result["scenarioId"] for result in report["scenarioResults"]] == ["near", "far"]
+    assert history["recordType"] == "route-policy-benchmark-history"
+    assert history["reportCount"] == 2
+    assert "Route Policy Scenario Set: unit-cli-scenarios" in markdown_path.read_text(encoding="utf-8")
+    assert "Route Policy Benchmark History" in history_markdown_path.read_text(encoding="utf-8")
 
 
 def target_position_keys() -> tuple[str, str, str]:
