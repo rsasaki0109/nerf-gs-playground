@@ -140,6 +140,12 @@ class TestCLIHelp:
             main(["route-policy-benchmark", "--help"])
         assert exc_info.value.code == 0
 
+    def test_cli_route_policy_benchmark_history_help(self) -> None:
+        """Running route-policy-benchmark-history --help raises SystemExit(0)."""
+        with pytest.raises(SystemExit) as exc_info:
+            main(["route-policy-benchmark-history", "--help"])
+        assert exc_info.value.code == 0
+
     def test_cli_experiment_localization_alignment_help(self) -> None:
         """Running experiment-localization-alignment --help raises SystemExit(0)."""
         with pytest.raises(SystemExit) as exc_info:
@@ -1808,6 +1814,49 @@ class TestCLIHelp:
         assert args.benchmark_id == "registry-benchmark"
         assert args.episode_count == 8
         assert args.output == "report.json"
+
+    def test_cli_route_policy_benchmark_history_flags(self) -> None:
+        """route-policy-benchmark-history parser accepts history and regression gate settings."""
+        args = build_parser().parse_args(
+            [
+                "route-policy-benchmark-history",
+                "--report",
+                "run-a.json",
+                "--report",
+                "run-b.json",
+                "--baseline-report",
+                "baseline.json",
+                "--history-id",
+                "unit-history",
+                "--max-success-rate-drop",
+                "0.05",
+                "--max-collision-rate-increase",
+                "0.01",
+                "--max-truncation-rate-increase",
+                "0.02",
+                "--max-mean-reward-drop",
+                "0.25",
+                "--allow-missing-policies",
+                "--allow-report-failures",
+                "--fail-on-regression",
+                "--output",
+                "history.json",
+                "--markdown-output",
+                "history.md",
+            ]
+        )
+        assert args.report == ["run-a.json", "run-b.json"]
+        assert args.baseline_report == "baseline.json"
+        assert args.history_id == "unit-history"
+        assert args.max_success_rate_drop == 0.05
+        assert args.max_collision_rate_increase == 0.01
+        assert args.max_truncation_rate_increase == 0.02
+        assert args.max_mean_reward_drop == 0.25
+        assert args.allow_missing_policies is True
+        assert args.allow_report_failures is True
+        assert args.fail_on_regression is True
+        assert args.output == "history.json"
+        assert args.markdown_output == "history.md"
 
     def test_cli_experiment_localization_alignment_flags(self) -> None:
         """experiment-localization-alignment parser accepts evaluation settings."""

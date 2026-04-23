@@ -5,11 +5,14 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from gs_sim2real import cli
 from gs_sim2real.cli import build_parser
 from gs_sim2real.sim import (
     HeadlessPhysicalAIEnvironment,
     Pose3D,
+    RoutePolicyBenchmarkRegressionThresholds,
     RoutePolicyGoalSpec,
     RoutePolicyGoalSuite,
     RoutePolicyEnvConfig,
@@ -17,14 +20,18 @@ from gs_sim2real.sim import (
     RoutePolicyRegistry,
     RoutePolicyRegistryEntry,
     RouteRewardWeights,
+    build_route_policy_benchmark_history,
     build_simulation_catalog,
     collect_route_policy_dataset,
+    load_route_policy_benchmark_history_json,
     load_route_policy_goal_suite_json,
     load_route_policy_imitation_model_json,
     load_route_policy_registry_json,
+    render_route_policy_benchmark_history_markdown,
     render_route_policy_benchmark_markdown,
     run_route_policy_imitation_benchmark,
     run_route_policy_registry_benchmark,
+    write_route_policy_benchmark_history_json,
     write_route_policy_goal_suite_json,
     write_route_policy_imitation_model_json,
     write_route_policy_registry_json,
@@ -276,6 +283,169 @@ def test_route_policy_benchmark_cli_uses_registry_and_goal_suite(tmp_path: Path)
     assert report["metadata"]["goalSuite"] == str(suite_path)
 
 
+def test_route_policy_benchmark_history_flags_baseline_regressions(tmp_path: Path) -> None:
+    baseline_path = write_benchmark_report_fixture(
+        tmp_path / "baseline-report.json",
+        benchmark_id="unit-history-baseline",
+        policies={
+            "direct": {
+                "success-rate": 1.0,
+                "collision-rate": 0.0,
+                "truncation-rate": 0.0,
+                "mean-reward": 2.0,
+            }
+        },
+    )
+    current_path = write_benchmark_report_fixture(
+        tmp_path / "current-report.json",
+        benchmark_id="unit-history-current",
+        policies={
+            "direct": {
+                "success-rate": 0.9,
+                "collision-rate": 0.03,
+                "truncation-rate": 0.0,
+                "mean-reward": 1.6,
+            }
+        },
+    )
+
+    history = build_route_policy_benchmark_history(
+        (current_path,),
+        baseline_report=baseline_path,
+        history_id="unit-history",
+        thresholds=RoutePolicyBenchmarkRegressionThresholds(
+            max_success_rate_drop=0.05,
+            max_collision_rate_increase=0.01,
+            max_truncation_rate_increase=0.01,
+            max_mean_reward_drop=0.25,
+        ),
+    )
+    history_path = write_route_policy_benchmark_history_json(tmp_path / "history.json", history)
+    loaded = load_route_policy_benchmark_history_json(history_path)
+    failed_checks = set(loaded.failed_checks)
+
+    assert not loaded.passed
+    assert "success-rate-regression:current-report:direct" in failed_checks
+    assert "collision-rate-regression:current-report:direct" in failed_checks
+    assert "mean-reward-regression:current-report:direct" in failed_checks
+    assert loaded.to_dict()["aggregate"][0]["metrics"]["success-rate"]["mean"] == 0.9
+    assert "Regression Gate" in render_route_policy_benchmark_history_markdown(loaded)
+
+
+def test_route_policy_benchmark_history_cli_writes_artifacts(tmp_path: Path) -> None:
+    baseline_path = write_benchmark_report_fixture(
+        tmp_path / "baseline.json",
+        benchmark_id="unit-cli-history-baseline",
+        policies={
+            "direct": {
+                "success-rate": 1.0,
+                "collision-rate": 0.0,
+                "truncation-rate": 0.0,
+                "mean-reward": 2.0,
+            }
+        },
+    )
+    current_path = write_benchmark_report_fixture(
+        tmp_path / "current.json",
+        benchmark_id="unit-cli-history-current",
+        policies={
+            "direct": {
+                "success-rate": 0.97,
+                "collision-rate": 0.0,
+                "truncation-rate": 0.0,
+                "mean-reward": 1.95,
+            }
+        },
+    )
+    output_path = tmp_path / "history.json"
+    markdown_path = tmp_path / "history.md"
+
+    args = build_parser().parse_args(
+        [
+            "route-policy-benchmark-history",
+            "--report",
+            str(current_path),
+            "--baseline-report",
+            str(baseline_path),
+            "--history-id",
+            "unit-cli-history",
+            "--max-success-rate-drop",
+            "0.05",
+            "--max-collision-rate-increase",
+            "0.01",
+            "--max-truncation-rate-increase",
+            "0.01",
+            "--max-mean-reward-drop",
+            "0.10",
+            "--output",
+            str(output_path),
+            "--markdown-output",
+            str(markdown_path),
+        ]
+    )
+
+    cli.cmd_route_policy_benchmark_history(args)
+
+    history = json.loads(output_path.read_text(encoding="utf-8"))
+    markdown = markdown_path.read_text(encoding="utf-8")
+
+    assert history["recordType"] == "route-policy-benchmark-history"
+    assert history["historyId"] == "unit-cli-history"
+    assert history["passed"] is True
+    assert history["reportCount"] == 1
+    assert history["regressionChecks"][0]["checkId"] == "success-rate-regression:current:direct"
+    assert "Route Policy Benchmark History: unit-cli-history" in markdown
+
+
+def test_route_policy_benchmark_history_cli_exits_on_regression(tmp_path: Path) -> None:
+    baseline_path = write_benchmark_report_fixture(
+        tmp_path / "baseline.json",
+        benchmark_id="unit-cli-gate-baseline",
+        policies={
+            "direct": {
+                "success-rate": 1.0,
+                "collision-rate": 0.0,
+                "truncation-rate": 0.0,
+                "mean-reward": 2.0,
+            }
+        },
+    )
+    current_path = write_benchmark_report_fixture(
+        tmp_path / "current.json",
+        benchmark_id="unit-cli-gate-current",
+        policies={
+            "direct": {
+                "success-rate": 0.5,
+                "collision-rate": 0.0,
+                "truncation-rate": 0.0,
+                "mean-reward": 2.0,
+            }
+        },
+    )
+    output_path = tmp_path / "history.json"
+    args = build_parser().parse_args(
+        [
+            "route-policy-benchmark-history",
+            "--report",
+            str(current_path),
+            "--baseline-report",
+            str(baseline_path),
+            "--max-success-rate-drop",
+            "0.05",
+            "--output",
+            str(output_path),
+            "--fail-on-regression",
+        ]
+    )
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.cmd_route_policy_benchmark_history(args)
+
+    assert exc_info.value.code == 2
+    history = json.loads(output_path.read_text(encoding="utf-8"))
+    assert history["passed"] is False
+
+
 def target_position_keys() -> tuple[str, str, str]:
     return ("payload.target.position.0", "payload.target.position.1", "payload.target.position.2")
 
@@ -328,6 +498,47 @@ def write_unit_scene_catalog(path: Path) -> Path:
                         "summary": "Generic unit scene",
                     }
                 ]
+            },
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    return path
+
+
+def write_benchmark_report_fixture(
+    path: Path,
+    *,
+    benchmark_id: str,
+    policies: dict[str, dict[str, float]],
+    passed: bool = True,
+) -> Path:
+    policy_rows = [
+        {
+            "policyName": policy_name,
+            "passed": passed,
+            "metrics": metrics,
+            "failedChecks": [],
+        }
+        for policy_name, metrics in policies.items()
+    ]
+    path.write_text(
+        json.dumps(
+            {
+                "recordType": "route-policy-benchmark-report",
+                "version": "gs-mapper-route-policy-benchmark/v1",
+                "benchmarkId": benchmark_id,
+                "passed": passed,
+                "bestPolicyName": next(iter(policies)),
+                "summary": {
+                    "evaluationId": benchmark_id,
+                    "bestPolicyName": next(iter(policies)),
+                    "policyCount": len(policy_rows),
+                    "policies": policy_rows,
+                },
+                "modelSummary": {},
+                "metadata": {"sceneId": "unit-scene"},
             },
             sort_keys=True,
         )

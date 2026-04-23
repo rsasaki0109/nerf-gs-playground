@@ -150,9 +150,11 @@ from gs_sim2real.sim import (
     RoutePolicyGoalSuite,
     RoutePolicyGymAdapter,
     RoutePolicyImitationFitConfig,
+    RoutePolicyBenchmarkRegressionThresholds,
     RoutePolicyQualityThresholds,
     RoutePolicyRegistry,
     RoutePolicyRegistryEntry,
+    build_route_policy_benchmark_history,
     build_occupancy_grid_from_lidar_observation,
     build_route_policy_replay_batch,
     build_route_policy_replay_schema,
@@ -162,18 +164,21 @@ from gs_sim2real.sim import (
     evaluate_route_policy_dataset_quality,
     evaluate_route_policy_imitation_model,
     fit_route_policy_imitation_model,
+    load_route_policy_benchmark_history_json,
     load_route_policy_goal_suite_json,
     load_route_policy_imitation_model_json,
     load_route_policy_registry_json,
     iter_route_policy_replay_batches,
     load_route_policy_transitions_jsonl,
     replan_after_blocked_rollout,
+    render_route_policy_benchmark_history_markdown,
     render_route_policy_benchmark_markdown,
     render_route_policy_quality_markdown,
     run_route_policy_imitation_benchmark,
     rollout_route,
     rollout_route_with_replanning,
     select_best_route,
+    write_route_policy_benchmark_history_json,
     write_route_policy_benchmark_report_json,
     write_route_policy_dataset_json,
     write_route_policy_goal_suite_json,
@@ -436,6 +441,47 @@ gs-mapper route-policy-benchmark \
   --markdown-output runs/outdoor-policy-registry-benchmark.md
 ```
 
+Once single-run reports are stable, collect them into a history artifact. The history keeps only compact per-policy metric snapshots, so CI jobs can compare commits or datasets without rebuilding rollout datasets.
+
+```python
+history = build_route_policy_benchmark_history(
+    (
+        "runs/commit-a/outdoor-policy-registry-benchmark.json",
+        "runs/commit-b/outdoor-policy-registry-benchmark.json",
+    ),
+    baseline_report="runs/baseline/outdoor-policy-registry-benchmark.json",
+    history_id="outdoor-demo-policy-history",
+    thresholds=RoutePolicyBenchmarkRegressionThresholds(
+        max_success_rate_drop=0.05,
+        max_collision_rate_increase=0.01,
+        max_truncation_rate_increase=0.02,
+        max_mean_reward_drop=0.25,
+    ),
+)
+write_route_policy_benchmark_history_json("runs/outdoor-policy-history.json", history)
+print(render_route_policy_benchmark_history_markdown(history))
+
+loaded_history = load_route_policy_benchmark_history_json("runs/outdoor-policy-history.json")
+assert loaded_history.passed
+```
+
+The same regression gate is available from the CLI. Add `--fail-on-regression` in CI to return exit status 2 when a current report falls outside the blessed baseline envelope.
+
+```bash
+gs-mapper route-policy-benchmark-history \
+  --report runs/commit-a/outdoor-policy-registry-benchmark.json \
+  --report runs/commit-b/outdoor-policy-registry-benchmark.json \
+  --baseline-report runs/baseline/outdoor-policy-registry-benchmark.json \
+  --history-id outdoor-demo-policy-history \
+  --max-success-rate-drop 0.05 \
+  --max-collision-rate-increase 0.01 \
+  --max-truncation-rate-increase 0.02 \
+  --max-mean-reward-drop 0.25 \
+  --output runs/outdoor-policy-history.json \
+  --markdown-output runs/outdoor-policy-history.md \
+  --fail-on-regression
+```
+
 Supported actions:
 
 - `twist`: `linearX`, `linearY`, `linearZ` or `vx`, `vy`, `vz`
@@ -445,4 +491,4 @@ The backend always blocks poses outside `SceneEnvironment.bounds`. When a `Voxel
 
 ## Next Implementation Layer
 
-The next useful layer is benchmark history aggregation: collect multiple benchmark report JSON files, compare trends across commits or datasets, and add CI gates for regressions against a blessed baseline report.
+The next useful layer is scenario-set execution: run the same policy registry across multiple scene catalogs, goal suites, and simulator configuration variants, then feed those reports into the history gate as separate datasets.

@@ -1090,6 +1090,58 @@ def build_parser() -> argparse.ArgumentParser:
     rpb.add_argument("--min-episode-count", type=int, default=None, help="Optional quality threshold")
     rpb.add_argument("--min-transition-count", type=int, default=None, help="Optional quality threshold")
 
+    # route policy benchmark history
+    rph = subparsers.add_parser(
+        "route-policy-benchmark-history",
+        help="Aggregate route policy benchmark reports and apply regression gates",
+    )
+    rph.add_argument("--report", action="append", required=True, help="Benchmark report JSON; repeat in trend order")
+    rph.add_argument("--baseline-report", default=None, help="Blessed baseline report JSON for regression gates")
+    rph.add_argument("--history-id", default="route-policy-benchmark-history", help="Benchmark history id")
+    rph.add_argument(
+        "--output", default="outputs/route_policy_benchmark/history.json", help="Benchmark history JSON path"
+    )
+    rph.add_argument("--markdown-output", default=None, help="Optional Markdown summary output path")
+    rph.add_argument(
+        "--max-success-rate-drop",
+        type=float,
+        default=0.0,
+        help="Allowed success-rate drop from the baseline for each matching policy",
+    )
+    rph.add_argument(
+        "--max-collision-rate-increase",
+        type=float,
+        default=0.0,
+        help="Allowed collision-rate increase from the baseline for each matching policy",
+    )
+    rph.add_argument(
+        "--max-truncation-rate-increase",
+        type=float,
+        default=0.0,
+        help="Allowed truncation-rate increase from the baseline for each matching policy",
+    )
+    rph.add_argument(
+        "--max-mean-reward-drop",
+        type=float,
+        default=None,
+        help="Optional allowed mean-reward drop from the baseline for each matching policy",
+    )
+    rph.add_argument(
+        "--allow-missing-policies",
+        action="store_true",
+        help="Do not fail the regression gate when a baseline policy is absent from a current report",
+    )
+    rph.add_argument(
+        "--allow-report-failures",
+        action="store_true",
+        help="Do not fail the history gate when an input benchmark report itself failed",
+    )
+    rph.add_argument(
+        "--fail-on-regression",
+        action="store_true",
+        help="Exit with status 2 when the history regression gate fails",
+    )
+
     # experiment labs — specs drive a nested `experiment` subparser plus
     # hidden top-level aliases for back-compat.
     experiment_specs: list[tuple[str, str, str]] = [
@@ -1986,6 +2038,13 @@ def cmd_route_policy_benchmark(args: argparse.Namespace) -> None:
     run_cli(args)
 
 
+def cmd_route_policy_benchmark_history(args: argparse.Namespace) -> None:
+    """Handle the route-policy-benchmark-history subcommand."""
+    from gs_sim2real.sim.policy_benchmark_history import run_cli
+
+    run_cli(args)
+
+
 def cmd_experiment(args: argparse.Namespace) -> None:
     """Handle the nested `experiment` subcommand by deferring to the legacy handler."""
     handler_map = {
@@ -2163,6 +2222,7 @@ def main(argv: list[str] | None = None) -> None:
         "sim2real-query": cmd_sim2real_query,
         "sim2real-benchmark-images": cmd_sim2real_benchmark_images,
         "route-policy-benchmark": cmd_route_policy_benchmark,
+        "route-policy-benchmark-history": cmd_route_policy_benchmark_history,
         "experiment": cmd_experiment,
     }
 
