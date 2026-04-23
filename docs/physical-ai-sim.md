@@ -149,10 +149,13 @@ from gs_sim2real.sim import (
     RoutePolicyGymAdapter,
     build_occupancy_grid_from_lidar_observation,
     build_route_policy_sample,
+    collect_route_policy_dataset,
     replan_after_blocked_rollout,
     rollout_route,
     rollout_route_with_replanning,
     select_best_route,
+    write_route_policy_dataset_json,
+    write_route_policy_transitions_jsonl,
 )
 
 occupancy = build_occupancy_grid_from_lidar_observation(
@@ -248,6 +251,24 @@ observation, reward, terminated, truncated, info = policy_env.step(
 )
 ```
 
+To build replay data for imitation learning or offline RL, collect adapter episodes into a stable dataset envelope. JSON preserves full episodes; JSONL flattens transitions for streaming training jobs.
+
+```python
+def direct_goal_policy(observation, info):
+    return {"routeId": f"direct-{info['stepIndex']}", "target": info["goal"]}
+
+
+dataset = collect_route_policy_dataset(
+    (policy_env,),
+    direct_goal_policy,
+    episode_count=16,
+    dataset_id="outdoor-demo-policy-rollouts",
+    seed_start=100,
+)
+write_route_policy_dataset_json("runs/outdoor-policy-rollouts.json", dataset)
+write_route_policy_transitions_jsonl("runs/outdoor-policy-transitions.jsonl", dataset)
+```
+
 Supported actions:
 
 - `twist`: `linearX`, `linearY`, `linearZ` or `vx`, `vy`, `vz`
@@ -257,4 +278,4 @@ The backend always blocks poses outside `SceneEnvironment.bounds`. When a `Voxel
 
 ## Next Implementation Layer
 
-The next useful layer is rollout dataset export and vectorized collection: batch these adapter episodes into replay-friendly records for imitation learning and offline RL.
+The next useful layer is dataset QA and baseline evaluation: score collected rollouts for success rate, collision rate, reward distribution, and scene coverage before feeding them into imitation learning or offline RL.
