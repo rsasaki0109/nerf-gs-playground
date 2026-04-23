@@ -28,6 +28,7 @@ from gs_sim2real.sim import (
     RoutePolicyScenarioSpec,
     RouteRewardWeights,
     build_route_policy_benchmark_history,
+    build_route_policy_scenario_ci_manifest,
     build_simulation_catalog,
     collect_route_policy_dataset,
     expand_route_policy_scenario_matrix,
@@ -36,6 +37,7 @@ from gs_sim2real.sim import (
     load_route_policy_goal_suite_json,
     load_route_policy_imitation_model_json,
     load_route_policy_registry_json,
+    load_route_policy_scenario_ci_manifest_json,
     load_route_policy_scenario_matrix_expansion_json,
     load_route_policy_scenario_matrix_json,
     load_route_policy_scenario_set_run_json,
@@ -44,6 +46,7 @@ from gs_sim2real.sim import (
     merge_route_policy_scenario_shard_run_jsons,
     render_route_policy_benchmark_history_markdown,
     render_route_policy_benchmark_markdown,
+    render_route_policy_scenario_ci_manifest_markdown,
     render_route_policy_scenario_matrix_markdown,
     render_route_policy_scenario_set_markdown,
     render_route_policy_scenario_shard_merge_markdown,
@@ -55,6 +58,7 @@ from gs_sim2real.sim import (
     write_route_policy_goal_suite_json,
     write_route_policy_imitation_model_json,
     write_route_policy_registry_json,
+    write_route_policy_scenario_ci_manifest_json,
     write_route_policy_scenario_matrix_expansion_json,
     write_route_policy_scenario_matrix_json,
     write_route_policy_scenario_set_json,
@@ -963,6 +967,173 @@ def test_route_policy_scenario_shards_cli_writes_plan_and_merge(tmp_path: Path) 
     assert merge["shardCount"] == 1
     assert merged_history_path.exists()
     assert "Route Policy Scenario Shard Merge: unit-cli-shard-merge" in merge_markdown_path.read_text(encoding="utf-8")
+
+
+def test_route_policy_scenario_ci_manifest_builds_matrix_jobs(tmp_path: Path) -> None:
+    catalog_path = write_unit_scene_catalog(tmp_path / "scenes.json")
+    write_route_policy_registry_json(
+        tmp_path / "registry.json",
+        RoutePolicyRegistry(
+            registry_id="unit-ci-registry",
+            policies=(RoutePolicyRegistryEntry(policy_name="direct", policy_type="direct-goal"),),
+        ),
+    )
+    write_route_policy_goal_suite_json(
+        tmp_path / "near-goals.json",
+        RoutePolicyGoalSuite(
+            suite_id="near-goals",
+            scene_id="unit-scene",
+            frame_id="generic_world",
+            goals=(RoutePolicyGoalSpec("near", (0.25, 0.0, 0.0)),),
+        ),
+    )
+    write_route_policy_goal_suite_json(
+        tmp_path / "far-goals.json",
+        RoutePolicyGoalSuite(
+            suite_id="far-goals",
+            scene_id="unit-scene",
+            frame_id="generic_world",
+            goals=(RoutePolicyGoalSpec("far", (0.5, 0.0, 0.0)),),
+        ),
+    )
+    expansion = expand_route_policy_scenario_matrix_to_directory(
+        RoutePolicyScenarioMatrix(
+            matrix_id="unit-ci-matrix",
+            registries=(RoutePolicyMatrixRegistrySpec("direct", "registry.json"),),
+            scenes=(RoutePolicyMatrixSceneSpec("unit", catalog_path.name, scene_id="unit-scene"),),
+            goal_suites=(
+                RoutePolicyMatrixGoalSuiteSpec("near", "near-goals.json"),
+                RoutePolicyMatrixGoalSuiteSpec("far", "far-goals.json"),
+            ),
+            configs=(RoutePolicyMatrixConfigSpec("short", episode_count=1, seed_start=0, max_steps=4),),
+        ),
+        tmp_path / "generated",
+        matrix_base_path=tmp_path,
+    )
+    plan = write_route_policy_scenario_shards_from_expansion(
+        expansion,
+        tmp_path / "shards",
+        max_scenarios_per_shard=1,
+        shard_plan_id="unit-ci-shards",
+    )
+
+    manifest = build_route_policy_scenario_ci_manifest(
+        plan,
+        manifest_id="unit-ci-manifest",
+        report_dir="ci/reports",
+        run_output_dir="ci/runs",
+        history_output_dir="ci/histories",
+        merge_id="unit-ci-merge",
+        merge_output="ci/merge.json",
+        merge_history_output="ci/history.json",
+        merge_markdown_output="ci/merge.md",
+        merge_history_markdown_output="ci/history.md",
+        include_markdown=True,
+        cache_key_prefix="unit-cache",
+        fail_on_regression=True,
+    )
+    manifest_path = write_route_policy_scenario_ci_manifest_json(tmp_path / "ci-manifest.json", manifest)
+    loaded = load_route_policy_scenario_ci_manifest_json(manifest_path)
+    payload = loaded.to_dict()
+
+    assert loaded.manifest_id == "unit-ci-manifest"
+    assert loaded.shard_job_count == 2
+    assert loaded.scenario_count == 2
+    assert payload["matrix"]["include"][0]["shardId"] == "unit-ci-matrix-direct-shard-001"
+    assert loaded.shard_jobs[0].report_dir == "ci/reports/unit-ci-matrix-direct-shard-001"
+    assert loaded.shard_jobs[0].run_output == "ci/runs/unit-ci-matrix-direct-shard-001.json"
+    assert loaded.shard_jobs[0].history_output == "ci/histories/unit-ci-matrix-direct-shard-001.json"
+    assert loaded.shard_jobs[0].expected_report_paths[0].endswith("/unit-near-short.json")
+    assert "--fail-on-regression" in loaded.shard_jobs[0].command
+    assert loaded.merge_job.depends_on == tuple(job.job_id for job in loaded.shard_jobs)
+    assert loaded.merge_job.run_inputs == tuple(job.run_output for job in loaded.shard_jobs)
+    assert "Route Policy Scenario CI Manifest: unit-ci-manifest" in render_route_policy_scenario_ci_manifest_markdown(
+        loaded
+    )
+
+
+def test_route_policy_scenario_ci_manifest_cli_writes_manifest(tmp_path: Path) -> None:
+    catalog_path = write_unit_scene_catalog(tmp_path / "scenes.json")
+    write_route_policy_registry_json(
+        tmp_path / "registry.json",
+        RoutePolicyRegistry(
+            registry_id="unit-cli-ci-registry",
+            policies=(RoutePolicyRegistryEntry(policy_name="direct", policy_type="direct-goal"),),
+        ),
+    )
+    write_route_policy_goal_suite_json(
+        tmp_path / "near-goals.json",
+        RoutePolicyGoalSuite(
+            suite_id="near-goals",
+            scene_id="unit-scene",
+            frame_id="generic_world",
+            goals=(RoutePolicyGoalSpec("near", (0.25, 0.0, 0.0)),),
+        ),
+    )
+    expansion = expand_route_policy_scenario_matrix_to_directory(
+        RoutePolicyScenarioMatrix(
+            matrix_id="unit-cli-ci-matrix",
+            registries=(RoutePolicyMatrixRegistrySpec("direct", "registry.json"),),
+            scenes=(RoutePolicyMatrixSceneSpec("unit", catalog_path.name, scene_id="unit-scene"),),
+            goal_suites=(RoutePolicyMatrixGoalSuiteSpec("near", "near-goals.json"),),
+            configs=(RoutePolicyMatrixConfigSpec("short", episode_count=1, seed_start=0, max_steps=4),),
+        ),
+        tmp_path / "generated",
+        matrix_base_path=tmp_path,
+    )
+    plan = write_route_policy_scenario_shards_from_expansion(
+        expansion,
+        tmp_path / "shards",
+        max_scenarios_per_shard=1,
+        shard_plan_id="unit-cli-ci-shards",
+    )
+    plan_path = write_route_policy_scenario_shard_plan_json(tmp_path / "shard-plan.json", plan)
+    output_path = tmp_path / "ci-manifest.json"
+    markdown_path = tmp_path / "ci-manifest.md"
+    args = build_parser().parse_args(
+        [
+            "route-policy-scenario-ci-manifest",
+            "--shard-plan",
+            str(plan_path),
+            "--manifest-id",
+            "unit-cli-ci-manifest",
+            "--report-dir",
+            "ci/reports",
+            "--run-output-dir",
+            "ci/runs",
+            "--history-output-dir",
+            "ci/histories",
+            "--merge-id",
+            "unit-cli-ci-merge",
+            "--merge-output",
+            "ci/merge.json",
+            "--merge-history-output",
+            "ci/history.json",
+            "--merge-markdown-output",
+            "ci/merge.md",
+            "--merge-history-markdown-output",
+            "ci/history.md",
+            "--cache-key-prefix",
+            "unit-cache",
+            "--include-markdown",
+            "--fail-on-regression",
+            "--output",
+            str(output_path),
+            "--markdown-output",
+            str(markdown_path),
+        ]
+    )
+
+    cli.cmd_route_policy_scenario_ci_manifest(args)
+    manifest = json.loads(output_path.read_text(encoding="utf-8"))
+
+    assert manifest["recordType"] == "route-policy-scenario-ci-manifest"
+    assert manifest["manifestId"] == "unit-cli-ci-manifest"
+    assert manifest["shardJobCount"] == 1
+    assert manifest["matrix"]["include"][0]["cacheKey"].startswith("unit-cache-unit-cli-ci-shards-")
+    assert manifest["mergeJob"]["dependsOn"] == [manifest["shardJobs"][0]["jobId"]]
+    assert "--fail-on-regression" in manifest["mergeJob"]["command"]
+    assert "Route Policy Scenario CI Manifest: unit-cli-ci-manifest" in markdown_path.read_text(encoding="utf-8")
 
 
 def target_position_keys() -> tuple[str, str, str]:

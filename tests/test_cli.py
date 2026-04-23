@@ -170,6 +170,12 @@ class TestCLIHelp:
             main(["route-policy-scenario-shard-merge", "--help"])
         assert exc_info.value.code == 0
 
+    def test_cli_route_policy_scenario_ci_manifest_help(self) -> None:
+        """Running route-policy-scenario-ci-manifest --help raises SystemExit(0)."""
+        with pytest.raises(SystemExit) as exc_info:
+            main(["route-policy-scenario-ci-manifest", "--help"])
+        assert exc_info.value.code == 0
+
     def test_cli_experiment_localization_alignment_help(self) -> None:
         """Running experiment-localization-alignment --help raises SystemExit(0)."""
         with pytest.raises(SystemExit) as exc_info:
@@ -2028,6 +2034,57 @@ class TestCLIHelp:
         assert args.allow_missing_policies is True
         assert args.allow_report_failures is True
         assert args.fail_on_regression is True
+
+    def test_cli_route_policy_scenario_ci_manifest_flags(self) -> None:
+        """route-policy-scenario-ci-manifest parser accepts matrix manifest settings."""
+        args = build_parser().parse_args(
+            [
+                "route-policy-scenario-ci-manifest",
+                "--shard-plan",
+                "shard-plan.json",
+                "--manifest-id",
+                "unit-ci",
+                "--report-dir",
+                "reports",
+                "--run-output-dir",
+                "runs",
+                "--history-output-dir",
+                "histories",
+                "--merge-id",
+                "unit-merge",
+                "--merge-output",
+                "merge.json",
+                "--merge-history-output",
+                "history.json",
+                "--merge-markdown-output",
+                "merge.md",
+                "--merge-history-markdown-output",
+                "history.md",
+                "--cache-key-prefix",
+                "unit-cache",
+                "--include-markdown",
+                "--fail-on-regression",
+                "--output",
+                "manifest.json",
+                "--markdown-output",
+                "manifest.md",
+            ]
+        )
+        assert args.shard_plan == "shard-plan.json"
+        assert args.manifest_id == "unit-ci"
+        assert args.report_dir == "reports"
+        assert args.run_output_dir == "runs"
+        assert args.history_output_dir == "histories"
+        assert args.merge_id == "unit-merge"
+        assert args.merge_output == "merge.json"
+        assert args.merge_history_output == "history.json"
+        assert args.merge_markdown_output == "merge.md"
+        assert args.merge_history_markdown_output == "history.md"
+        assert args.cache_key_prefix == "unit-cache"
+        assert args.include_markdown is True
+        assert args.fail_on_regression is True
+        assert args.output == "manifest.json"
+        assert args.markdown_output == "manifest.md"
 
     def test_cli_experiment_localization_alignment_flags(self) -> None:
         """experiment-localization-alignment parser accepts evaluation settings."""

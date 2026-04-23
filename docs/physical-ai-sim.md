@@ -161,6 +161,7 @@ from gs_sim2real.sim import (
     RoutePolicyScenarioMatrix,
     RoutePolicyScenarioSet,
     RoutePolicyScenarioSpec,
+    build_route_policy_scenario_ci_manifest,
     build_route_policy_scenario_shard_plan,
     build_route_policy_benchmark_history,
     build_occupancy_grid_from_lidar_observation,
@@ -177,6 +178,7 @@ from gs_sim2real.sim import (
     load_route_policy_goal_suite_json,
     load_route_policy_imitation_model_json,
     load_route_policy_registry_json,
+    load_route_policy_scenario_ci_manifest_json,
     load_route_policy_scenario_matrix_json,
     load_route_policy_scenario_set_json,
     load_route_policy_scenario_set_run_json,
@@ -188,6 +190,7 @@ from gs_sim2real.sim import (
     render_route_policy_benchmark_history_markdown,
     render_route_policy_benchmark_markdown,
     render_route_policy_quality_markdown,
+    render_route_policy_scenario_ci_manifest_markdown,
     render_route_policy_scenario_matrix_markdown,
     render_route_policy_scenario_set_markdown,
     render_route_policy_scenario_shard_merge_markdown,
@@ -203,6 +206,7 @@ from gs_sim2real.sim import (
     write_route_policy_goal_suite_json,
     write_route_policy_imitation_model_json,
     write_route_policy_registry_json,
+    write_route_policy_scenario_ci_manifest_json,
     write_route_policy_scenario_matrix_expansion_json,
     write_route_policy_scenario_matrix_json,
     write_route_policy_scenario_set_json,
@@ -670,6 +674,41 @@ gs-mapper route-policy-scenario-shard-merge \
   --fail-on-regression
 ```
 
+To make CI matrix jobs stable, generate a manifest from the shard plan. The manifest includes a `matrix.include` list for shard jobs, expected report paths, cache keys, generated CLI commands, and the merge job dependencies.
+
+```python
+ci_manifest = build_route_policy_scenario_ci_manifest(
+    shard_plan,
+    manifest_id="outdoor-demo-ci",
+    report_dir="runs/scenarios/ci/reports",
+    run_output_dir="runs/scenarios/ci/runs",
+    history_output_dir="runs/scenarios/ci/histories",
+    merge_id="outdoor-demo-shard-merge",
+    merge_output="runs/scenarios/ci/shard-merge.json",
+    merge_history_output="runs/scenarios/ci/shard-history.json",
+    cache_key_prefix="outdoor-demo-policy",
+    fail_on_regression=True,
+)
+write_route_policy_scenario_ci_manifest_json("runs/scenarios/ci-manifest.json", ci_manifest)
+print(render_route_policy_scenario_ci_manifest_markdown(ci_manifest))
+```
+
+```bash
+gs-mapper route-policy-scenario-ci-manifest \
+  --shard-plan runs/scenarios/shard-plan.json \
+  --manifest-id outdoor-demo-ci \
+  --report-dir runs/scenarios/ci/reports \
+  --run-output-dir runs/scenarios/ci/runs \
+  --history-output-dir runs/scenarios/ci/histories \
+  --merge-id outdoor-demo-shard-merge \
+  --merge-output runs/scenarios/ci/shard-merge.json \
+  --merge-history-output runs/scenarios/ci/shard-history.json \
+  --cache-key-prefix outdoor-demo-policy \
+  --fail-on-regression \
+  --output runs/scenarios/ci-manifest.json \
+  --markdown-output runs/scenarios/ci-manifest.md
+```
+
 Supported actions:
 
 - `twist`: `linearX`, `linearY`, `linearZ` or `vx`, `vy`, `vz`
@@ -679,4 +718,4 @@ The backend always blocks poses outside `SceneEnvironment.bounds`. When a `Voxel
 
 ## Next Implementation Layer
 
-The next useful layer is CI matrix manifest generation: emit a compact job manifest from the shard plan, including shard ids, scenario-set paths, report paths, cache keys, and merge dependencies.
+The next useful layer is CI workflow materialization: convert the CI manifest into a generated GitHub Actions workflow or reusable workflow input bundle, so shard fan-out and merge fan-in can run without hand-written YAML drift.

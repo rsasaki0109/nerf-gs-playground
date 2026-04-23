@@ -1305,6 +1305,59 @@ def build_parser() -> argparse.ArgumentParser:
         help="Exit with status 2 when a shard or merged history regression gate fails",
     )
 
+    # route policy scenario CI manifest
+    rpsci = subparsers.add_parser(
+        "route-policy-scenario-ci-manifest",
+        help="Generate a CI matrix manifest from a route policy scenario shard plan",
+    )
+    rpsci.add_argument("--shard-plan", required=True, help="Route policy scenario shard plan JSON")
+    rpsci.add_argument("--manifest-id", default=None, help="Optional CI manifest id")
+    rpsci.add_argument(
+        "--report-dir",
+        default="outputs/route_policy_scenarios/shard_reports",
+        help="Base directory for per-shard benchmark reports",
+    )
+    rpsci.add_argument(
+        "--run-output-dir",
+        default="outputs/route_policy_scenarios/shard_runs",
+        help="Base directory for per-shard run JSON outputs",
+    )
+    rpsci.add_argument(
+        "--history-output-dir",
+        default="outputs/route_policy_scenarios/shard_histories",
+        help="Base directory for per-shard history JSON outputs",
+    )
+    rpsci.add_argument("--merge-id", default="route-policy-scenario-shard-merge", help="Shard merge id")
+    rpsci.add_argument(
+        "--merge-output",
+        default="outputs/route_policy_scenarios/scenario_shard_merge.json",
+        help="Merged shard report JSON path",
+    )
+    rpsci.add_argument(
+        "--merge-history-output",
+        default="outputs/route_policy_scenarios/shard_history.json",
+        help="Merged benchmark history JSON path",
+    )
+    rpsci.add_argument("--merge-markdown-output", default=None, help="Optional merged shard report Markdown path")
+    rpsci.add_argument(
+        "--merge-history-markdown-output",
+        default=None,
+        help="Optional merged benchmark history Markdown path",
+    )
+    rpsci.add_argument("--cache-key-prefix", default="route-policy-scenario", help="Prefix for CI cache keys")
+    rpsci.add_argument("--include-markdown", action="store_true", help="Include per-shard Markdown output paths")
+    rpsci.add_argument(
+        "--fail-on-regression",
+        action="store_true",
+        help="Include --fail-on-regression in generated shard and merge commands",
+    )
+    rpsci.add_argument(
+        "--output",
+        default="outputs/route_policy_scenarios/scenario_ci_manifest.json",
+        help="Scenario CI manifest JSON path",
+    )
+    rpsci.add_argument("--markdown-output", default=None, help="Optional scenario CI manifest Markdown path")
+
     # experiment labs — specs drive a nested `experiment` subparser plus
     # hidden top-level aliases for back-compat.
     experiment_specs: list[tuple[str, str, str]] = [
@@ -2236,6 +2289,13 @@ def cmd_route_policy_scenario_shard_merge(args: argparse.Namespace) -> None:
     run_shard_merge_cli(args)
 
 
+def cmd_route_policy_scenario_ci_manifest(args: argparse.Namespace) -> None:
+    """Handle the route-policy-scenario-ci-manifest subcommand."""
+    from gs_sim2real.sim.policy_scenario_ci_manifest import run_cli
+
+    run_cli(args)
+
+
 def cmd_experiment(args: argparse.Namespace) -> None:
     """Handle the nested `experiment` subcommand by deferring to the legacy handler."""
     handler_map = {
@@ -2414,6 +2474,7 @@ def main(argv: list[str] | None = None) -> None:
         "sim2real-benchmark-images": cmd_sim2real_benchmark_images,
         "route-policy-benchmark": cmd_route_policy_benchmark,
         "route-policy-benchmark-history": cmd_route_policy_benchmark_history,
+        "route-policy-scenario-ci-manifest": cmd_route_policy_scenario_ci_manifest,
         "route-policy-scenario-matrix": cmd_route_policy_scenario_matrix,
         "route-policy-scenario-shard-merge": cmd_route_policy_scenario_shard_merge,
         "route-policy-scenario-shards": cmd_route_policy_scenario_shards,
