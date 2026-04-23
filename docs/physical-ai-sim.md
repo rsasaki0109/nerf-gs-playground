@@ -148,8 +148,12 @@ from gs_sim2real.sim import (
     RoutePolicyEnvConfig,
     RoutePolicyGymAdapter,
     build_occupancy_grid_from_lidar_observation,
+    build_route_policy_replay_batch,
+    build_route_policy_replay_schema,
     build_route_policy_sample,
     collect_route_policy_dataset,
+    iter_route_policy_replay_batches,
+    load_route_policy_transitions_jsonl,
     replan_after_blocked_rollout,
     rollout_route,
     rollout_route_with_replanning,
@@ -302,6 +306,26 @@ baselines = evaluate_route_policy_baselines(
 print(baselines.best_policy_name)
 ```
 
+For offline training, load JSONL transitions back into a flat table and pin a numeric feature schema. Missing columns are filled with `0.0`, which lets older replay files keep working while the schema evolves.
+
+```python
+transition_table = load_route_policy_transitions_jsonl("runs/outdoor-policy-transitions.jsonl")
+schema = build_route_policy_replay_schema(
+    transition_table,
+    action_keys=("payload.target.position.0", "payload.target.position.1", "payload.target.position.2"),
+)
+
+for batch in iter_route_policy_replay_batches(transition_table, batch_size=32, schema=schema, shuffle=True, seed=7):
+    trainer.step(
+        observations=batch.observation_matrix,
+        actions=batch.action_matrix,
+        rewards=batch.reward_vector,
+        dones=batch.done_vector,
+    )
+
+full_batch = build_route_policy_replay_batch(transition_table, schema=schema)
+```
+
 Supported actions:
 
 - `twist`: `linearX`, `linearY`, `linearZ` or `vx`, `vy`, `vz`
@@ -311,4 +335,4 @@ The backend always blocks poses outside `SceneEnvironment.bounds`. When a `Voxel
 
 ## Next Implementation Layer
 
-The next useful layer is a replay loader and offline policy training bridge: stream the JSONL transitions into imitation learning or offline RL batches, keep feature schemas versioned, and run trained policies back through the same baseline evaluator.
+The next useful layer is a reference imitation policy and evaluator adapter: train a small baseline from replay batches, decode predicted route actions, and run the trained policy back through the same baseline evaluator.
