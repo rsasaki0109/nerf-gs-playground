@@ -811,6 +811,7 @@ runner = DynamicObstacle(
 - `nearest-dynamic-obstacle-bearing-radians` — XY-plane bearing from the observed pose to the nearest obstacle's centre, in `[-π, π]`.
 - `nearest-dynamic-obstacle-bearing-x`, `nearest-dynamic-obstacle-bearing-y` — unit-vector components of the same bearing (both `0.0` when the obstacle coincides with the pose).
 - `second-nearest-dynamic-obstacle-distance-meters`, `second-nearest-dynamic-obstacle-bearing-radians`, `second-nearest-dynamic-obstacle-bearing-x`, `second-nearest-dynamic-obstacle-bearing-y` — same four features for the second-closest obstacle. Emitted only when at least two obstacles are on the timeline so multi-agent scenarios let a policy tell apart a single-threat lane from a flanked one; stays omitted when only one obstacle is configured.
+- `nearest-dynamic-obstacle-reactive-mode` and (when the second slot is emitted) `second-nearest-dynamic-obstacle-reactive-mode` — scalar reactive indicator for each surfaced obstacle: `+1.0` when the obstacle chases the agent (`chase_target_agent`), `-1.0` when it flees (`flee_from_agent`), `0.0` for static waypoint obstacles. Lets a policy condition on the threat mode directly instead of inferring it from distance derivatives.
 
 The entire block is omitted when no timeline is configured, so existing scenario-set fixtures keep their exact feature dict.
 
