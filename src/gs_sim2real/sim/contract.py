@@ -454,6 +454,18 @@ def _default_sensor_rig() -> SensorRig:
                 outputs=("ranges", "points"),
                 description="LiDAR-like range and point proxy sampled from the local splat raster depth image.",
             ),
+            SensorModel(
+                sensor_id="imu-proxy",
+                modality="imu",
+                status="placeholder-metadata-only",
+                outputs=("angular-velocity", "linear-acceleration"),
+                description=(
+                    "IMU proxy placeholder: the headless env has no physics layer, so render_observation "
+                    "returns a metadata-only response until a downstream renderer emits numeric readings. "
+                    "Raw-sensor noise profiles already accept IMU σ fields and perturb matching outputs "
+                    "if a future renderer produces them."
+                ),
+            ),
         ),
     )
 

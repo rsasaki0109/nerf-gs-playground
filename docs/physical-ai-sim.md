@@ -731,7 +731,7 @@ config = RoutePolicyMatrixConfigSpec(
 
 Application seam: `HeadlessPhysicalAIEnvironment(..., raw_sensor_noise_profile=…)` stores the profile and, whenever `render_observation` reaches a base `ObservationRenderer` that `can_render` the request, the result is routed through `apply_raw_sensor_noise_to_observation` before being returned. The noise RNG is seeded from `sha256(reset_seed | profile_id | sensor_id | render_request_index | "obs")`, and an internal counter advances per render call so consecutive queries at the same pose still draw distinct noise. When no observation renderer is attached the env falls back to its metadata-only response and the profile is a no-op.
 
-IMU noise is out of scope for now: no observation renderer currently produces IMU readings, so there is nowhere to attach it. Scenario JSON carries `raw_sensor_noise_profile_path` today; adding IMU output is a separate piece of work tracked under §12.2 B in `docs/plan_outdoor_gs.md`.
+IMU is on the contract but still a placeholder: the default sensor rig now advertises an `imu-proxy` sensor with `angular-velocity` + `linear-acceleration` outputs, and `RawSensorNoiseProfile` carries matching σ fields (`imu_angular_velocity_std_rad_per_sec`, `imu_linear_acceleration_std_m_per_sec_sq`) that perturb the three-axis vectors if present. `HeadlessPhysicalAIEnvironment` returns a metadata-only response for IMU queries until a downstream renderer emits numeric readings, so the noise fields stay no-ops on today's headless env. Once a physics / rosbag-replay renderer lands, the existing noise seam picks it up automatically.
 
 ### Dynamic obstacles
 
