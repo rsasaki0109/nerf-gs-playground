@@ -232,33 +232,29 @@ class RoutePolicyGymAdapter:
         the policy already sees — so a sensor-noise profile shifts obstacle
         observations alongside the pose / goal observations, keeping the
         feature block consistent under partial-information benchmarks.
+
+        Both the nearest and the second-nearest obstacle are surfaced so a
+        policy can tell apart a lane with one obstacle in it from a lane with
+        two obstacles at similar clearance; the second-nearest block stays
+        empty when fewer than two obstacles are present.
         """
 
         timeline = getattr(self.environment, "dynamic_obstacles", None)
         if timeline is None or timeline.obstacle_count == 0:
             return {}
-        nearest_distance: float | None = None
-        nearest_centre: tuple[float, float, float] | None = None
+        ranked: list[tuple[float, tuple[float, float, float]]] = []
         for obstacle in timeline.obstacles:
             centre = obstacle.position_at_step(state.step_index)
             distance = math.dist(tuple(observed_pose.position), centre)
             clearance = max(0.0, distance - float(obstacle.radius_meters))
-            if nearest_distance is None or clearance < nearest_distance:
-                nearest_distance = clearance
-                nearest_centre = centre
-        if nearest_distance is None or nearest_centre is None:
-            return {}
-        delta_x = float(nearest_centre[0] - observed_pose.position[0])
-        delta_y = float(nearest_centre[1] - observed_pose.position[1])
-        planar = math.hypot(delta_x, delta_y)
-        bearing = math.atan2(delta_y, delta_x) if planar > 0.0 else 0.0
-        return {
-            "dynamic-obstacle-count": float(timeline.obstacle_count),
-            "nearest-dynamic-obstacle-distance-meters": float(nearest_distance),
-            "nearest-dynamic-obstacle-bearing-radians": bearing,
-            "nearest-dynamic-obstacle-bearing-x": delta_x / planar if planar > 0.0 else 0.0,
-            "nearest-dynamic-obstacle-bearing-y": delta_y / planar if planar > 0.0 else 0.0,
-        }
+            ranked.append((clearance, centre))
+        ranked.sort(key=lambda pair: pair[0])
+
+        features: dict[str, float] = {"dynamic-obstacle-count": float(timeline.obstacle_count)}
+        features.update(_obstacle_block("nearest-dynamic-obstacle", ranked[0], observed_pose))
+        if len(ranked) >= 2:
+            features.update(_obstacle_block("second-nearest-dynamic-obstacle", ranked[1], observed_pose))
+        return features
 
     def _apply_sensor_noise(self, state: RoutePolicyEnvState) -> tuple[Pose3D, Pose3D]:
         """Return the observed ``(pose, goal)`` with sensor noise applied."""
@@ -446,6 +442,24 @@ def _pose_from_value(value: Any, *, template: Pose3D | None = None) -> Pose3D:
             frame_id=template.frame_id if template is not None else "world",
         )
     raise TypeError("value cannot be converted to Pose3D")
+
+
+def _obstacle_block(
+    prefix: str,
+    ranked_entry: tuple[float, tuple[float, float, float]],
+    observed_pose: Pose3D,
+) -> dict[str, float]:
+    clearance, centre = ranked_entry
+    delta_x = float(centre[0] - observed_pose.position[0])
+    delta_y = float(centre[1] - observed_pose.position[1])
+    planar = math.hypot(delta_x, delta_y)
+    bearing = math.atan2(delta_y, delta_x) if planar > 0.0 else 0.0
+    return {
+        f"{prefix}-distance-meters": float(clearance),
+        f"{prefix}-bearing-radians": bearing,
+        f"{prefix}-bearing-x": delta_x / planar if planar > 0.0 else 0.0,
+        f"{prefix}-bearing-y": delta_y / planar if planar > 0.0 else 0.0,
+    }
 
 
 def _pose_features(prefix: str, pose: Pose3D) -> dict[str, float]:

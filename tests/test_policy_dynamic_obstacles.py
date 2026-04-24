@@ -306,6 +306,77 @@ def test_gym_adapter_obstacle_features_respect_bearing_signs() -> None:
     assert math.isclose(observation["nearest-dynamic-obstacle-bearing-radians"], math.pi, abs_tol=1e-9)
 
 
+def test_gym_adapter_surfaces_second_nearest_obstacle_when_multi_agent() -> None:
+    timeline = DynamicObstacleTimeline(
+        timeline_id="multi-agent",
+        obstacles=(
+            DynamicObstacle(
+                obstacle_id="close-east",
+                waypoints=(DynamicObstacleWaypoint(step_index=0, position=(0.5, 0.0, 0.0)),),
+                radius_meters=0.1,
+            ),
+            DynamicObstacle(
+                obstacle_id="far-north",
+                waypoints=(DynamicObstacleWaypoint(step_index=0, position=(0.0, 1.5, 0.0)),),
+                radius_meters=0.1,
+            ),
+        ),
+    )
+    env = HeadlessPhysicalAIEnvironment(_unit_catalog(), dynamic_obstacles=timeline)
+    adapter = RoutePolicyGymAdapter(
+        env,
+        RoutePolicyEnvConfig(scene_id="unit-scene", max_steps=4, goal_tolerance_meters=0.02),
+    )
+
+    from gs_sim2real.sim import Pose3D
+
+    adapter.reset(seed=5, goal=(0.3, 0.0, 0.0))
+    adapter._state = RoutePolicyEnvState(  # type: ignore[attr-defined]
+        scene_id=adapter.state.scene_id,
+        episode_index=adapter.state.episode_index,
+        step_index=0,
+        pose=Pose3D(position=(0.0, 0.0, 0.0), orientation_xyzw=(0.0, 0.0, 0.0, 1.0)),
+        goal=adapter.state.goal,
+        done=False,
+    )
+    observation = adapter._observation_features(adapter.state)
+
+    # count still counts every obstacle on the timeline
+    assert math.isclose(observation["dynamic-obstacle-count"], 2.0)
+    # nearest = close-east at (0.5, 0, 0), clearance 0.5 - 0.1 = 0.4, bearing on +x axis
+    assert math.isclose(observation["nearest-dynamic-obstacle-distance-meters"], 0.4, abs_tol=1e-9)
+    assert math.isclose(observation["nearest-dynamic-obstacle-bearing-x"], 1.0, abs_tol=1e-9)
+    assert math.isclose(observation["nearest-dynamic-obstacle-bearing-y"], 0.0, abs_tol=1e-9)
+    # second-nearest = far-north at (0, 1.5, 0), clearance 1.5 - 0.1 = 1.4, bearing on +y axis
+    assert math.isclose(observation["second-nearest-dynamic-obstacle-distance-meters"], 1.4, abs_tol=1e-9)
+    assert math.isclose(observation["second-nearest-dynamic-obstacle-bearing-x"], 0.0, abs_tol=1e-9)
+    assert math.isclose(observation["second-nearest-dynamic-obstacle-bearing-y"], 1.0, abs_tol=1e-9)
+    assert math.isclose(observation["second-nearest-dynamic-obstacle-bearing-radians"], math.pi / 2.0, abs_tol=1e-9)
+
+
+def test_gym_adapter_omits_second_nearest_block_when_only_one_obstacle() -> None:
+    timeline = DynamicObstacleTimeline(
+        timeline_id="solo",
+        obstacles=(
+            DynamicObstacle(
+                obstacle_id="alone",
+                waypoints=(DynamicObstacleWaypoint(step_index=0, position=(0.5, 0.0, 0.0)),),
+                radius_meters=0.1,
+            ),
+        ),
+    )
+    env = HeadlessPhysicalAIEnvironment(_unit_catalog(), dynamic_obstacles=timeline)
+    adapter = RoutePolicyGymAdapter(
+        env,
+        RoutePolicyEnvConfig(scene_id="unit-scene", max_steps=4, goal_tolerance_meters=0.02),
+    )
+    observation, _ = adapter.reset(seed=13, goal=(0.3, 0.0, 0.0))
+
+    assert "nearest-dynamic-obstacle-distance-meters" in observation
+    assert "second-nearest-dynamic-obstacle-distance-meters" not in observation
+    assert "second-nearest-dynamic-obstacle-bearing-x" not in observation
+
+
 def test_trajectory_score_uses_per_step_obstacle_positions() -> None:
     # Obstacle moves from (0.3, 0, 0) at step 0 to (-10, 0, 0) at step 1,
     # so only the first pose of a two-pose trajectory is blocked.
