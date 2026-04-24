@@ -225,6 +225,104 @@ def test_render_raw_sensor_noise_profile_markdown_includes_fields() -> None:
     assert "| note | spec-sheet |" in text
 
 
+def _imu_observation() -> Observation:
+    angular = np.array([0.01, -0.02, 0.03], dtype=np.float32)
+    linear = np.array([0.5, 9.81, -0.1], dtype=np.float32)
+    angular_bytes = angular.tobytes()
+    linear_bytes = linear.tobytes()
+    outputs = {
+        "mode": "imu-stub",
+        "angular-velocity": {
+            "encoding": "float32-le-xyz",
+            "unit": "rad/s",
+            "angularVelocityBase64": base64.b64encode(angular_bytes).decode("ascii"),
+            "byteLength": len(angular_bytes),
+        },
+        "linear-acceleration": {
+            "encoding": "float32-le-xyz",
+            "unit": "m/s^2",
+            "linearAccelerationBase64": base64.b64encode(linear_bytes).decode("ascii"),
+            "byteLength": len(linear_bytes),
+        },
+    }
+    return Observation(sensor_id="imu-proxy", pose=_unit_pose(), outputs=outputs)
+
+
+def test_raw_sensor_noise_profile_json_round_trips_imu_fields(tmp_path: Path) -> None:
+    profile = RawSensorNoiseProfile(
+        profile_id="imu-unit",
+        imu_angular_velocity_std_rad_per_sec=0.02,
+        imu_linear_acceleration_std_m_per_sec_sq=0.1,
+    )
+    path = write_raw_sensor_noise_profile_json(tmp_path / "imu.json", profile)
+    loaded = load_raw_sensor_noise_profile_json(path)
+    assert loaded == profile
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    assert payload["imuAngularVelocityStdRadPerSec"] == 0.02
+    assert payload["imuLinearAccelerationStdMPerSecSq"] == 0.1
+
+
+def test_raw_sensor_noise_profile_rejects_negative_imu_std() -> None:
+    with pytest.raises(ValueError):
+        RawSensorNoiseProfile(profile_id="bad", imu_angular_velocity_std_rad_per_sec=-0.1)
+    with pytest.raises(ValueError):
+        RawSensorNoiseProfile(profile_id="bad", imu_linear_acceleration_std_m_per_sec_sq=float("nan"))
+
+
+def test_apply_raw_sensor_noise_perturbs_imu_vectors_and_is_deterministic() -> None:
+    observation = _imu_observation()
+    profile = RawSensorNoiseProfile(
+        profile_id="imu-noise",
+        imu_angular_velocity_std_rad_per_sec=0.01,
+        imu_linear_acceleration_std_m_per_sec_sq=0.05,
+    )
+    rng1 = raw_sensor_noise_rng(
+        base_seed=7, profile_id=profile.profile_id, sensor_id="imu-proxy", request_index=0, kind="obs"
+    )
+    rng2 = raw_sensor_noise_rng(
+        base_seed=7, profile_id=profile.profile_id, sensor_id="imu-proxy", request_index=0, kind="obs"
+    )
+    first = apply_raw_sensor_noise_to_observation(observation, profile, rng=rng1)
+    second = apply_raw_sensor_noise_to_observation(observation, profile, rng=rng2)
+
+    assert (
+        first.outputs["angular-velocity"]["angularVelocityBase64"]
+        == second.outputs["angular-velocity"]["angularVelocityBase64"]
+    )
+    assert (
+        first.outputs["linear-acceleration"]["linearAccelerationBase64"]
+        == second.outputs["linear-acceleration"]["linearAccelerationBase64"]
+    )
+
+    perturbed_angular = np.frombuffer(
+        base64.b64decode(first.outputs["angular-velocity"]["angularVelocityBase64"]),
+        dtype="<f4",
+    )
+    original_angular = np.frombuffer(
+        base64.b64decode(observation.outputs["angular-velocity"]["angularVelocityBase64"]),
+        dtype="<f4",
+    )
+    assert perturbed_angular.shape == (3,)
+    assert not np.array_equal(perturbed_angular, original_angular)
+
+    perturbed_linear = np.frombuffer(
+        base64.b64decode(first.outputs["linear-acceleration"]["linearAccelerationBase64"]),
+        dtype="<f4",
+    )
+    assert perturbed_linear.shape == (3,)
+
+
+def test_render_raw_sensor_noise_profile_markdown_includes_imu_sigmas() -> None:
+    profile = RawSensorNoiseProfile(
+        profile_id="imu-md",
+        imu_angular_velocity_std_rad_per_sec=0.05,
+        imu_linear_acceleration_std_m_per_sec_sq=0.25,
+    )
+    text = render_raw_sensor_noise_profile_markdown(profile)
+    assert "IMU angular velocity σ (rad/s): 0.05" in text
+    assert "IMU linear acceleration σ (m/s²): 0.25" in text
+
+
 class _IdentityRenderer:
     def can_render(self, scene: object, request: ObservationRequest) -> bool:  # noqa: D401
         return True

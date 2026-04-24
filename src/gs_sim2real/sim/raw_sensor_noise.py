@@ -46,7 +46,7 @@ RAW_SENSOR_NOISE_PROFILE_VERSION = "gs-mapper-raw-sensor-noise-profile/v1"
 
 @dataclass(frozen=True, slots=True)
 class RawSensorNoiseProfile:
-    """Gaussian noise budget for raw camera / depth / LiDAR observations.
+    """Gaussian noise budget for raw camera / depth / LiDAR / IMU observations.
 
     All ``*_std`` values are interpreted as the standard deviation of a
     zero-mean Gaussian applied additively to the respective quantity. A
@@ -59,12 +59,19 @@ class RawSensorNoiseProfile:
       advertises one so validity masks stay meaningful.
     - ``lidar_range_std_meters`` perturbs each LiDAR ray range. Negative
       draws are clipped to zero so ranges stay physical.
+    - ``imu_angular_velocity_std_rad_per_sec`` perturbs the three-axis
+      ``angular-velocity`` IMU block when one is present in the
+      observation outputs. Additive, no clipping.
+    - ``imu_linear_acceleration_std_m_per_sec_sq`` perturbs the three-axis
+      ``linear-acceleration`` IMU block. Additive, no clipping.
     """
 
     profile_id: str
     rgb_intensity_std: float = 0.0
     depth_range_std_meters: float = 0.0
     lidar_range_std_meters: float = 0.0
+    imu_angular_velocity_std_rad_per_sec: float = 0.0
+    imu_linear_acceleration_std_m_per_sec_sq: float = 0.0
     metadata: Mapping[str, Any] = field(default_factory=dict)
     version: str = RAW_SENSOR_NOISE_PROFILE_VERSION
 
@@ -74,11 +81,23 @@ class RawSensorNoiseProfile:
         _non_negative_float(self.rgb_intensity_std, "rgb_intensity_std")
         _non_negative_float(self.depth_range_std_meters, "depth_range_std_meters")
         _non_negative_float(self.lidar_range_std_meters, "lidar_range_std_meters")
+        _non_negative_float(
+            self.imu_angular_velocity_std_rad_per_sec,
+            "imu_angular_velocity_std_rad_per_sec",
+        )
+        _non_negative_float(
+            self.imu_linear_acceleration_std_m_per_sec_sq,
+            "imu_linear_acceleration_std_m_per_sec_sq",
+        )
 
     @property
     def is_noise_free(self) -> bool:
         return (
-            self.rgb_intensity_std == 0.0 and self.depth_range_std_meters == 0.0 and self.lidar_range_std_meters == 0.0
+            self.rgb_intensity_std == 0.0
+            and self.depth_range_std_meters == 0.0
+            and self.lidar_range_std_meters == 0.0
+            and self.imu_angular_velocity_std_rad_per_sec == 0.0
+            and self.imu_linear_acceleration_std_m_per_sec_sq == 0.0
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -89,6 +108,8 @@ class RawSensorNoiseProfile:
             "rgbIntensityStd": float(self.rgb_intensity_std),
             "depthRangeStdMeters": float(self.depth_range_std_meters),
             "lidarRangeStdMeters": float(self.lidar_range_std_meters),
+            "imuAngularVelocityStdRadPerSec": float(self.imu_angular_velocity_std_rad_per_sec),
+            "imuLinearAccelerationStdMPerSecSq": float(self.imu_linear_acceleration_std_m_per_sec_sq),
             "metadata": _json_mapping(self.metadata),
         }
 
@@ -127,6 +148,8 @@ def raw_sensor_noise_profile_from_dict(payload: Mapping[str, Any]) -> RawSensorN
         rgb_intensity_std=float(payload.get("rgbIntensityStd", 0.0)),
         depth_range_std_meters=float(payload.get("depthRangeStdMeters", 0.0)),
         lidar_range_std_meters=float(payload.get("lidarRangeStdMeters", 0.0)),
+        imu_angular_velocity_std_rad_per_sec=float(payload.get("imuAngularVelocityStdRadPerSec", 0.0)),
+        imu_linear_acceleration_std_m_per_sec_sq=float(payload.get("imuLinearAccelerationStdMPerSecSq", 0.0)),
         metadata=_json_mapping(_mapping(payload.get("metadata", {}), "metadata")),
         version=version,
     )
@@ -140,6 +163,8 @@ def render_raw_sensor_noise_profile_markdown(profile: RawSensorNoiseProfile) -> 
         f"- RGB intensity σ (0-255): {profile.rgb_intensity_std}",
         f"- Depth σ (m): {profile.depth_range_std_meters}",
         f"- LiDAR range σ (m): {profile.lidar_range_std_meters}",
+        f"- IMU angular velocity σ (rad/s): {profile.imu_angular_velocity_std_rad_per_sec}",
+        f"- IMU linear acceleration σ (m/s²): {profile.imu_linear_acceleration_std_m_per_sec_sq}",
         f"- Noise free: {'yes' if profile.is_noise_free else 'no'}",
     ]
     if profile.metadata:
@@ -203,6 +228,21 @@ def apply_raw_sensor_noise_to_observation(
     ranges_block = outputs.get("ranges")
     if isinstance(ranges_block, Mapping) and profile.lidar_range_std_meters > 0.0:
         outputs["ranges"] = _perturb_ranges_block(ranges_block, profile.lidar_range_std_meters, rng)
+
+    angular_block = outputs.get("angular-velocity")
+    if isinstance(angular_block, Mapping) and profile.imu_angular_velocity_std_rad_per_sec > 0.0:
+        outputs["angular-velocity"] = _perturb_imu_vector_block(
+            angular_block, "angularVelocityBase64", profile.imu_angular_velocity_std_rad_per_sec, rng
+        )
+
+    linear_block = outputs.get("linear-acceleration")
+    if isinstance(linear_block, Mapping) and profile.imu_linear_acceleration_std_m_per_sec_sq > 0.0:
+        outputs["linear-acceleration"] = _perturb_imu_vector_block(
+            linear_block,
+            "linearAccelerationBase64",
+            profile.imu_linear_acceleration_std_m_per_sec_sq,
+            rng,
+        )
 
     return Observation(sensor_id=observation.sensor_id, pose=observation.pose, outputs=outputs)
 
@@ -293,6 +333,26 @@ def _perturb_ranges_block(block: Mapping[str, Any], std: float, rng: random.Rand
     return {
         **block,
         "rangesBase64": base64.b64encode(encoded).decode("ascii"),
+        "byteLength": len(encoded),
+    }
+
+
+def _perturb_imu_vector_block(
+    block: Mapping[str, Any],
+    payload_key: str,
+    std: float,
+    rng: random.Random,
+) -> dict[str, Any]:
+    payload = block.get(payload_key)
+    if not isinstance(payload, str):
+        return dict(block)
+    values = np.frombuffer(base64.b64decode(payload.encode("ascii")), dtype="<f4").copy()
+    noise = _sample_gaussian_array(values.shape, std, rng).astype(np.float32)
+    noisy = (values + noise).astype(np.float32)
+    encoded = noisy.tobytes()
+    return {
+        **block,
+        payload_key: base64.b64encode(encoded).decode("ascii"),
         "byteLength": len(encoded),
     }
 

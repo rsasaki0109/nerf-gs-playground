@@ -132,6 +132,16 @@
             ],
             "sensorId": "lidar-ray-proxy",
             "status": "ready-via-depth-rays"
+          },
+          {
+            "description": "IMU proxy placeholder: the headless env has no physics layer, so render_observation returns a metadata-only response until a downstream renderer emits numeric readings. Raw-sensor noise profiles already accept IMU σ fields and perturb matching outputs if a future renderer produces them.",
+            "modality": "imu",
+            "outputs": [
+              "angular-velocity",
+              "linear-acceleration"
+            ],
+            "sensorId": "imu-proxy",
+            "status": "placeholder-metadata-only"
           }
         ]
       },
@@ -266,6 +276,16 @@
             ],
             "sensorId": "lidar-ray-proxy",
             "status": "ready-via-depth-rays"
+          },
+          {
+            "description": "IMU proxy placeholder: the headless env has no physics layer, so render_observation returns a metadata-only response until a downstream renderer emits numeric readings. Raw-sensor noise profiles already accept IMU σ fields and perturb matching outputs if a future renderer produces them.",
+            "modality": "imu",
+            "outputs": [
+              "angular-velocity",
+              "linear-acceleration"
+            ],
+            "sensorId": "imu-proxy",
+            "status": "placeholder-metadata-only"
           }
         ]
       },
@@ -399,6 +419,16 @@
             ],
             "sensorId": "lidar-ray-proxy",
             "status": "ready-via-depth-rays"
+          },
+          {
+            "description": "IMU proxy placeholder: the headless env has no physics layer, so render_observation returns a metadata-only response until a downstream renderer emits numeric readings. Raw-sensor noise profiles already accept IMU σ fields and perturb matching outputs if a future renderer produces them.",
+            "modality": "imu",
+            "outputs": [
+              "angular-velocity",
+              "linear-acceleration"
+            ],
+            "sensorId": "imu-proxy",
+            "status": "placeholder-metadata-only"
           }
         ]
       },
@@ -560,6 +590,16 @@
             ],
             "sensorId": "lidar-ray-proxy",
             "status": "ready-via-depth-rays"
+          },
+          {
+            "description": "IMU proxy placeholder: the headless env has no physics layer, so render_observation returns a metadata-only response until a downstream renderer emits numeric readings. Raw-sensor noise profiles already accept IMU σ fields and perturb matching outputs if a future renderer produces them.",
+            "modality": "imu",
+            "outputs": [
+              "angular-velocity",
+              "linear-acceleration"
+            ],
+            "sensorId": "imu-proxy",
+            "status": "placeholder-metadata-only"
           }
         ]
       },
@@ -722,6 +762,16 @@
             ],
             "sensorId": "lidar-ray-proxy",
             "status": "ready-via-depth-rays"
+          },
+          {
+            "description": "IMU proxy placeholder: the headless env has no physics layer, so render_observation returns a metadata-only response until a downstream renderer emits numeric readings. Raw-sensor noise profiles already accept IMU σ fields and perturb matching outputs if a future renderer produces them.",
+            "modality": "imu",
+            "outputs": [
+              "angular-velocity",
+              "linear-acceleration"
+            ],
+            "sensorId": "imu-proxy",
+            "status": "placeholder-metadata-only"
           }
         ]
       },
@@ -883,6 +933,16 @@
             ],
             "sensorId": "lidar-ray-proxy",
             "status": "ready-via-depth-rays"
+          },
+          {
+            "description": "IMU proxy placeholder: the headless env has no physics layer, so render_observation returns a metadata-only response until a downstream renderer emits numeric readings. Raw-sensor noise profiles already accept IMU σ fields and perturb matching outputs if a future renderer produces them.",
+            "modality": "imu",
+            "outputs": [
+              "angular-velocity",
+              "linear-acceleration"
+            ],
+            "sensorId": "imu-proxy",
+            "status": "placeholder-metadata-only"
           }
         ]
       },
@@ -1044,6 +1104,16 @@
             ],
             "sensorId": "lidar-ray-proxy",
             "status": "ready-via-depth-rays"
+          },
+          {
+            "description": "IMU proxy placeholder: the headless env has no physics layer, so render_observation returns a metadata-only response until a downstream renderer emits numeric readings. Raw-sensor noise profiles already accept IMU σ fields and perturb matching outputs if a future renderer produces them.",
+            "modality": "imu",
+            "outputs": [
+              "angular-velocity",
+              "linear-acceleration"
+            ],
+            "sensorId": "imu-proxy",
+            "status": "placeholder-metadata-only"
           }
         ]
       },
@@ -1206,6 +1276,16 @@
             ],
             "sensorId": "lidar-ray-proxy",
             "status": "ready-via-depth-rays"
+          },
+          {
+            "description": "IMU proxy placeholder: the headless env has no physics layer, so render_observation returns a metadata-only response until a downstream renderer emits numeric readings. Raw-sensor noise profiles already accept IMU σ fields and perturb matching outputs if a future renderer produces them.",
+            "modality": "imu",
+            "outputs": [
+              "angular-velocity",
+              "linear-acceleration"
+            ],
+            "sensorId": "imu-proxy",
+            "status": "placeholder-metadata-only"
           }
         ]
       },
