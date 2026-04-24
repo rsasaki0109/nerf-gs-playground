@@ -813,6 +813,37 @@ runner = DynamicObstacle(
 - `second-nearest-dynamic-obstacle-distance-meters`, `second-nearest-dynamic-obstacle-bearing-radians`, `second-nearest-dynamic-obstacle-bearing-x`, `second-nearest-dynamic-obstacle-bearing-y` — same four features for the second-closest obstacle. Emitted only when at least two obstacles are on the timeline so multi-agent scenarios let a policy tell apart a single-threat lane from a flanked one; stays omitted when only one obstacle is configured.
 - `nearest-dynamic-obstacle-reactive-mode` and (when the second slot is emitted) `second-nearest-dynamic-obstacle-reactive-mode` — scalar reactive indicator for each surfaced obstacle: `+1.0` when the obstacle chases the agent (`chase_target_agent`), `-1.0` when it flees (`flee_from_agent`), `0.0` for static waypoint obstacles. Lets a policy condition on the threat mode directly instead of inferring it from distance derivatives.
 
+**Obstacle policies (multi-agent seam)**: a `DynamicObstacle` can carry an opt-in `policy: ObstaclePolicy` callable (runtime-only — *not* serialised in the timeline JSON, so v1 scenario CI artifacts keep loading unchanged). When set, `position_at_step` builds an `ObstaclePolicyContext` (own id, step index, default-fallback position, agent position, peer obstacles' previous-step positions) and uses the policy's `next_position` instead of the chase / flee / waypoint logic. Four reference implementations ship: `WaypointInterpolationObstaclePolicy`, `ChaseAgentObstaclePolicy`, and `FleeAgentObstaclePolicy` replay the existing inline behaviours bit-for-bit; `MaintainSeparationObstaclePolicy` wraps an inner policy and pushes the result outward when any peer is closer than `min_separation_meters`. To resolve a multi-obstacle step in one pass without dependency cycles, call `timeline.step_positions(step_index, agent_position=..., previous_positions=...)` — each obstacle sees its peers' resolved positions from the previous step. `timeline.blocking_obstacle(...)` accepts the same `peer_positions` keyword for collision queries that already know the prior step's layout.
+
+```python
+from gs_sim2real.sim import (
+    ChaseAgentObstaclePolicy,
+    DynamicObstacle,
+    DynamicObstacleTimeline,
+    DynamicObstacleWaypoint,
+    MaintainSeparationObstaclePolicy,
+)
+
+inner = ChaseAgentObstaclePolicy(start_position=(3.0, 0.0, 0.0), speed_m_per_step=0.5)
+chaser = DynamicObstacle(
+    obstacle_id="chaser",
+    waypoints=(DynamicObstacleWaypoint(step_index=0, position=(3.0, 0.0, 0.0)),),
+    radius_meters=0.3,
+    chase_target_agent=True,
+    chase_speed_m_per_step=0.5,
+    policy=MaintainSeparationObstaclePolicy(inner, min_separation_meters=1.0),
+)
+peer = DynamicObstacle(
+    obstacle_id="peer",
+    waypoints=(DynamicObstacleWaypoint(step_index=0, position=(2.5, 0.0, 0.0)),),
+    radius_meters=0.3,
+)
+timeline = DynamicObstacleTimeline(timeline_id="duo", obstacles=(chaser, peer))
+
+state = timeline.step_positions(0, agent_position=(0.0, 0.0, 0.0))
+state = timeline.step_positions(1, agent_position=(0.0, 0.0, 0.0), previous_positions=state)
+```
+
 The entire block is omitted when no timeline is configured, so existing scenario-set fixtures keep their exact feature dict.
 
 For CI-sized execution, split the generated scenario sets into shard scenario-set files. Each shard is still a normal `RoutePolicyScenarioSet`, so CI jobs can run shards with the existing `route-policy-scenario-set` command. The final merge step reads the shard run JSON files, collects every per-scenario benchmark report, and rebuilds one global history gate.
