@@ -34,6 +34,8 @@ import math
 from pathlib import Path
 from typing import Any
 
+from .policy_obstacle import ObstaclePolicy, ObstaclePolicyContext
+
 
 ROUTE_POLICY_DYNAMIC_OBSTACLE_VERSION = "gs-mapper-route-policy-dynamic-obstacle/v1"
 ROUTE_POLICY_DYNAMIC_OBSTACLE_TIMELINE_VERSION = "gs-mapper-route-policy-dynamic-obstacle-timeline/v1"
@@ -89,6 +91,7 @@ class DynamicObstacle:
     chase_speed_m_per_step: float = 0.0
     metadata: Mapping[str, Any] = field(default_factory=dict)
     version: str = ROUTE_POLICY_DYNAMIC_OBSTACLE_VERSION
+    policy: ObstaclePolicy | None = field(default=None, compare=False, repr=False)
 
     def __post_init__(self) -> None:
         if not str(self.obstacle_id):
@@ -120,19 +123,41 @@ class DynamicObstacle:
         step_index: int,
         *,
         agent_position: Sequence[float] | None = None,
+        peer_positions: Mapping[str, Sequence[float]] | None = None,
     ) -> tuple[float, float, float]:
         """Return the interpolated world-frame position at ``step_index``.
 
-        When ``chase_target_agent`` is set and ``agent_position`` is provided
-        the obstacle ignores later waypoints and walks from ``waypoints[0]``
-        toward the agent, capped at ``chase_speed_m_per_step * max(0,
-        step_index)`` metres of travel. ``flee_from_agent`` uses the same
-        speed magnitude but walks away from the agent, along the ``waypoint
-        → agent`` direction flipped through ``waypoint[0]`` — no clamp, the
-        obstacle just keeps retreating. Both reactive modes fall back to
-        ``waypoints[0]`` when ``agent_position`` is ``None`` so headless
-        renderers still see a stable position.
+        When :attr:`policy` is set it takes precedence over the legacy
+        chase / flee / waypoint logic: the obstacle builds an
+        :class:`ObstaclePolicyContext` (including ``peer_positions`` —
+        usually the previous-step resolved positions of sibling
+        obstacles) and returns the policy's chosen position. When
+        ``policy`` is ``None`` the existing chase / flee / waypoint
+        behaviour is used unchanged so v1 scenario JSON keeps loading
+        without modification.
         """
+
+        if self.policy is not None:
+            base_position = self._fallback_position(step_index, agent_position)
+            context = ObstaclePolicyContext(
+                obstacle_id=self.obstacle_id,
+                step_index=int(step_index),
+                current_position=base_position,
+                agent_position=(tuple(float(c) for c in agent_position) if agent_position is not None else None),
+                peer_positions={
+                    str(peer_id): tuple(float(c) for c in position)
+                    for peer_id, position in (peer_positions or {}).items()
+                },
+            )
+            return tuple(float(c) for c in self.policy(context).next_position)
+        return self._fallback_position(step_index, agent_position)
+
+    def _fallback_position(
+        self,
+        step_index: int,
+        agent_position: Sequence[float] | None,
+    ) -> tuple[float, float, float]:
+        """Resolve the legacy chase / flee / waypoint position at ``step_index``."""
 
         if self.chase_target_agent:
             return self._chase_position(step_index, agent_position)
@@ -144,10 +169,16 @@ class DynamicObstacle:
         self,
         pose_position: Sequence[float],
         step_index: int,
+        *,
+        peer_positions: Mapping[str, Sequence[float]] | None = None,
     ) -> bool:
         """Return True when ``pose_position`` is inside the obstacle sphere at ``step_index``."""
 
-        centre = self.position_at_step(step_index, agent_position=pose_position)
+        centre = self.position_at_step(
+            step_index,
+            agent_position=pose_position,
+            peer_positions=peer_positions,
+        )
         return math.dist(tuple(float(c) for c in pose_position), centre) <= self.radius_meters
 
     def to_dict(self) -> dict[str, Any]:
@@ -257,13 +288,63 @@ class DynamicObstacleTimeline:
         self,
         pose_position: Sequence[float],
         step_index: int,
+        *,
+        peer_positions: Mapping[str, Sequence[float]] | None = None,
     ) -> DynamicObstacle | None:
-        """Return the first obstacle that contains ``pose_position`` at ``step_index``."""
+        """Return the first obstacle that contains ``pose_position`` at ``step_index``.
+
+        When ``peer_positions`` is provided it is forwarded to each
+        obstacle so policy-driven obstacles see their sibling positions
+        from the previous step. The legacy fallback (chase / flee /
+        waypoint) ignores ``peer_positions``.
+        """
 
         for obstacle in self.obstacles:
-            if obstacle.contains(pose_position, step_index):
+            siblings = None
+            if peer_positions is not None:
+                siblings = {
+                    obstacle_id: position
+                    for obstacle_id, position in peer_positions.items()
+                    if obstacle_id != obstacle.obstacle_id
+                }
+            if obstacle.contains(pose_position, step_index, peer_positions=siblings):
                 return obstacle
         return None
+
+    def step_positions(
+        self,
+        step_index: int,
+        *,
+        agent_position: Sequence[float] | None = None,
+        previous_positions: Mapping[str, Sequence[float]] | None = None,
+    ) -> dict[str, tuple[float, float, float]]:
+        """Resolve every obstacle's position at ``step_index`` in one pass.
+
+        Each obstacle's policy sees the *previous* step's resolved peer
+        positions (passed in via ``previous_positions``); using
+        previous-step state avoids the dependency cycle that would
+        appear if siblings consulted each other within the same step.
+        Callers typically thread the return value back in as
+        ``previous_positions`` for the next step.
+        """
+
+        previous = {
+            str(obstacle_id): tuple(float(c) for c in position)
+            for obstacle_id, position in (previous_positions or {}).items()
+        }
+        resolved: dict[str, tuple[float, float, float]] = {}
+        for obstacle in self.obstacles:
+            siblings = {
+                obstacle_id: position
+                for obstacle_id, position in previous.items()
+                if obstacle_id != obstacle.obstacle_id
+            }
+            resolved[obstacle.obstacle_id] = obstacle.position_at_step(
+                step_index,
+                agent_position=agent_position,
+                peer_positions=siblings,
+            )
+        return resolved
 
     def to_dict(self) -> dict[str, Any]:
         return {
