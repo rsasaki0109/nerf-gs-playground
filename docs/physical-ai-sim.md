@@ -1236,6 +1236,25 @@ A common task is "evaluate a route policy against noisy pose + obstacles that re
 
 Determinism stays intact across all three knobs: each noise profile's RNG is seeded from `(reset_seed | profile_id | episode_index | step_index | kind)`, and each reactive obstacle is a pure function of the current agent position and the step index. A scenario rerun under the same seeds produces bit-identical observations and bit-identical feature dicts.
 
+## Real-vs-sim correlation
+
+`gs_sim2real.robotics.rosbag_correlation` closes the loop between a headless rollout and the recorded rosbag2 it was meant to model. `read_navsat_pose_stream(bag_paths, *, topic=None, reference_origin_wgs84=None)` reuses the same `rosbags`/`AnyReader` machinery that `MCDLoader` already depends on (so zstd-compressed sqlite3 bags work without decompression) and converts the chosen `sensor_msgs/NavSatFix` topic into a metric local-ENU `BagPoseStream`. The first valid fix anchors the ENU origin unless `reference_origin_wgs84=(lat, lon, alt)` pins one explicitly so multiple bags share the same frame. Placeholder fixes at `latitude == longitude == 0` are dropped during ingest.
+
+`correlate_against_sim_trajectory(bag_stream, sim_samples, *, max_match_dt_seconds=0.05)` performs a nearest-timestamp pairing between the bag samples and the sim trajectory (a sequence of `SimPoseSample` produced by a benchmark / scenario runner) and reduces per-pair translation errors into min / mean / max / p50 / p95 statistics inside `RealVsSimCorrelationReport`. Pairs whose clock skew exceeds `max_match_dt_seconds` are discarded so a stale-bag rollout cannot artificially inflate the matched-pair count. Heading-error means and maxima are emitted whenever the bag stream carries orientation (`read_navsat_pose_stream` leaves orientations `None` because NavSatFix has no attitude — a future `read_gsof_pose_stream` / `read_imu_pose_stream` slots in without changing the report shape).
+
+The CLI ships at `scripts/run_rosbag_correlation.py`:
+
+```bash
+python3 scripts/run_rosbag_correlation.py \
+    --bag data/autoware_leo_drive_bag1 \
+    --sim-rollout artifacts/rollout/bag1.jsonl \
+    --output artifacts/correlation/bag1.json \
+    --markdown artifacts/correlation/bag1.md \
+    --max-match-dt-seconds 0.05
+```
+
+The sim-rollout JSONL is one record per line with `timestampSeconds`, `position` (3-element list), and `orientationXyzw` (4-element list). The script writes the JSON report (with up to `--max-pairs-kept` evenly-strided `CorrelatedPosePair` entries embedded — pass `--no-pairs` to drop them entirely) and an optional Markdown summary suitable for PR / scenario-CI artifact display.
+
 ## Next Implementation Layer
 
 The scenario CI chain from matrix expansion through promotion-backed adoption is now covered by `scripts/smoke_route_policy_scenario_ci.py`, with both library API (`adopt_route_policy_scenario_ci_workflow`) and CLI surface (`gs-mapper route-policy-scenario-ci-workflow-adopt`). The review bundle is adoption-aware: passing `--adoption-report` to the review CLI (or `adoption=` to `build_route_policy_scenario_ci_review_artifact`) embeds the trigger mode, branches, and unified manual-vs-adopted YAML diff into the Pages-hosted bundle. The next useful layer is surfacing the reviews on the `/reviews/` Pages index so discovery no longer requires knowing the bundle URL in advance.
