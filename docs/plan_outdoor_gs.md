@@ -668,7 +668,7 @@ Production rerun は `scripts/collect_mcd_quality_runs.py --format gate --fail-o
 
 | Task | Why |
 | --- | --- |
-| Launch kit cleanup | Star を増やすには短い copy と画像が必要。 |
+| Launch kit cleanup | Star を増やすには短い copy と画像が必要。Env-hardening (pose + raw sensor noise / multi-agent dynamic obstacles) を technical / community copy に反映、Physical AI docs link + topics (`gsplat` / `scenario-ci` / `route-policy-benchmark`) 追加済み。残りは実スクリーンショット / 動画素材の差し替え。 |
 | Demo preview refresh | visual freshness と信頼性。Pages hero は PR #92 で live splat に切り替え済み、thumbnail 更新はまだ残っている。 |
 
 ## 13. Scope Boundaries

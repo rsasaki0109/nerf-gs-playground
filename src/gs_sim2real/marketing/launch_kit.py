@@ -13,6 +13,7 @@ DEFAULT_REPO_URL = "https://github.com/rsasaki0109/gs-mapper"
 DEFAULT_LIVE_VIEWER_URL = "https://rsasaki0109.github.io/gs-mapper/splat.html"
 DEFAULT_SPARK_VIEWER_URL = "https://rsasaki0109.github.io/gs-mapper/splat_spark.html"
 DEFAULT_WEBGPU_VIEWER_URL = "https://rsasaki0109.github.io/gs-mapper/splat_webgpu.html"
+DEFAULT_PHYSICAL_AI_DOC_URL = "https://github.com/rsasaki0109/gs-mapper/blob/main/docs/physical-ai-sim.md"
 DEFAULT_HERO_IMAGE = "images/demo-sweep/hero.gif"
 DEFAULT_SOCIAL_IMAGE_URL = "https://rsasaki0109.github.io/gs-mapper/images/demo-sweep/01_outdoor-demo.png"
 
@@ -134,6 +135,11 @@ def build_default_launch_kit() -> LaunchKit:
             "WebGPU viewer", DEFAULT_WEBGPU_VIEWER_URL, "GPU-sort viewer for Chrome, Edge, and WebGPU-enabled browsers."
         ),
         LaunchLink(
+            "Physical AI simulation contract",
+            DEFAULT_PHYSICAL_AI_DOC_URL,
+            "Scene contract, sensor noise profiles, dynamic obstacles, and scenario CI reference.",
+        ),
+        LaunchLink(
             "GitHub repository",
             DEFAULT_REPO_URL,
             "Source, Physical AI benchmark docs, external SLAM import docs, and tests.",
@@ -159,8 +165,10 @@ def build_default_launch_kit() -> LaunchKit:
                 "DUSt3R / MASt3R pose-free reconstructions, and MASt3R-SLAM / VGGT-SLAM 2.0 / Pi3 / "
                 "LoGeR artifacts into Gaussian-splat scenes and Physical AI policy benchmark artifacts.\n\n"
                 "It ships eight public comparison scenes, external SLAM dry-run manifests, route-policy "
-                "benchmarks, scenario matrix expansion, CI sharding, generated workflow validation, "
-                f"activation guards, and review bundles.\n\n{DEFAULT_REPO_URL}"
+                "benchmarks with pose and raw camera / depth / LiDAR noise profiles, dynamic-obstacle "
+                "timelines with multi-agent observation features, scenario matrix expansion, CI "
+                "sharding, generated workflow validation, activation guards, and review bundles.\n\n"
+                f"{DEFAULT_REPO_URL}"
             ),
         ),
         LaunchSnippet(
@@ -174,7 +182,10 @@ def build_default_launch_kit() -> LaunchKit:
                 "The current demo set compares supervised GNSS + LiDAR, DUSt3R, MASt3R, VGGT-SLAM 2.0, "
                 "and MASt3R-SLAM outputs on outdoor robotics scenes. The benchmark stack keeps dataset, "
                 "policy registry, scenario matrix, CI manifest, workflow validation, activation, and "
-                f"review publishing as separate testable artifacts.\n\nLive demo: {DEFAULT_LIVE_VIEWER_URL}\n"
+                "review publishing as separate testable artifacts, plus partial-information knobs "
+                "(pose / goal / heading noise, raw camera / depth / LiDAR noise, and dynamic "
+                f"obstacles with nearest + second-nearest features) for reactive-policy studies.\n\n"
+                f"Live demo: {DEFAULT_LIVE_VIEWER_URL}\n"
                 f"Repo: {DEFAULT_REPO_URL}"
             ),
         ),
@@ -261,6 +272,9 @@ def build_default_launch_kit() -> LaunchKit:
         "mast3r",
         "dust3r",
         "vggt-slam",
+        "gsplat",
+        "scenario-ci",
+        "route-policy-benchmark",
         "webgl",
         "webgpu",
     )
