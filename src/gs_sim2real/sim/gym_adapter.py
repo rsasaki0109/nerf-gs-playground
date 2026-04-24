@@ -9,6 +9,11 @@ from typing import Any
 
 from .interfaces import PhysicalAIEnvironment, Pose3D
 from .policy_feedback import RoutePolicySample, RouteRewardWeights, build_route_policy_sample
+from .policy_sensor_noise import (
+    RoutePolicySensorNoiseProfile,
+    apply_sensor_noise_to_pose,
+    sensor_noise_rng,
+)
 from .route_execution import rollout_route
 from .route_planning import RouteCandidate
 
@@ -30,6 +35,7 @@ class RoutePolicyEnvConfig:
     goal_reward: float = 1.0
     truncation_penalty: float = 0.0
     route_id_prefix: str = "policy-route"
+    sensor_noise_profile: RoutePolicySensorNoiseProfile | None = None
 
     def __post_init__(self) -> None:
         if int(self.max_steps) <= 0:
@@ -75,6 +81,7 @@ class RoutePolicyGymAdapter:
         self.config = config
         self._episode_index = -1
         self._state: RoutePolicyEnvState | None = None
+        self._reset_seed: int | None = None
 
     @property
     def state(self) -> RoutePolicyEnvState:
@@ -98,6 +105,7 @@ class RoutePolicyGymAdapter:
         pose = _pose_from_reset_payload(reset_payload)
         resolved_goal = self._resolve_goal(resolved_scene_id, pose=pose, seed=seed, goal=goal, options=reset_options)
         self._episode_index += 1
+        self._reset_seed = None if seed is None else int(seed)
         self._state = RoutePolicyEnvState(
             scene_id=resolved_scene_id,
             episode_index=self._episode_index,
@@ -191,8 +199,9 @@ class RoutePolicyGymAdapter:
         *,
         sample: RoutePolicySample | None = None,
     ) -> dict[str, float]:
+        observed_pose, observed_goal = self._apply_sensor_noise(state)
         max_steps = float(self.config.max_steps)
-        goal_distance = _pose_distance(state.pose, state.goal)
+        goal_distance = _pose_distance(observed_pose, observed_goal)
         features = {
             "episode-index": float(state.episode_index),
             "episode-step-index": float(state.step_index),
@@ -201,15 +210,45 @@ class RoutePolicyGymAdapter:
             "goal-distance-meters": goal_distance,
             "goal-tolerance-meters": float(self.config.goal_tolerance_meters),
             "goal-reached": _bool_feature(goal_distance <= self.config.goal_tolerance_meters),
-            **_pose_features("pose", state.pose),
-            **_pose_features("goal", state.goal),
-            "goal-delta-x": float(state.goal.position[0] - state.pose.position[0]),
-            "goal-delta-y": float(state.goal.position[1] - state.pose.position[1]),
-            "goal-delta-z": float(state.goal.position[2] - state.pose.position[2]),
+            **_pose_features("pose", observed_pose),
+            **_pose_features("goal", observed_goal),
+            "goal-delta-x": float(observed_goal.position[0] - observed_pose.position[0]),
+            "goal-delta-y": float(observed_goal.position[1] - observed_pose.position[1]),
+            "goal-delta-z": float(observed_goal.position[2] - observed_pose.position[2]),
         }
         if sample is not None:
             features.update(_prefixed("route", sample.observation.features))
         return _finite_features(features)
+
+    def _apply_sensor_noise(self, state: RoutePolicyEnvState) -> tuple[Pose3D, Pose3D]:
+        """Return the observed ``(pose, goal)`` with sensor noise applied."""
+
+        profile = self.config.sensor_noise_profile
+        if profile is None or profile.is_noise_free:
+            return state.pose, state.goal
+        pose_rng = sensor_noise_rng(
+            base_seed=self._reset_seed,
+            profile_id=profile.profile_id,
+            episode_index=state.episode_index,
+            step_index=state.step_index,
+            kind="pose",
+        )
+        observed_pose = apply_sensor_noise_to_pose(state.pose, profile, rng=pose_rng)
+        goal_rng = sensor_noise_rng(
+            base_seed=self._reset_seed,
+            profile_id=profile.profile_id,
+            episode_index=state.episode_index,
+            step_index=state.step_index,
+            kind="goal",
+        )
+        observed_goal = apply_sensor_noise_to_pose(
+            state.goal,
+            profile,
+            rng=goal_rng,
+            perturb_heading=False,
+            position_std_override=profile.goal_position_std_meters,
+        )
+        return observed_pose, observed_goal
 
     def _info(self, **extra: Any) -> dict[str, Any]:
         state = self.state

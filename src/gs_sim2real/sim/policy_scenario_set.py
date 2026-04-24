@@ -31,6 +31,7 @@ from .policy_benchmark_history import (
     write_route_policy_benchmark_history_json,
 )
 from .policy_quality import RoutePolicyQualityThresholds
+from .policy_sensor_noise import load_route_policy_sensor_noise_profile_json
 
 
 ROUTE_POLICY_SCENARIO_SET_VERSION = "gs-mapper-route-policy-scenario-set/v1"
@@ -50,6 +51,7 @@ class RoutePolicyScenarioSpec:
     max_steps: int | None = None
     site_url: str | None = None
     thresholds: RoutePolicyQualityThresholds | None = None
+    sensor_noise_profile_path: str | None = None
     metadata: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -76,6 +78,7 @@ class RoutePolicyScenarioSpec:
             "maxSteps": self.max_steps,
             "siteUrl": self.site_url,
             "thresholds": None if self.thresholds is None else self.thresholds.to_dict(),
+            "sensorNoiseProfilePath": self.sensor_noise_profile_path,
             "metadata": _json_mapping(self.metadata),
         }
 
@@ -351,6 +354,9 @@ def route_policy_scenario_spec_from_dict(payload: Mapping[str, Any]) -> RoutePol
         thresholds=None
         if thresholds_payload is None
         else _quality_thresholds_from_dict(_mapping(thresholds_payload, "thresholds")),
+        sensor_noise_profile_path=None
+        if payload.get("sensorNoiseProfilePath") is None
+        else str(payload["sensorNoiseProfilePath"]),
         metadata=_json_mapping(_mapping(payload.get("metadata", {}), "metadata")),
     )
 
@@ -487,11 +493,22 @@ def _run_scenario(
     goal_suite = load_route_policy_goal_suite_json(goal_suite_path) if goal_suite_path is not None else None
     scene_id = _resolve_scene_id(catalog, scenario.scene_id, goal_suite=goal_suite)
     max_steps = scenario.max_steps if scenario.max_steps is not None else scenario_set.max_steps
+    sensor_noise_profile_path = (
+        None
+        if scenario.sensor_noise_profile_path is None
+        else _resolve_path(base_path, scenario.sensor_noise_profile_path)
+    )
+    sensor_noise_profile = (
+        None
+        if sensor_noise_profile_path is None
+        else load_route_policy_sensor_noise_profile_json(sensor_noise_profile_path)
+    )
     adapter = RoutePolicyGymAdapter(
         HeadlessPhysicalAIEnvironment(catalog),
         RoutePolicyEnvConfig(
             scene_id=scene_id,
             max_steps=max_steps or RoutePolicyEnvConfig().max_steps,
+            sensor_noise_profile=sensor_noise_profile,
         ),
     )
     goals = _goals_from_goal_suite(catalog, scene_id, goal_suite)
