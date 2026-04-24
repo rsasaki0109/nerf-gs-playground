@@ -367,14 +367,22 @@ def render_route_policy_dynamic_obstacle_timeline_markdown(timeline: DynamicObst
         f"# Route Policy Dynamic Obstacle Timeline: {timeline.timeline_id}",
         f"- Obstacles: {timeline.obstacle_count}",
         "",
-        "| Obstacle | Radius (m) | Waypoints | First step | Last step |",
-        "| --- | ---: | ---: | ---: | ---: |",
+        "| Obstacle | Radius (m) | Waypoints | First step | Last step | Reactive mode | Speed (m/step) |",
+        "| --- | ---: | ---: | ---: | ---: | --- | ---: |",
     ]
     for obstacle in timeline.obstacles:
         first = obstacle.waypoints[0].step_index
         last = obstacle.waypoints[-1].step_index
+        if obstacle.chase_target_agent:
+            mode = "chase"
+        elif obstacle.flee_from_agent:
+            mode = "flee"
+        else:
+            mode = "waypoint"
+        speed = obstacle.chase_speed_m_per_step if mode != "waypoint" else 0.0
         lines.append(
-            f"| {obstacle.obstacle_id} | {obstacle.radius_meters} | {obstacle.waypoint_count} | {first} | {last} |"
+            f"| {obstacle.obstacle_id} | {obstacle.radius_meters} | {obstacle.waypoint_count} | "
+            f"{first} | {last} | {mode} | {speed} |"
         )
     return "\n".join(lines) + "\n"
 

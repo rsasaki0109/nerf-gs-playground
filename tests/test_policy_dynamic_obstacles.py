@@ -702,6 +702,38 @@ def test_reactive_mode_is_zero_for_static_waypoint_obstacles() -> None:
     assert "second-nearest-dynamic-obstacle-reactive-mode" not in observation
 
 
+def test_render_timeline_markdown_classifies_waypoint_chase_and_flee() -> None:
+    timeline = DynamicObstacleTimeline(
+        timeline_id="markdown-modes",
+        obstacles=(
+            _linear_obstacle("bollard", start=(0.0, 1.0, 0.0), end=(0.0, 1.0, 0.0)),
+            DynamicObstacle(
+                obstacle_id="hunter",
+                waypoints=(DynamicObstacleWaypoint(step_index=0, position=(2.0, 0.0, 0.0)),),
+                radius_meters=0.1,
+                chase_target_agent=True,
+                chase_speed_m_per_step=0.3,
+            ),
+            DynamicObstacle(
+                obstacle_id="runner",
+                waypoints=(DynamicObstacleWaypoint(step_index=0, position=(0.0, -2.0, 0.0)),),
+                radius_meters=0.1,
+                flee_from_agent=True,
+                chase_speed_m_per_step=0.2,
+            ),
+        ),
+    )
+
+    markdown = render_route_policy_dynamic_obstacle_timeline_markdown(timeline)
+    # The header mentions both new columns.
+    assert "Reactive mode" in markdown
+    assert "Speed (m/step)" in markdown
+    # Each obstacle lands on the expected classification with speed 0 for the static waypoint.
+    assert "| bollard | 0.1 | 2 | 0 | 10 | waypoint | 0.0 |" in markdown
+    assert "| hunter | 0.1 | 1 | 0 | 0 | chase | 0.3 |" in markdown
+    assert "| runner | 0.1 | 1 | 0 | 0 | flee | 0.2 |" in markdown
+
+
 def test_trajectory_score_uses_per_step_obstacle_positions() -> None:
     # Obstacle moves from (0.3, 0, 0) at step 0 to (-10, 0, 0) at step 1,
     # so only the first pose of a two-pose trajectory is blocked.
