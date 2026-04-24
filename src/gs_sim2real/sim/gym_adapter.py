@@ -242,14 +242,14 @@ class RoutePolicyGymAdapter:
         timeline = getattr(self.environment, "dynamic_obstacles", None)
         if timeline is None or timeline.obstacle_count == 0:
             return {}
-        ranked: list[tuple[float, tuple[float, float, float]]] = []
+        ranked: list[tuple[float, tuple[float, float, float], float]] = []
         observed_position = tuple(observed_pose.position)
         for obstacle in timeline.obstacles:
             centre = obstacle.position_at_step(state.step_index, agent_position=observed_position)
             distance = math.dist(observed_position, centre)
             clearance = max(0.0, distance - float(obstacle.radius_meters))
-            ranked.append((clearance, centre))
-        ranked.sort(key=lambda pair: pair[0])
+            ranked.append((clearance, centre, _obstacle_reactive_mode(obstacle)))
+        ranked.sort(key=lambda entry: entry[0])
 
         features: dict[str, float] = {"dynamic-obstacle-count": float(timeline.obstacle_count)}
         features.update(_obstacle_block("nearest-dynamic-obstacle", ranked[0], observed_pose))
@@ -447,10 +447,10 @@ def _pose_from_value(value: Any, *, template: Pose3D | None = None) -> Pose3D:
 
 def _obstacle_block(
     prefix: str,
-    ranked_entry: tuple[float, tuple[float, float, float]],
+    ranked_entry: tuple[float, tuple[float, float, float], float],
     observed_pose: Pose3D,
 ) -> dict[str, float]:
-    clearance, centre = ranked_entry
+    clearance, centre, reactive_mode = ranked_entry
     delta_x = float(centre[0] - observed_pose.position[0])
     delta_y = float(centre[1] - observed_pose.position[1])
     planar = math.hypot(delta_x, delta_y)
@@ -460,7 +460,18 @@ def _obstacle_block(
         f"{prefix}-bearing-radians": bearing,
         f"{prefix}-bearing-x": delta_x / planar if planar > 0.0 else 0.0,
         f"{prefix}-bearing-y": delta_y / planar if planar > 0.0 else 0.0,
+        f"{prefix}-reactive-mode": float(reactive_mode),
     }
+
+
+def _obstacle_reactive_mode(obstacle: Any) -> float:
+    """Return +1.0 when the obstacle chases the agent, -1.0 when it flees, 0.0 otherwise."""
+
+    if getattr(obstacle, "chase_target_agent", False):
+        return 1.0
+    if getattr(obstacle, "flee_from_agent", False):
+        return -1.0
+    return 0.0
 
 
 def _pose_features(prefix: str, pose: Pose3D) -> dict[str, float]:

@@ -626,6 +626,82 @@ def test_gym_adapter_feature_block_tracks_flee_obstacle_retreating() -> None:
     assert math.isclose(after_retreat["nearest-dynamic-obstacle-bearing-x"], 1.0, abs_tol=1e-9)
 
 
+def test_reactive_mode_feature_distinguishes_chase_flee_and_static() -> None:
+    timeline = DynamicObstacleTimeline(
+        timeline_id="reactive-mix",
+        obstacles=(
+            # Chase obstacle is closest (nearest) — mode +1.0 expected on nearest slot.
+            DynamicObstacle(
+                obstacle_id="chaser",
+                waypoints=(DynamicObstacleWaypoint(step_index=0, position=(0.5, 0.0, 0.0)),),
+                radius_meters=0.1,
+                chase_target_agent=True,
+                chase_speed_m_per_step=0.1,
+            ),
+            # Flee obstacle at mid distance — mode -1.0 on the second-nearest slot.
+            DynamicObstacle(
+                obstacle_id="runner",
+                waypoints=(DynamicObstacleWaypoint(step_index=0, position=(1.5, 0.0, 0.0)),),
+                radius_meters=0.1,
+                flee_from_agent=True,
+                chase_speed_m_per_step=0.1,
+            ),
+            # Static waypoint obstacle far away — never surfaces in the top-2 slots
+            # but still contributes to the count.
+            DynamicObstacle(
+                obstacle_id="stone",
+                waypoints=(DynamicObstacleWaypoint(step_index=0, position=(5.0, 0.0, 0.0)),),
+                radius_meters=0.1,
+            ),
+        ),
+    )
+    env = HeadlessPhysicalAIEnvironment(_unit_catalog(), dynamic_obstacles=timeline)
+    adapter = RoutePolicyGymAdapter(
+        env,
+        RoutePolicyEnvConfig(scene_id="unit-scene", max_steps=4, goal_tolerance_meters=0.02),
+    )
+
+    from gs_sim2real.sim import Pose3D
+
+    adapter.reset(seed=1, goal=(0.05, 0.0, 0.0))
+    adapter._state = RoutePolicyEnvState(  # type: ignore[attr-defined]
+        scene_id=adapter.state.scene_id,
+        episode_index=adapter.state.episode_index,
+        step_index=0,
+        pose=Pose3D(position=(0.0, 0.0, 0.0), orientation_xyzw=(0.0, 0.0, 0.0, 1.0)),
+        goal=adapter.state.goal,
+        done=False,
+    )
+    observation = adapter._observation_features(adapter.state)
+
+    assert math.isclose(observation["dynamic-obstacle-count"], 3.0)
+    assert math.isclose(observation["nearest-dynamic-obstacle-reactive-mode"], 1.0)
+    assert math.isclose(observation["second-nearest-dynamic-obstacle-reactive-mode"], -1.0)
+
+
+def test_reactive_mode_is_zero_for_static_waypoint_obstacles() -> None:
+    timeline = DynamicObstacleTimeline(
+        timeline_id="static-only",
+        obstacles=(
+            DynamicObstacle(
+                obstacle_id="block",
+                waypoints=(DynamicObstacleWaypoint(step_index=0, position=(0.5, 0.0, 0.0)),),
+                radius_meters=0.1,
+            ),
+        ),
+    )
+    env = HeadlessPhysicalAIEnvironment(_unit_catalog(), dynamic_obstacles=timeline)
+    adapter = RoutePolicyGymAdapter(
+        env,
+        RoutePolicyEnvConfig(scene_id="unit-scene", max_steps=4, goal_tolerance_meters=0.02),
+    )
+    observation, _ = adapter.reset(seed=2, goal=(0.3, 0.0, 0.0))
+
+    assert math.isclose(observation["nearest-dynamic-obstacle-reactive-mode"], 0.0)
+    # Single-obstacle timeline still keeps the second-nearest block suppressed.
+    assert "second-nearest-dynamic-obstacle-reactive-mode" not in observation
+
+
 def test_trajectory_score_uses_per_step_obstacle_positions() -> None:
     # Obstacle moves from (0.3, 0, 0) at step 0 to (-10, 0, 0) at step 1,
     # so only the first pose of a two-pose trajectory is blocked.
