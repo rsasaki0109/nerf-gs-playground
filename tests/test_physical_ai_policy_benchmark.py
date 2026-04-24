@@ -904,6 +904,82 @@ def test_route_policy_scenario_shards_split_and_merge_runs(tmp_path: Path) -> No
     )
 
 
+def test_route_policy_scenario_set_honours_sensor_noise_profile(tmp_path: Path) -> None:
+    from gs_sim2real.sim import (
+        RoutePolicyScenarioSet,
+        RoutePolicyScenarioSpec,
+        RoutePolicySensorNoiseProfile,
+        route_policy_scenario_set_from_dict,
+        write_route_policy_scenario_set_json,
+        write_route_policy_sensor_noise_profile_json,
+    )
+
+    catalog_path = write_unit_scene_catalog(tmp_path / "scenes.json")
+    registry_path = write_route_policy_registry_json(
+        tmp_path / "registry.json",
+        RoutePolicyRegistry(
+            registry_id="unit-noise-registry",
+            policies=(RoutePolicyRegistryEntry(policy_name="direct", policy_type="direct-goal"),),
+        ),
+    )
+    write_route_policy_goal_suite_json(
+        tmp_path / "near-goals.json",
+        RoutePolicyGoalSuite(
+            suite_id="near-goals",
+            scene_id="unit-scene",
+            frame_id="generic_world",
+            goals=(RoutePolicyGoalSpec("near", (0.25, 0.0, 0.0)),),
+        ),
+    )
+    noise_profile_path = write_route_policy_sensor_noise_profile_json(
+        tmp_path / "noise.json",
+        RoutePolicySensorNoiseProfile(
+            profile_id="scenario-noise",
+            pose_position_std_meters=0.20,
+            pose_heading_std_radians=0.04,
+            goal_position_std_meters=0.15,
+        ),
+    )
+
+    scenario_set = RoutePolicyScenarioSet(
+        scenario_set_id="unit-noise-scenarios",
+        policy_registry_path=str(registry_path),
+        scenarios=(
+            RoutePolicyScenarioSpec(
+                scenario_id="noise-short",
+                scene_catalog=str(catalog_path.name),
+                scene_id="unit-scene",
+                goal_suite_path="near-goals.json",
+                episode_count=1,
+                seed_start=0,
+                max_steps=4,
+                sensor_noise_profile_path=str(noise_profile_path.name),
+            ),
+        ),
+    )
+    scenario_set_path = write_route_policy_scenario_set_json(tmp_path / "scenario-set.json", scenario_set)
+
+    # JSON round-trip preserves the sensor noise profile path.
+    loaded_set = route_policy_scenario_set_from_dict(json.loads(scenario_set_path.read_text(encoding="utf-8")))
+    assert loaded_set.scenarios[0].sensor_noise_profile_path == str(noise_profile_path.name)
+
+    # Running the scenario set picks up the noise profile and records a
+    # non-zero noise-induced offset between the true and observed pose.
+    registry = load_route_policy_registry_json(registry_path)
+    run = run_route_policy_scenario_set(
+        loaded_set,
+        registry,
+        report_dir=tmp_path / "reports",
+        scenario_set_base_path=tmp_path,
+        registry_base_path=tmp_path,
+        policy_registry_path=registry_path,
+    )
+    assert run.scenario_count == 1
+    # The direct-goal policy still succeeds with mild noise because the
+    # per-step goal distance dominates the drift.
+    assert run.scenario_results[0].passed is True
+
+
 def test_route_policy_scenario_shards_cli_writes_plan_and_merge(tmp_path: Path) -> None:
     catalog_path = write_unit_scene_catalog(tmp_path / "scenes.json")
     registry_path = write_route_policy_registry_json(

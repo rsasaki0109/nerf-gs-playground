@@ -649,6 +649,46 @@ gs-mapper route-policy-scenario-matrix \
   --markdown-output runs/scenarios/matrix-expansion.md
 ```
 
+### Sensor noise profiles
+
+Real robots observe their pose, goal, and sensor readings with non-zero uncertainty. `RoutePolicySensorNoiseProfile` attaches a small Gaussian noise budget (pose position σ, pose heading σ, goal position σ) to a scenario so the gym adapter perturbs the *observed* pose/goal before handing features to the policy. The true simulator state is unchanged — noise is purely a feature-layer transform — so collision checks and trajectory scoring stay honest.
+
+Profiles are JSON artifacts referenced by path from the scenario spec (or the matrix config axis, which threads the reference into every generated scenario):
+
+```python
+write_route_policy_sensor_noise_profile_json(
+    "runs/scenarios/sensor-noise/outdoor-gnss.json",
+    RoutePolicySensorNoiseProfile(
+        profile_id="outdoor-gnss",
+        pose_position_std_meters=0.25,
+        pose_heading_std_radians=0.02,
+        goal_position_std_meters=0.15,
+    ),
+)
+```
+
+Reference the profile from a scenario or matrix config:
+
+```python
+scenario = RoutePolicyScenarioSpec(
+    scenario_id="outdoor-near-short",
+    scene_catalog="scenes.json",
+    scene_id="outdoor-demo",
+    goal_suite_path="near-goals.json",
+    sensor_noise_profile_path="sensor-noise/outdoor-gnss.json",
+)
+# Or, for every scenario sharing a matrix config axis:
+config = RoutePolicyMatrixConfigSpec(
+    config_id="noisy-short",
+    episode_count=1,
+    seed_start=0,
+    max_steps=8,
+    sensor_noise_profile_path="sensor-noise/outdoor-gnss.json",
+)
+```
+
+Determinism: the noise RNG is derived from `sha256(base_seed | profile_id | episode_index | step_index | kind)` so the same scenario replay always produces identical noisy observations across Python interpreter restarts. Setting every σ to `0.0` (the default) returns the identity profile — the adapter short-circuits to the true pose.
+
 For CI-sized execution, split the generated scenario sets into shard scenario-set files. Each shard is still a normal `RoutePolicyScenarioSet`, so CI jobs can run shards with the existing `route-policy-scenario-set` command. The final merge step reads the shard run JSON files, collects every per-scenario benchmark report, and rebuilds one global history gate.
 
 ```python
