@@ -791,8 +791,9 @@ When the environment's collision check sees that a query pose sits inside any ob
 - `nearest-dynamic-obstacle-distance-meters` — minimum clearance (Euclidean distance minus radius, floored at 0) from the observed pose to any obstacle at the current step.
 - `nearest-dynamic-obstacle-bearing-radians` — XY-plane bearing from the observed pose to the nearest obstacle's centre, in `[-π, π]`.
 - `nearest-dynamic-obstacle-bearing-x`, `nearest-dynamic-obstacle-bearing-y` — unit-vector components of the same bearing (both `0.0` when the obstacle coincides with the pose).
+- `second-nearest-dynamic-obstacle-distance-meters`, `second-nearest-dynamic-obstacle-bearing-radians`, `second-nearest-dynamic-obstacle-bearing-x`, `second-nearest-dynamic-obstacle-bearing-y` — same four features for the second-closest obstacle. Emitted only when at least two obstacles are on the timeline so multi-agent scenarios let a policy tell apart a single-threat lane from a flanked one; stays omitted when only one obstacle is configured.
 
-The block is omitted entirely when no timeline is configured, so existing scenario-set fixtures keep their exact feature dict.
+The entire block is omitted when no timeline is configured, so existing scenario-set fixtures keep their exact feature dict.
 
 For CI-sized execution, split the generated scenario sets into shard scenario-set files. Each shard is still a normal `RoutePolicyScenarioSet`, so CI jobs can run shards with the existing `route-policy-scenario-set` command. The final merge step reads the shard run JSON files, collects every per-scenario benchmark report, and rebuilds one global history gate.
 
