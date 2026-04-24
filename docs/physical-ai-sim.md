@@ -731,7 +731,7 @@ config = RoutePolicyMatrixConfigSpec(
 
 Application seam: `HeadlessPhysicalAIEnvironment(..., raw_sensor_noise_profile=…)` stores the profile and, whenever `render_observation` reaches a base `ObservationRenderer` that `can_render` the request, the result is routed through `apply_raw_sensor_noise_to_observation` before being returned. The noise RNG is seeded from `sha256(reset_seed | profile_id | sensor_id | render_request_index | "obs")`, and an internal counter advances per render call so consecutive queries at the same pose still draw distinct noise. When no observation renderer is attached the env falls back to its metadata-only response and the profile is a no-op.
 
-IMU is on the contract but still a placeholder: the default sensor rig now advertises an `imu-proxy` sensor with `angular-velocity` + `linear-acceleration` outputs, and `RawSensorNoiseProfile` carries matching σ fields (`imu_angular_velocity_std_rad_per_sec`, `imu_linear_acceleration_std_m_per_sec_sq`) that perturb the three-axis vectors if present. `HeadlessPhysicalAIEnvironment` returns a metadata-only response for IMU queries until a downstream renderer emits numeric readings, so the noise fields stay no-ops on today's headless env. Once a physics / rosbag-replay renderer lands, the existing noise seam picks it up automatically.
+IMU readings come from a kinematic finite-difference renderer baked into `HeadlessPhysicalAIEnvironment`. After every `step` the env stores a `KinematicState` derived from the pose delta and the action's `duration_seconds`: linear velocity in the world frame (`(p_next - p_prev) / dt`), linear acceleration as the velocity finite difference rotated into the agent body frame, and body-frame angular velocity from the body-frame delta quaternion `q_prev⁻¹ ⊗ q_next` divided by `dt`. `render_observation(ObservationRequest(..., sensor_id="imu-proxy"))` reads that state and emits `angular-velocity` (`angularVelocityBase64`, `rad/s`) and `linear-acceleration` (`linearAccelerationBase64`, `m/s²`) blocks in the float32-le-xyz format that `RawSensorNoiseProfile` already perturbs. Gravity is intentionally not modelled — this is a kinematic accelerometer, not an inertial-frame IMU. After `reset` and after any `teleport` action the kinematic state is the zero state (`stepDtSeconds == 0`); a downstream physics or rosbag-replay layer can replace `_render_imu_observation` if you need a richer model.
 
 ### Dynamic obstacles
 
@@ -1266,6 +1266,25 @@ A common task is "evaluate a route policy against noisy pose + obstacles that re
 4. **Run through the standard scenario-set runner.** `run_route_policy_scenario_set` loads every profile and timeline, constructs `HeadlessPhysicalAIEnvironment` + `RoutePolicyGymAdapter` with the pose-facing noise on the adapter and the raw-sensor noise on the env, then evaluates the registry. The same CLI + scenario-shard + review-bundle chain (`gs-mapper route-policy-scenario-set`, `scripts/smoke_route_policy_scenario_ci.py`, etc.) keeps working — partial-information knobs only affect inputs, not the pipeline shape.
 
 Determinism stays intact across all three knobs: each noise profile's RNG is seeded from `(reset_seed | profile_id | episode_index | step_index | kind)`, and each reactive obstacle is a pure function of the current agent position and the step index. A scenario rerun under the same seeds produces bit-identical observations and bit-identical feature dicts.
+
+## Real-vs-sim correlation
+
+`gs_sim2real.robotics.rosbag_correlation` closes the loop between a headless rollout and the recorded rosbag2 it was meant to model. `read_navsat_pose_stream(bag_paths, *, topic=None, reference_origin_wgs84=None)` reuses the same `rosbags`/`AnyReader` machinery that `MCDLoader` already depends on (so zstd-compressed sqlite3 bags work without decompression) and converts the chosen `sensor_msgs/NavSatFix` topic into a metric local-ENU `BagPoseStream`. The first valid fix anchors the ENU origin unless `reference_origin_wgs84=(lat, lon, alt)` pins one explicitly so multiple bags share the same frame. Placeholder fixes at `latitude == longitude == 0` are dropped during ingest.
+
+`correlate_against_sim_trajectory(bag_stream, sim_samples, *, max_match_dt_seconds=0.05)` performs a nearest-timestamp pairing between the bag samples and the sim trajectory (a sequence of `SimPoseSample` produced by a benchmark / scenario runner) and reduces per-pair translation errors into min / mean / max / p50 / p95 statistics inside `RealVsSimCorrelationReport`. Pairs whose clock skew exceeds `max_match_dt_seconds` are discarded so a stale-bag rollout cannot artificially inflate the matched-pair count. Heading-error means and maxima are emitted whenever the bag stream carries orientation (`read_navsat_pose_stream` leaves orientations `None` because NavSatFix has no attitude — a future `read_gsof_pose_stream` / `read_imu_pose_stream` slots in without changing the report shape).
+
+The CLI ships at `scripts/run_rosbag_correlation.py`:
+
+```bash
+python3 scripts/run_rosbag_correlation.py \
+    --bag data/autoware_leo_drive_bag1 \
+    --sim-rollout artifacts/rollout/bag1.jsonl \
+    --output artifacts/correlation/bag1.json \
+    --markdown artifacts/correlation/bag1.md \
+    --max-match-dt-seconds 0.05
+```
+
+The sim-rollout JSONL is one record per line with `timestampSeconds`, `position` (3-element list), and `orientationXyzw` (4-element list). The script writes the JSON report (with up to `--max-pairs-kept` evenly-strided `CorrelatedPosePair` entries embedded — pass `--no-pairs` to drop them entirely) and an optional Markdown summary suitable for PR / scenario-CI artifact display.
 
 ## Next Implementation Layer
 

@@ -1,5 +1,20 @@
 """Robotics helpers for DreamWalker and Gaussian Splat environments."""
 
+from .rosbag_correlation import (
+    REAL_VS_SIM_CORRELATION_REPORT_VERSION,
+    BagPoseSample,
+    BagPoseStream,
+    CorrelatedPosePair,
+    RealVsSimCorrelationReport,
+    SimPoseSample,
+    correlate_against_sim_trajectory,
+    load_sim_pose_samples_jsonl,
+    read_navsat_pose_stream,
+    render_real_vs_sim_correlation_markdown,
+    wgs84_to_ecef,
+    wgs84_to_local_enu,
+    write_real_vs_sim_correlation_report_json,
+)
 from .topic_map import (
     DreamwalkerRosTopicMap,
     build_camera_command_payload,
@@ -19,17 +34,30 @@ from .zones import (
 )
 
 __all__ = [
+    "BagPoseSample",
+    "BagPoseStream",
+    "CorrelatedPosePair",
     "DreamwalkerRosTopicMap",
+    "REAL_VS_SIM_CORRELATION_REPORT_VERSION",
     "RasterizedCostMap",
+    "RealVsSimCorrelationReport",
     "SemanticZone",
     "SemanticZoneMap",
+    "SimPoseSample",
     "build_camera_command_payload",
     "build_ros_topic_map",
     "build_teleop_command_payload",
     "build_zone_hit_payload",
     "build_zone_summary_payload",
+    "correlate_against_sim_trajectory",
     "find_zone_hits",
     "load_semantic_zone_map",
+    "load_sim_pose_samples_jsonl",
     "rasterize_costmap",
+    "read_navsat_pose_stream",
+    "render_real_vs_sim_correlation_markdown",
     "summarize_robot_state_payload",
+    "wgs84_to_ecef",
+    "wgs84_to_local_enu",
+    "write_real_vs_sim_correlation_report_json",
 ]

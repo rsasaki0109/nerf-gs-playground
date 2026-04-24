@@ -1,0 +1,568 @@
+"""Real-vs-sim trajectory correlation against rosbag2 ground truth.
+
+The headless Physical AI environment can already produce a deterministic
+sim trajectory (a sequence of agent poses) for any registered scene
+backed by an MCD / Autoware bag. What it could not previously do is
+*close the loop* against the original bag — answering the obvious
+question "how far does our headless rollout drift from the recorded
+real-world pose?". This module fills that gap.
+
+Inputs:
+
+* a rosbag2 directory readable by :mod:`rosbags` — the same machinery
+  :class:`~gs_sim2real.datasets.mcd.MCDLoader` already relies on, so
+  zstd-compressed sqlite3 bags work out of the box.
+* a sim trajectory: an ordered sequence of
+  :class:`SimPoseSample` with monotonic ``timestamp_seconds``. Most
+  callers will load this from a JSONL written by a benchmark / scenario
+  runner.
+* an optional reference origin ``(latitude, longitude, altitude)`` so
+  multiple bags can be expressed in a shared local ENU frame; otherwise
+  the first valid bag fix anchors the frame.
+
+The library reads the bag's GNSS topic into a :class:`BagPoseStream`
+in metric local-ENU coordinates, then performs a nearest-timestamp
+temporal alignment against the sim samples (rejecting matches whose
+clock skew exceeds ``max_match_dt_seconds``). Per-pair translation
+errors are reduced into min / mean / max / p50 / p95 statistics
+inside :class:`RealVsSimCorrelationReport`, and the report is
+JSON-serialisable so scenario CI artifacts can carry it alongside
+the benchmark report.
+
+Heading-error reduction is included when the bag stream and sim
+samples both expose orientation, but the GNSS-only pose stream that
+:func:`read_navsat_pose_stream` returns leaves orientations ``None``
+(NavSatFix has no attitude). A future ``read_gsof_pose_stream`` /
+``read_imu_pose_stream`` can populate orientations and the
+heading-error fields fall out automatically.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Iterable, Mapping, Sequence
+from dataclasses import dataclass, field
+import bisect
+import json
+import math
+from pathlib import Path
+from typing import Any
+
+
+REAL_VS_SIM_CORRELATION_REPORT_VERSION = "gs-mapper-real-vs-sim-correlation-report/v1"
+
+
+@dataclass(frozen=True, slots=True)
+class BagPoseSample:
+    """One pose extracted from a rosbag2 topic in local ENU coordinates."""
+
+    timestamp_seconds: float
+    position: tuple[float, float, float]
+    orientation_xyzw: tuple[float, float, float, float] | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "timestampSeconds": float(self.timestamp_seconds),
+            "position": list(self.position),
+        }
+        if self.orientation_xyzw is not None:
+            payload["orientationXyzw"] = list(self.orientation_xyzw)
+        return payload
+
+
+@dataclass(frozen=True, slots=True)
+class BagPoseStream:
+    """Ordered bag pose samples plus provenance metadata."""
+
+    samples: tuple[BagPoseSample, ...]
+    frame_id: str
+    source_topic: str
+    source_msgtype: str
+    reference_origin_wgs84: tuple[float, float, float] | None = None
+
+    def __post_init__(self) -> None:
+        if not self.samples:
+            raise ValueError("BagPoseStream must contain at least one sample")
+        timestamps = [sample.timestamp_seconds for sample in self.samples]
+        if any(b < a for a, b in zip(timestamps, timestamps[1:])):
+            raise ValueError("BagPoseStream samples must be sorted by timestamp")
+
+    @property
+    def sample_count(self) -> int:
+        return len(self.samples)
+
+    @property
+    def duration_seconds(self) -> float:
+        return float(self.samples[-1].timestamp_seconds - self.samples[0].timestamp_seconds)
+
+    def to_dict(self) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "frameId": self.frame_id,
+            "sourceTopic": self.source_topic,
+            "sourceMsgtype": self.source_msgtype,
+            "sampleCount": self.sample_count,
+            "durationSeconds": self.duration_seconds,
+        }
+        if self.reference_origin_wgs84 is not None:
+            payload["referenceOriginWgs84"] = list(self.reference_origin_wgs84)
+        return payload
+
+
+@dataclass(frozen=True, slots=True)
+class SimPoseSample:
+    """One sim trajectory pose. Orientation is required (renderers always have it)."""
+
+    timestamp_seconds: float
+    position: tuple[float, float, float]
+    orientation_xyzw: tuple[float, float, float, float]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "timestampSeconds": float(self.timestamp_seconds),
+            "position": list(self.position),
+            "orientationXyzw": list(self.orientation_xyzw),
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class CorrelatedPosePair:
+    """One nearest-timestamp pose match between the bag and sim streams."""
+
+    bag_timestamp_seconds: float
+    sim_timestamp_seconds: float
+    bag_position: tuple[float, float, float]
+    sim_position: tuple[float, float, float]
+    translation_error_meters: float
+    heading_error_radians: float | None = None
+
+    @property
+    def time_offset_seconds(self) -> float:
+        return float(self.sim_timestamp_seconds - self.bag_timestamp_seconds)
+
+    def to_dict(self) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "bagTimestampSeconds": float(self.bag_timestamp_seconds),
+            "simTimestampSeconds": float(self.sim_timestamp_seconds),
+            "timeOffsetSeconds": self.time_offset_seconds,
+            "bagPosition": list(self.bag_position),
+            "simPosition": list(self.sim_position),
+            "translationErrorMeters": float(self.translation_error_meters),
+        }
+        if self.heading_error_radians is not None:
+            payload["headingErrorRadians"] = float(self.heading_error_radians)
+        return payload
+
+
+@dataclass(frozen=True, slots=True)
+class RealVsSimCorrelationReport:
+    """Aggregate statistics for one real-vs-sim correlation run."""
+
+    bag_source: BagPoseStream
+    sim_sample_count: int
+    matched_pair_count: int
+    matched_seconds: float
+    translation_error_min_meters: float
+    translation_error_mean_meters: float
+    translation_error_max_meters: float
+    translation_error_p50_meters: float
+    translation_error_p95_meters: float
+    heading_error_mean_radians: float | None = None
+    heading_error_max_radians: float | None = None
+    pairs: tuple[CorrelatedPosePair, ...] = field(default_factory=tuple)
+    version: str = REAL_VS_SIM_CORRELATION_REPORT_VERSION
+
+    def to_dict(self) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "recordType": "real-vs-sim-correlation-report",
+            "version": self.version,
+            "bagSource": self.bag_source.to_dict(),
+            "simSampleCount": int(self.sim_sample_count),
+            "matchedPairCount": int(self.matched_pair_count),
+            "matchedSeconds": float(self.matched_seconds),
+            "translationErrorMeters": {
+                "min": float(self.translation_error_min_meters),
+                "mean": float(self.translation_error_mean_meters),
+                "max": float(self.translation_error_max_meters),
+                "p50": float(self.translation_error_p50_meters),
+                "p95": float(self.translation_error_p95_meters),
+            },
+            "pairs": [pair.to_dict() for pair in self.pairs],
+        }
+        if self.heading_error_mean_radians is not None:
+            payload["headingErrorRadians"] = {
+                "mean": float(self.heading_error_mean_radians),
+                "max": float(self.heading_error_max_radians or 0.0),
+            }
+        return payload
+
+
+_NAVSAT_MSGTYPES: frozenset[str] = frozenset({"sensor_msgs/msg/NavSatFix", "sensor_msgs/NavSatFix"})
+_WGS84_A = 6378137.0
+_WGS84_F = 1.0 / 298.257223563
+_WGS84_E_SQ = _WGS84_F * (2.0 - _WGS84_F)
+
+
+def wgs84_to_ecef(latitude: float, longitude: float, altitude: float) -> tuple[float, float, float]:
+    """Convert WGS84 (deg, deg, m) to ECEF (m)."""
+
+    lat = math.radians(float(latitude))
+    lon = math.radians(float(longitude))
+    sin_lat = math.sin(lat)
+    cos_lat = math.cos(lat)
+    n = _WGS84_A / math.sqrt(1.0 - _WGS84_E_SQ * sin_lat * sin_lat)
+    h = float(altitude)
+    x = (n + h) * cos_lat * math.cos(lon)
+    y = (n + h) * cos_lat * math.sin(lon)
+    z = (n * (1.0 - _WGS84_E_SQ) + h) * sin_lat
+    return (x, y, z)
+
+
+def wgs84_to_local_enu(
+    latitude: float,
+    longitude: float,
+    altitude: float,
+    *,
+    origin_latitude: float,
+    origin_longitude: float,
+    origin_altitude: float,
+) -> tuple[float, float, float]:
+    """Convert WGS84 (lat, lon, alt) to local ENU metres relative to an origin."""
+
+    px, py, pz = wgs84_to_ecef(latitude, longitude, altitude)
+    ox, oy, oz = wgs84_to_ecef(origin_latitude, origin_longitude, origin_altitude)
+    dx = px - ox
+    dy = py - oy
+    dz = pz - oz
+    lat0 = math.radians(float(origin_latitude))
+    lon0 = math.radians(float(origin_longitude))
+    sin_lat = math.sin(lat0)
+    cos_lat = math.cos(lat0)
+    sin_lon = math.sin(lon0)
+    cos_lon = math.cos(lon0)
+    east = -sin_lon * dx + cos_lon * dy
+    north = -sin_lat * cos_lon * dx - sin_lat * sin_lon * dy + cos_lat * dz
+    up = cos_lat * cos_lon * dx + cos_lat * sin_lon * dy + sin_lat * dz
+    return (east, north, up)
+
+
+def read_navsat_pose_stream(
+    bag_paths: Sequence[Path],
+    *,
+    topic: str | None = None,
+    reference_origin_wgs84: tuple[float, float, float] | None = None,
+    skip_zero_fixes: bool = True,
+) -> BagPoseStream:
+    """Read a ``sensor_msgs/NavSatFix`` topic into a local-ENU pose stream.
+
+    The first valid fix anchors the ENU origin unless
+    ``reference_origin_wgs84`` is provided. Placeholder fixes at
+    ``latitude == longitude == 0`` are dropped when ``skip_zero_fixes``
+    is true (the public Autoware Leo Drive bags occasionally publish
+    these during sensor warm-up).
+    """
+
+    paths = [Path(item) for item in bag_paths]
+    if not paths:
+        raise ValueError("read_navsat_pose_stream requires at least one bag path")
+
+    from rosbags.highlevel import AnyReader
+    from rosbags.typesys import Stores, get_typestore
+
+    typestore = get_typestore(Stores.ROS2_HUMBLE)
+    samples: list[BagPoseSample] = []
+    chosen_topic: str | None = None
+    chosen_msgtype: str | None = None
+    origin = reference_origin_wgs84
+
+    with AnyReader(paths, default_typestore=typestore) as reader:
+        connection = _select_navsat_connection(reader.topics, topic)
+        if connection is None:
+            raise FileNotFoundError("no sensor_msgs/NavSatFix topic found in the supplied bag paths")
+        chosen_topic = connection.topic
+        chosen_msgtype = connection.msgtype
+        for _, timestamp_ns, rawdata in reader.messages(connections=[connection]):
+            ts = float(timestamp_ns) * 1e-9
+            msg = reader.deserialize(rawdata, connection.msgtype)
+            lat = float(getattr(msg, "latitude", float("nan")))
+            lon = float(getattr(msg, "longitude", float("nan")))
+            alt = float(getattr(msg, "altitude", 0.0))
+            if not (math.isfinite(lat) and math.isfinite(lon) and math.isfinite(alt)):
+                continue
+            if skip_zero_fixes and abs(lat) < 1e-12 and abs(lon) < 1e-12:
+                continue
+            if origin is None:
+                origin = (lat, lon, alt)
+            east, north, up = wgs84_to_local_enu(
+                lat,
+                lon,
+                alt,
+                origin_latitude=origin[0],
+                origin_longitude=origin[1],
+                origin_altitude=origin[2],
+            )
+            samples.append(BagPoseSample(timestamp_seconds=ts, position=(east, north, up)))
+
+    if not samples:
+        raise ValueError("no valid NavSatFix samples were extracted from the supplied bag paths")
+    samples.sort(key=lambda sample: sample.timestamp_seconds)
+    assert chosen_topic is not None and chosen_msgtype is not None
+    return BagPoseStream(
+        samples=tuple(samples),
+        frame_id="enu",
+        source_topic=chosen_topic,
+        source_msgtype=chosen_msgtype,
+        reference_origin_wgs84=origin,
+    )
+
+
+def correlate_against_sim_trajectory(
+    bag_stream: BagPoseStream,
+    sim_samples: Sequence[SimPoseSample],
+    *,
+    max_match_dt_seconds: float = 0.05,
+    keep_pairs: bool = True,
+    max_pairs_kept: int = 1024,
+) -> RealVsSimCorrelationReport:
+    """Pair sim samples with the nearest bag sample by timestamp and reduce errors.
+
+    A sim sample is matched against the nearest-in-time bag sample; the
+    pair is dropped when the time gap exceeds ``max_match_dt_seconds``.
+    Aggregate translation-error statistics (min / mean / max / p50 /
+    p95) are computed from the surviving pairs. When ``keep_pairs`` is
+    true the report keeps an evenly-strided sample of up to
+    ``max_pairs_kept`` :class:`CorrelatedPosePair` entries for
+    inspection — pass ``False`` to suppress them entirely.
+    """
+
+    if max_match_dt_seconds < 0.0 or not math.isfinite(max_match_dt_seconds):
+        raise ValueError("max_match_dt_seconds must be finite and non-negative")
+    if max_pairs_kept <= 0:
+        raise ValueError("max_pairs_kept must be positive")
+
+    bag_timestamps = [sample.timestamp_seconds for sample in bag_stream.samples]
+    sim_sample_count = len(sim_samples)
+    pairs: list[CorrelatedPosePair] = []
+    heading_errors: list[float] = []
+
+    for sim_sample in sim_samples:
+        nearest = _nearest_bag_index(bag_timestamps, sim_sample.timestamp_seconds)
+        if nearest is None:
+            continue
+        bag_sample = bag_stream.samples[nearest]
+        dt = abs(sim_sample.timestamp_seconds - bag_sample.timestamp_seconds)
+        if dt > max_match_dt_seconds:
+            continue
+        translation = math.dist(sim_sample.position, bag_sample.position)
+        heading_error: float | None = None
+        if bag_sample.orientation_xyzw is not None:
+            heading_error = _heading_error_radians(bag_sample.orientation_xyzw, sim_sample.orientation_xyzw)
+            heading_errors.append(heading_error)
+        pairs.append(
+            CorrelatedPosePair(
+                bag_timestamp_seconds=bag_sample.timestamp_seconds,
+                sim_timestamp_seconds=sim_sample.timestamp_seconds,
+                bag_position=bag_sample.position,
+                sim_position=sim_sample.position,
+                translation_error_meters=translation,
+                heading_error_radians=heading_error,
+            )
+        )
+
+    if not pairs:
+        return RealVsSimCorrelationReport(
+            bag_source=bag_stream,
+            sim_sample_count=sim_sample_count,
+            matched_pair_count=0,
+            matched_seconds=0.0,
+            translation_error_min_meters=float("nan"),
+            translation_error_mean_meters=float("nan"),
+            translation_error_max_meters=float("nan"),
+            translation_error_p50_meters=float("nan"),
+            translation_error_p95_meters=float("nan"),
+            pairs=(),
+        )
+
+    errors = [pair.translation_error_meters for pair in pairs]
+    matched_seconds = pairs[-1].bag_timestamp_seconds - pairs[0].bag_timestamp_seconds
+    heading_mean = sum(heading_errors) / len(heading_errors) if heading_errors else None
+    heading_max = max(heading_errors) if heading_errors else None
+    kept = _stride_sample(pairs, max_pairs_kept) if keep_pairs else ()
+
+    return RealVsSimCorrelationReport(
+        bag_source=bag_stream,
+        sim_sample_count=sim_sample_count,
+        matched_pair_count=len(pairs),
+        matched_seconds=float(matched_seconds),
+        translation_error_min_meters=min(errors),
+        translation_error_mean_meters=sum(errors) / len(errors),
+        translation_error_max_meters=max(errors),
+        translation_error_p50_meters=_percentile(errors, 50.0),
+        translation_error_p95_meters=_percentile(errors, 95.0),
+        heading_error_mean_radians=heading_mean,
+        heading_error_max_radians=heading_max,
+        pairs=kept,
+    )
+
+
+def write_real_vs_sim_correlation_report_json(
+    path: str | Path,
+    report: RealVsSimCorrelationReport,
+) -> Path:
+    """Persist a correlation report as stable JSON."""
+
+    output_path = Path(path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(
+        json.dumps(report.to_dict(), ensure_ascii=False, indent=2, sort_keys=True, allow_nan=False) + "\n",
+        encoding="utf-8",
+    )
+    return output_path
+
+
+def render_real_vs_sim_correlation_markdown(report: RealVsSimCorrelationReport) -> str:
+    """Render a compact Markdown summary suitable for PR / CI artifact display."""
+
+    bag = report.bag_source
+    lines = [
+        f"# Real-vs-sim correlation: `{bag.source_topic}`",
+        f"- Bag source: `{bag.source_msgtype}` ({bag.sample_count} samples, {bag.duration_seconds:.2f} s)",
+        f"- Sim samples: {report.sim_sample_count}",
+        f"- Matched pairs: {report.matched_pair_count} ({report.matched_seconds:.2f} s span)",
+        "",
+        "| Translation error (m) | Value |",
+        "| --- | ---: |",
+        f"| min | {report.translation_error_min_meters:.4f} |",
+        f"| mean | {report.translation_error_mean_meters:.4f} |",
+        f"| p50 | {report.translation_error_p50_meters:.4f} |",
+        f"| p95 | {report.translation_error_p95_meters:.4f} |",
+        f"| max | {report.translation_error_max_meters:.4f} |",
+    ]
+    if report.heading_error_mean_radians is not None:
+        lines.extend(
+            [
+                "",
+                "| Heading error (rad) | Value |",
+                "| --- | ---: |",
+                f"| mean | {report.heading_error_mean_radians:.4f} |",
+                f"| max | {report.heading_error_max_radians:.4f} |",
+            ]
+        )
+    return "\n".join(lines) + "\n"
+
+
+def load_sim_pose_samples_jsonl(path: str | Path) -> tuple[SimPoseSample, ...]:
+    """Load sim pose samples from a JSONL file with one record per line.
+
+    Each record must contain ``timestampSeconds``, ``position`` (3-element
+    list), and ``orientationXyzw`` (4-element list).
+    """
+
+    samples: list[SimPoseSample] = []
+    text = Path(path).read_text(encoding="utf-8")
+    for line_number, raw in enumerate(text.splitlines(), start=1):
+        stripped = raw.strip()
+        if not stripped:
+            continue
+        try:
+            payload = json.loads(stripped)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"line {line_number}: invalid JSON: {exc}") from exc
+        samples.append(_sim_pose_sample_from_dict(payload, line_number))
+    if not samples:
+        raise ValueError(f"no sim pose samples found in {path}")
+    samples.sort(key=lambda sample: sample.timestamp_seconds)
+    return tuple(samples)
+
+
+def _sim_pose_sample_from_dict(payload: Mapping[str, Any], line_number: int) -> SimPoseSample:
+    try:
+        ts = float(payload["timestampSeconds"])
+        position = payload["position"]
+        orientation = payload["orientationXyzw"]
+    except KeyError as exc:
+        raise ValueError(f"line {line_number}: missing required field {exc}") from exc
+    if not isinstance(position, Iterable) or len(list(position)) != 3:
+        raise ValueError(f"line {line_number}: position must be a 3-element list")
+    if not isinstance(orientation, Iterable) or len(list(orientation)) != 4:
+        raise ValueError(f"line {line_number}: orientationXyzw must be a 4-element list")
+    return SimPoseSample(
+        timestamp_seconds=ts,
+        position=tuple(float(c) for c in payload["position"]),
+        orientation_xyzw=tuple(float(c) for c in payload["orientationXyzw"]),
+    )
+
+
+def _select_navsat_connection(topics: Mapping[str, Any], requested: str | None):
+    """Pick the first NavSatFix connection (preferring ``requested`` when supplied)."""
+
+    if requested:
+        info = topics.get(requested)
+        if info is None:
+            raise ValueError(f"requested topic not found: {requested}")
+        for connection in info.connections:
+            if connection.msgtype in _NAVSAT_MSGTYPES:
+                return connection
+        raise ValueError(f"requested topic {requested} is not a NavSatFix topic")
+    for info in topics.values():
+        for connection in info.connections:
+            if connection.msgtype in _NAVSAT_MSGTYPES:
+                return connection
+    return None
+
+
+def _nearest_bag_index(bag_timestamps: Sequence[float], target: float) -> int | None:
+    if not bag_timestamps:
+        return None
+    index = bisect.bisect_left(bag_timestamps, target)
+    if index == 0:
+        return 0
+    if index >= len(bag_timestamps):
+        return len(bag_timestamps) - 1
+    before = bag_timestamps[index - 1]
+    after = bag_timestamps[index]
+    return index - 1 if (target - before) <= (after - target) else index
+
+
+def _percentile(values: Sequence[float], percentile: float) -> float:
+    if not values:
+        raise ValueError("percentile requires non-empty values")
+    if not 0.0 <= percentile <= 100.0:
+        raise ValueError("percentile must be in [0, 100]")
+    ordered = sorted(values)
+    if len(ordered) == 1:
+        return float(ordered[0])
+    rank = (percentile / 100.0) * (len(ordered) - 1)
+    lower = int(math.floor(rank))
+    upper = int(math.ceil(rank))
+    if lower == upper:
+        return float(ordered[lower])
+    fraction = rank - lower
+    return float(ordered[lower] * (1.0 - fraction) + ordered[upper] * fraction)
+
+
+def _stride_sample(pairs: Sequence[CorrelatedPosePair], max_count: int) -> tuple[CorrelatedPosePair, ...]:
+    if len(pairs) <= max_count:
+        return tuple(pairs)
+    stride = len(pairs) / max_count
+    indices = sorted({int(round(i * stride)) for i in range(max_count)})
+    indices = [index for index in indices if 0 <= index < len(pairs)]
+    return tuple(pairs[index] for index in indices)
+
+
+def _heading_error_radians(
+    bag_xyzw: tuple[float, float, float, float],
+    sim_xyzw: tuple[float, float, float, float],
+) -> float:
+    """Yaw difference (in radians) between two unit quaternions, wrapped to [0, π]."""
+
+    bag_yaw = _quaternion_yaw(bag_xyzw)
+    sim_yaw = _quaternion_yaw(sim_xyzw)
+    diff = sim_yaw - bag_yaw
+    wrapped = math.atan2(math.sin(diff), math.cos(diff))
+    return abs(wrapped)
+
+
+def _quaternion_yaw(xyzw: tuple[float, float, float, float]) -> float:
+    qx, qy, qz, qw = xyzw
+    siny = 2.0 * (qw * qz + qx * qy)
+    cosy = 1.0 - 2.0 * (qy * qy + qz * qz)
+    return math.atan2(siny, cosy)
