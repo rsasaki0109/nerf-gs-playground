@@ -85,8 +85,43 @@ changing a `.splat` (requires Playwright + GPU-backed WebGL).
 
 ## Physical AI benchmark path
 
-The public splat scenes are also versioned simulation inputs. Start with the
-scene catalog, then run policy benchmarks and scale them into scenario CI.
+The public splat scenes double as versioned Physical AI simulation inputs.
+Start with the scene catalog, then run policy benchmarks and scale them
+into a scenario CI pipeline that builds, validates, and activates its own
+GitHub Actions workflow.
+
+The chain layers on top of each other:
+
+- **Scene catalog** — `scripts/generate_sim_catalog.py` keeps
+  `docs/sim-scenes.json` synchronized with the public viewer picker.
+- **Route policy benchmark** — `gs-mapper route-policy-benchmark` runs a
+  policy registry against a goal suite in a seeded headless environment
+  and emits a PASS / FAIL report.
+- **Scenario matrix + shards + merge** — split a Cartesian product of
+  registries × scenes × goal suites × configs into CI-sized shards; each
+  shard is still a normal scenario set, so CI jobs run with the existing
+  `route-policy-scenario-set` command. A merge job rebuilds a single
+  history gate from all shard outputs.
+- **Scenario CI workflow generator + guardrails** — `route-policy-scenario-ci-manifest`
+  produces a manifest, `route-policy-scenario-ci-workflow` materializes a
+  GitHub Actions YAML, `route-policy-scenario-ci-workflow-validate`
+  checks the generated YAML against the manifest, and
+  `route-policy-scenario-ci-workflow-activate` writes it to a guarded
+  path under `.github/workflows/`.
+- **Review bundle + promotion + adoption** — `route-policy-scenario-ci-review`
+  publishes a Pages review bundle (JSON / Markdown / HTML) with per-shard
+  status, validation checks, activation state, and an optional adopted
+  workflow diff; `route-policy-scenario-ci-workflow-promote` gates the
+  promotion from manual-only dispatch to repository triggers, and
+  `route-policy-scenario-ci-workflow-adopt` re-materializes a
+  trigger-enabled workflow to a separate active path so the manual YAML
+  stays reviewable alongside it.
+- **Partial-information benchmarks** — `RoutePolicySensorNoiseProfile`
+  perturbs the observed pose / goal with a deterministic seeded Gaussian,
+  and `DynamicObstacleTimeline` layers waypointed sphere obstacles on
+  top of the scene so a benchmark run can stress a policy under sensor
+  noise, moving obstacles, or both; the gym adapter's feature dict gets a
+  `nearest-dynamic-obstacle-*` block for obstacle-aware policies.
 
 ```bash
 # Keep the Physical AI scene catalog synchronized with the public viewer picker.
@@ -115,11 +150,17 @@ gs-mapper route-policy-scenario-shards \
 gs-mapper route-policy-scenario-ci-manifest \
   --shard-plan runs/scenarios/shard-plan.json \
   --output runs/scenarios/ci-manifest.json
+
+# One-minute smoke that exercises matrix -> shard -> ... -> adoption -> review
+# on a tiny fixture so regressions surface before the full GitHub Actions run.
+PYTHONPATH=src python3 scripts/smoke_route_policy_scenario_ci.py
 ```
 
 See [docs/physical-ai-sim.md](docs/physical-ai-sim.md) for the full
-matrix -> shard -> manifest -> generated workflow -> validation -> activation
--> Pages review-bundle chain.
+matrix -> shard -> manifest -> generated workflow -> validation ->
+activation -> Pages review bundle -> promotion -> adoption chain, plus
+sensor noise profiles, dynamic obstacles, and the obstacle-aware
+observation feature block.
 
 ## Live Demo
 
