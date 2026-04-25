@@ -4,10 +4,11 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
+import base64
 import math
 from typing import Any
 
-from .interfaces import PhysicalAIEnvironment, Pose3D
+from .interfaces import ObservationRequest, PhysicalAIEnvironment, Pose3D
 from .policy_feedback import RoutePolicySample, RouteRewardWeights, build_route_policy_sample
 from .policy_sensor_noise import (
     RoutePolicySensorNoiseProfile,
@@ -217,9 +218,52 @@ class RoutePolicyGymAdapter:
             "goal-delta-z": float(observed_goal.position[2] - observed_pose.position[2]),
         }
         features.update(self._dynamic_obstacle_features(state, observed_pose))
+        features.update(self._imu_features(state))
         if sample is not None:
             features.update(_prefixed("route", sample.observation.features))
         return _finite_features(features)
+
+    def _imu_features(self, state: RoutePolicyEnvState) -> dict[str, float]:
+        """Return the IMU observation block, empty when the env has no imu-proxy.
+
+        The sensor is rendered through ``render_observation`` so the same
+        ``RawSensorNoiseProfile`` / ``apply_raw_sensor_noise_to_observation``
+        seam that perturbs angular-velocity / linear-acceleration outputs
+        on the env side flows into the policy feature dict. ``step_dt_seconds``
+        is surfaced so policies can gate on the post-reset / post-teleport
+        zero state (``imu-step-dt-seconds == 0`` means the finite-difference
+        readings are not yet meaningful for this step).
+        """
+
+        if not hasattr(self.environment, "render_observation"):
+            return {}
+        request = ObservationRequest(
+            pose=state.pose,
+            sensor_id="imu-proxy",
+            outputs=("angular-velocity", "linear-acceleration"),
+        )
+        try:
+            observation = self.environment.render_observation(request)
+        except (ValueError, KeyError, AttributeError):
+            return {}
+        outputs = observation.outputs
+        angular = _decode_imu_vector_block(outputs.get("angular-velocity"), "angularVelocityBase64")
+        linear = _decode_imu_vector_block(outputs.get("linear-acceleration"), "linearAccelerationBase64")
+        if angular is None and linear is None:
+            return {}
+        features: dict[str, float] = {}
+        step_dt = outputs.get("stepDtSeconds")
+        if isinstance(step_dt, (int, float)):
+            features["imu-step-dt-seconds"] = float(step_dt)
+        if angular is not None:
+            features["imu-angular-velocity-x"] = angular[0]
+            features["imu-angular-velocity-y"] = angular[1]
+            features["imu-angular-velocity-z"] = angular[2]
+        if linear is not None:
+            features["imu-linear-acceleration-x"] = linear[0]
+            features["imu-linear-acceleration-y"] = linear[1]
+            features["imu-linear-acceleration-z"] = linear[2]
+        return features
 
     def _dynamic_obstacle_features(
         self,
@@ -514,6 +558,34 @@ def _pose_distance(source: Pose3D, target: Pose3D) -> float:
 
 def _bool_feature(value: bool) -> float:
     return 1.0 if value else 0.0
+
+
+def _decode_imu_vector_block(block: Any, base64_key: str) -> tuple[float, float, float] | None:
+    """Decode a float32-le-xyz IMU vector block into a 3-tuple of floats.
+
+    ``imu-proxy`` observations from :class:`HeadlessPhysicalAIEnvironment`
+    encode angular-velocity / linear-acceleration as a base64-encoded
+    little-endian float32 triple under ``angularVelocityBase64`` /
+    ``linearAccelerationBase64`` so the same payload survives raw-sensor
+    noise perturbation. Return ``None`` when the block is missing or
+    malformed so the caller can drop the feature instead of emitting NaN.
+    """
+
+    if not isinstance(block, Mapping):
+        return None
+    payload = block.get(base64_key)
+    if not isinstance(payload, str):
+        return None
+    try:
+        raw = base64.b64decode(payload.encode("ascii"))
+    except (ValueError, TypeError):
+        return None
+    if len(raw) < 12:
+        return None
+    import numpy as np
+
+    arr = np.frombuffer(raw, dtype="<f4", count=3)
+    return (float(arr[0]), float(arr[1]), float(arr[2]))
 
 
 def _is_position_sequence(value: Any) -> bool:
