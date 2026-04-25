@@ -1530,6 +1530,25 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     rpsrev.add_argument(
+        "--max-correlation-pair-translation-meters",
+        type=float,
+        default=None,
+        help=(
+            "Per-pair distribution gate (paired with --max-correlation-pair-fraction): the "
+            "translation_error_meters above which a CorrelatedPosePair counts as exceeding"
+        ),
+    )
+    rpsrev.add_argument(
+        "--max-correlation-pair-fraction",
+        type=float,
+        default=None,
+        help=(
+            "Per-pair distribution gate (paired with --max-correlation-pair-translation-meters): "
+            "fail the review when more than this fraction of pairs in any embedded correlation "
+            "report exceed the per-pair translation bound (0.05 = 5%%)"
+        ),
+    )
+    rpsrev.add_argument(
         "--correlation-thresholds-config",
         default=None,
         help=(
