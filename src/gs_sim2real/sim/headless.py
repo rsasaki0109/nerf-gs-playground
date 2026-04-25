@@ -73,6 +73,7 @@ class HeadlessPhysicalAIEnvironment(PhysicalAIEnvironment):
         self._reset_seed: int | None = None
         self._render_request_count: int = 0
         self._kinematic_state: KinematicState = KinematicState()
+        self._dynamic_obstacle_positions: dict[str, tuple[float, float, float]] = {}
 
     def set_occupancy_grid(self, occupancy_grid: VoxelOccupancyGrid | None) -> None:
         """Set or clear the occupancy grid used by collision queries."""
@@ -85,9 +86,22 @@ class HeadlessPhysicalAIEnvironment(PhysicalAIEnvironment):
         self.robot_footprint = robot_footprint
 
     def set_dynamic_obstacles(self, dynamic_obstacles: DynamicObstacleTimeline | None) -> None:
-        """Set or clear the dynamic obstacle timeline consulted by collision queries."""
+        """Set or clear the dynamic obstacle timeline consulted by collision queries.
+
+        Reseats the per-step peer-position cache so subsequent
+        collision queries see the new timeline's resolved positions
+        instead of stale cached positions from the prior timeline.
+        """
 
         self.dynamic_obstacles = dynamic_obstacles
+        if self._state is None:
+            self._dynamic_obstacle_positions = {}
+            return
+        self._dynamic_obstacle_positions = self._resolve_dynamic_obstacle_positions(
+            step_index=self._state.step_index,
+            agent_position=tuple(self._state.pose.position),
+            previous_positions={},
+        )
 
     def set_raw_sensor_noise_profile(self, profile: RawSensorNoiseProfile | None) -> None:
         """Set or clear the raw-sensor noise profile applied to rendered observations."""
@@ -118,6 +132,14 @@ class HeadlessPhysicalAIEnvironment(PhysicalAIEnvironment):
         self._reset_seed = None if seed is None else int(seed)
         self._render_request_count = 0
         self._kinematic_state = KinematicState()
+        # Pre-populate the per-step peer-position cache so a query_collision
+        # called between reset and the first step still routes ObstaclePolicy
+        # obstacles through step_positions() instead of the empty-peers fallback.
+        self._dynamic_obstacle_positions = self._resolve_dynamic_obstacle_positions(
+            step_index=0,
+            agent_position=tuple(pose.position),
+            previous_positions={},
+        )
         return {
             "scene": scene.to_dict(),
             "state": self._state.to_dict(),
@@ -132,13 +154,47 @@ class HeadlessPhysicalAIEnvironment(PhysicalAIEnvironment):
         if collision.collides:
             next_pose = state.pose
         self._kinematic_state = self._derive_kinematic_state(state.pose, next_pose, action)
-        self._state = HeadlessEnvironmentState(scene_id=scene.scene_id, pose=next_pose, step_index=state.step_index + 1)
+        next_step_index = state.step_index + 1
+        self._state = HeadlessEnvironmentState(scene_id=scene.scene_id, pose=next_pose, step_index=next_step_index)
+        # Refresh the peer-position cache for the new step using the prior
+        # step's resolved positions, so the next step's query_collision sees
+        # ObstaclePolicy obstacles with up-to-date peer context.
+        self._dynamic_obstacle_positions = self._resolve_dynamic_obstacle_positions(
+            step_index=next_step_index,
+            agent_position=tuple(next_pose.position),
+            previous_positions=self._dynamic_obstacle_positions,
+        )
         return {
             "sceneId": scene.scene_id,
             "state": self._state.to_dict(),
             "collision": collision.to_dict(),
             "applied": not collision.collides,
         }
+
+    def _resolve_dynamic_obstacle_positions(
+        self,
+        *,
+        step_index: int,
+        agent_position: tuple[float, float, float],
+        previous_positions: Mapping[str, tuple[float, float, float]],
+    ) -> dict[str, tuple[float, float, float]]:
+        """Resolve every dynamic obstacle's position at ``step_index`` once.
+
+        Returns an empty dict when no timeline is attached. Otherwise
+        delegates to :meth:`DynamicObstacleTimeline.step_positions`, which
+        feeds the supplied ``previous_positions`` into each
+        :class:`ObstaclePolicy` so policy-driven obstacles see their peers.
+        """
+
+        if self.dynamic_obstacles is None:
+            return {}
+        return dict(
+            self.dynamic_obstacles.step_positions(
+                step_index,
+                agent_position=agent_position,
+                previous_positions=previous_positions,
+            )
+        )
 
     def render_observation(self, request: ObservationRequest) -> Observation:
         scene = self.catalog.scene_by_id(self.state.scene_id)
@@ -263,7 +319,12 @@ class HeadlessPhysicalAIEnvironment(PhysicalAIEnvironment):
 
     def query_collision(self, pose: Pose3D) -> CollisionQuery:
         scene = self.catalog.scene_by_id(self.state.scene_id)
-        return self._query_collision_for_scene(scene, pose, step_index=self.state.step_index)
+        return self._query_collision_for_scene(
+            scene,
+            pose,
+            step_index=self.state.step_index,
+            peer_positions=self._dynamic_obstacle_positions,
+        )
 
     def _query_collision_for_scene(
         self,
@@ -271,6 +332,7 @@ class HeadlessPhysicalAIEnvironment(PhysicalAIEnvironment):
         pose: Pose3D,
         *,
         step_index: int = 0,
+        peer_positions: Mapping[str, tuple[float, float, float]] | None = None,
     ) -> CollisionQuery:
         point = Vec3.from_sequence(pose.position)
         if not scene.bounds.contains(point):
@@ -281,9 +343,17 @@ class HeadlessPhysicalAIEnvironment(PhysicalAIEnvironment):
                 clearance_meters=0.0,
             )
         if self.dynamic_obstacles is not None:
-            blocking = self.dynamic_obstacles.blocking_obstacle(pose.position, step_index)
+            blocking = self.dynamic_obstacles.blocking_obstacle(
+                pose.position,
+                step_index,
+                peer_positions=peer_positions,
+            )
             if blocking is not None:
-                centre = blocking.position_at_step(step_index, agent_position=pose.position)
+                centre = blocking.position_at_step(
+                    step_index,
+                    agent_position=pose.position,
+                    peer_positions=peer_positions,
+                )
                 clearance = max(0.0, math.dist(tuple(pose.position), centre) - blocking.radius_meters)
                 return CollisionQuery(
                     pose=pose,

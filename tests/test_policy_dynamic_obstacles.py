@@ -943,3 +943,87 @@ def test_maintain_separation_obstacle_policy_pushes_outward_via_gym_adapter() ->
     obs_step_1 = adapter._observation_features(adapter.state)
     sep_step_1 = obs_step_1["peer-min-separation-meters"]
     assert sep_step_1 + 1e-9 >= sep_step_0
+
+
+def test_headless_env_query_collision_threads_peer_positions_through_step() -> None:
+    """env.query_collision must hand the per-step peer cache to ObstaclePolicy obstacles."""
+    seen_peers: list[Mapping[str, tuple[float, float, float]]] = []
+
+    class _RecordingPolicy:
+        def __call__(self, context: ObstaclePolicyContext) -> ObstaclePolicyDecision:
+            seen_peers.append(dict(context.peer_positions))
+            return ObstaclePolicyDecision(next_position=context.current_position)
+
+    timeline = DynamicObstacleTimeline(
+        timeline_id="env-peer",
+        obstacles=(
+            DynamicObstacle(
+                obstacle_id="watcher",
+                waypoints=(DynamicObstacleWaypoint(step_index=0, position=(0.6, 0.0, 0.0)),),
+                radius_meters=0.05,
+                policy=_RecordingPolicy(),
+            ),
+            DynamicObstacle(
+                obstacle_id="peer",
+                waypoints=(DynamicObstacleWaypoint(step_index=0, position=(0.65, 0.0, 0.0)),),
+                radius_meters=0.05,
+            ),
+        ),
+    )
+    env = HeadlessPhysicalAIEnvironment(_unit_catalog(), dynamic_obstacles=timeline)
+    env.reset("unit-scene")
+    seen_peers.clear()
+
+    from gs_sim2real.sim import AgentAction, Pose3D
+
+    env.step(AgentAction("twist", {"linearX": 0.05, "linearY": 0.0, "linearZ": 0.0}, duration_seconds=1.0))
+    env.query_collision(Pose3D(position=(0.0, 0.0, 0.0), orientation_xyzw=(0.0, 0.0, 0.0, 1.0)))
+
+    # The most recent policy invocation (during query_collision after a step)
+    # must have observed the peer's resolved step-0 position via the cache.
+    latest = seen_peers[-1]
+    assert "peer" in latest
+    assert latest["peer"] == pytest.approx((0.65, 0.0, 0.0))
+
+
+def test_headless_env_set_dynamic_obstacles_resets_peer_cache() -> None:
+    """Swapping the timeline must seat a fresh peer cache so collision queries do not leak stale state."""
+    initial_timeline = DynamicObstacleTimeline(
+        timeline_id="initial",
+        obstacles=(
+            DynamicObstacle(
+                obstacle_id="initial-blocker",
+                waypoints=(DynamicObstacleWaypoint(step_index=0, position=(0.3, 0.0, 0.0)),),
+                radius_meters=0.05,
+            ),
+        ),
+    )
+    env = HeadlessPhysicalAIEnvironment(_unit_catalog(), dynamic_obstacles=initial_timeline)
+    env.reset("unit-scene")
+
+    from gs_sim2real.sim import Pose3D
+
+    blocked_initial = env.query_collision(Pose3D(position=(0.3, 0.0, 0.0), orientation_xyzw=(0.0, 0.0, 0.0, 1.0)))
+    assert blocked_initial.collides is True
+    assert blocked_initial.reason == "dynamic-obstacle:initial-blocker"
+
+    replacement = DynamicObstacleTimeline(
+        timeline_id="replacement",
+        obstacles=(
+            DynamicObstacle(
+                obstacle_id="new-blocker",
+                waypoints=(DynamicObstacleWaypoint(step_index=0, position=(0.45, 0.0, 0.0)),),
+                radius_meters=0.05,
+            ),
+        ),
+    )
+    env.set_dynamic_obstacles(replacement)
+
+    # Probe at the original blocker's spot: now clear because the cache was rebuilt.
+    clear_after_swap = env.query_collision(Pose3D(position=(0.3, 0.0, 0.0), orientation_xyzw=(0.0, 0.0, 0.0, 1.0)))
+    assert clear_after_swap.collides is False
+
+    # Probe at the new blocker's spot: now flagged.
+    blocked_after_swap = env.query_collision(Pose3D(position=(0.45, 0.0, 0.0), orientation_xyzw=(0.0, 0.0, 0.0, 1.0)))
+    assert blocked_after_swap.collides is True
+    assert blocked_after_swap.reason == "dynamic-obstacle:new-blocker"
