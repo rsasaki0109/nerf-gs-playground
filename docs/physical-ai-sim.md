@@ -847,6 +847,8 @@ state = timeline.step_positions(0, agent_position=(0.0, 0.0, 0.0))
 state = timeline.step_positions(1, agent_position=(0.0, 0.0, 0.0), previous_positions=state)
 ```
 
+`HeadlessPhysicalAIEnvironment` keeps a per-step peer-position cache so `query_collision` automatically threads `peer_positions` into `blocking_obstacle` and the per-obstacle `position_at_step`. The cache is seeded inside `reset` (`step_positions(0, agent_position=initial_pose, previous_positions={})`), refreshed inside `step` after the new pose commits (`step_positions(step_index+1, agent_position=next_pose, previous_positions=cache)`), and rebuilt inside `set_dynamic_obstacles` whenever the timeline is swapped. Policy-driven obstacles therefore observe up-to-date peer state during real collision queries on a rollout, not just inside the gym adapter's feature dict. Score-trajectory-style introspection (`score_trajectory`) keeps using `peer_positions=None` because it evaluates hypothetical poses outside the env's stepwise state and does not have a previous-step layout to thread.
+
 The entire block is omitted when no timeline is configured, so existing scenario-set fixtures keep their exact feature dict.
 
 For CI-sized execution, split the generated scenario sets into shard scenario-set files. Each shard is still a normal `RoutePolicyScenarioSet`, so CI jobs can run shards with the existing `route-policy-scenario-set` command. The final merge step reads the shard run JSON files, collects every per-scenario benchmark report, and rebuilds one global history gate.
