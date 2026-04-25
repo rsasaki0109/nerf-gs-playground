@@ -629,3 +629,78 @@ def test_correlation_threshold_overrides_rejects_non_mapping_root(tmp_path: Path
     bad.write_text('["not-an-object"]', encoding="utf-8")
     with pytest.raises(ValueError, match="root must be an object"):
         load_correlation_threshold_overrides_json(bad)
+
+
+def _correlation_report_with_pairs(
+    pair_errors: list[float],
+):
+    """Build a synthetic correlation report whose pair list has the requested per-pair errors."""
+    bag_samples = [BagPoseSample(timestamp_seconds=float(i), position=(0.0, 0.0, 0.0)) for i in range(len(pair_errors))]
+    sim_samples = [
+        SimPoseSample(timestamp_seconds=float(i), position=(error, 0.0, 0.0), orientation_xyzw=(0, 0, 0, 1))
+        for i, error in enumerate(pair_errors)
+    ]
+    return correlate_against_sim_trajectory(_make_bag_stream(bag_samples), sim_samples, max_match_dt_seconds=0.5)
+
+
+def test_correlation_pair_distribution_gate_passes_when_under_fraction() -> None:
+    """1/10 pairs above 0.5 m at a 0.2 limit (10% > 20% is False) must not fail."""
+    report = _correlation_report_with_pairs([0.0] * 9 + [1.0])
+    thresholds = RealVsSimCorrelationThresholds(
+        max_pair_translation_error_meters=0.5,
+        max_exceeding_translation_pair_fraction=0.2,
+    )
+    passed, failed = evaluate_real_vs_sim_correlation_thresholds(report, thresholds)
+    assert passed is True
+    assert "translation-pair-distribution" not in failed
+
+
+def test_correlation_pair_distribution_gate_fails_when_over_fraction() -> None:
+    """3/10 pairs above 0.5 m at a 0.2 limit (30% > 20% is True) must fail with the new tag."""
+    report = _correlation_report_with_pairs([0.0] * 7 + [1.0, 1.0, 1.0])
+    thresholds = RealVsSimCorrelationThresholds(
+        max_pair_translation_error_meters=0.5,
+        max_exceeding_translation_pair_fraction=0.2,
+    )
+    passed, failed = evaluate_real_vs_sim_correlation_thresholds(report, thresholds)
+    assert passed is False
+    assert "translation-pair-distribution" in failed
+
+
+def test_correlation_pair_distribution_gate_requires_both_bounds() -> None:
+    """Setting only one of the two pair-distribution fields must skip the check silently."""
+    report = _correlation_report_with_pairs([1.0] * 10)
+    only_bound = RealVsSimCorrelationThresholds(max_pair_translation_error_meters=0.1)
+    only_fraction = RealVsSimCorrelationThresholds(max_exceeding_translation_pair_fraction=0.0)
+    for thresholds in (only_bound, only_fraction):
+        passed, failed = evaluate_real_vs_sim_correlation_thresholds(report, thresholds)
+        assert passed is True
+        assert "translation-pair-distribution" not in failed
+
+
+def test_correlation_pair_distribution_gate_skips_empty_pair_list() -> None:
+    """A report whose pairs were dropped (keep_pairs=False) must not trip the gate."""
+    bag_samples = [BagPoseSample(timestamp_seconds=0.0, position=(0.0, 0.0, 0.0))]
+    sim_samples = [
+        SimPoseSample(timestamp_seconds=0.0, position=(10.0, 0.0, 0.0), orientation_xyzw=(0, 0, 0, 1)),
+    ]
+    report = correlate_against_sim_trajectory(
+        _make_bag_stream(bag_samples), sim_samples, max_match_dt_seconds=0.1, keep_pairs=False
+    )
+    thresholds = RealVsSimCorrelationThresholds(
+        max_pair_translation_error_meters=0.1,
+        max_exceeding_translation_pair_fraction=0.0,
+    )
+    passed, failed = evaluate_real_vs_sim_correlation_thresholds(report, thresholds)
+    assert passed is True
+    assert failed == ()
+
+
+def test_correlation_thresholds_pair_distribution_round_trips_through_json() -> None:
+    """Pair-distribution bounds must round-trip through to_dict/from_dict."""
+    thresholds = RealVsSimCorrelationThresholds(
+        max_pair_translation_error_meters=0.4,
+        max_exceeding_translation_pair_fraction=0.05,
+    )
+    rebuilt = real_vs_sim_correlation_thresholds_from_dict(thresholds.to_dict())
+    assert rebuilt == thresholds

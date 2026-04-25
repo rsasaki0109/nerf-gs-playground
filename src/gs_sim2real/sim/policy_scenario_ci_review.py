@@ -810,6 +810,8 @@ def run_review_cli(args: Any) -> None:
         max_translation_error_p95_meters=getattr(args, "max_correlation_translation_p95_meters", None),
         max_translation_error_max_meters=getattr(args, "max_correlation_translation_max_meters", None),
         max_heading_error_mean_radians=getattr(args, "max_correlation_heading_mean_radians", None),
+        max_pair_translation_error_meters=getattr(args, "max_correlation_pair_translation_meters", None),
+        max_exceeding_translation_pair_fraction=getattr(args, "max_correlation_pair_fraction", None),
     )
     if correlation_thresholds.is_empty:
         correlation_thresholds = None
@@ -895,6 +897,14 @@ def _describe_correlation_thresholds(thresholds: RealVsSimCorrelationThresholds)
         parts.append(f"translation max ≤ {thresholds.max_translation_error_max_meters:g} m")
     if thresholds.max_heading_error_mean_radians is not None:
         parts.append(f"heading mean ≤ {thresholds.max_heading_error_mean_radians:g} rad")
+    if (
+        thresholds.max_pair_translation_error_meters is not None
+        and thresholds.max_exceeding_translation_pair_fraction is not None
+    ):
+        parts.append(
+            f"pair distribution: ≤ {thresholds.max_exceeding_translation_pair_fraction:g} fraction "
+            f"of pairs above {thresholds.max_pair_translation_error_meters:g} m"
+        )
     return ", ".join(parts) if parts else "no thresholds configured"
 
 

@@ -239,14 +239,25 @@ class RealVsSimCorrelationThresholds:
     populated threshold, :func:`evaluate_real_vs_sim_correlation_thresholds`
     returns ``passed=False`` along with a list of failure tags
     (``translation-mean`` / ``translation-p95`` / ``translation-max`` /
-    ``heading-mean``) so callers can route the failure into a CI gate
-    or a review bundle annotation.
+    ``heading-mean`` / ``translation-pair-distribution``) so callers can
+    route the failure into a CI gate or a review bundle annotation.
+
+    The pair-distribution check is active only when both
+    ``max_pair_translation_error_meters`` and
+    ``max_exceeding_translation_pair_fraction`` are set: the evaluator
+    walks the report's :class:`CorrelatedPosePair` list, counts how many
+    pairs exceed the per-pair bound, and fails with
+    ``translation-pair-distribution`` when the exceeding fraction is
+    above the allowed limit. Reports with no pairs (e.g. those produced
+    with ``keep_pairs=False`` on the correlator) skip this check.
     """
 
     max_translation_error_mean_meters: float | None = None
     max_translation_error_p95_meters: float | None = None
     max_translation_error_max_meters: float | None = None
     max_heading_error_mean_radians: float | None = None
+    max_pair_translation_error_meters: float | None = None
+    max_exceeding_translation_pair_fraction: float | None = None
 
     @property
     def is_empty(self) -> bool:
@@ -255,6 +266,8 @@ class RealVsSimCorrelationThresholds:
             and self.max_translation_error_p95_meters is None
             and self.max_translation_error_max_meters is None
             and self.max_heading_error_mean_radians is None
+            and self.max_pair_translation_error_meters is None
+            and self.max_exceeding_translation_pair_fraction is None
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -267,6 +280,10 @@ class RealVsSimCorrelationThresholds:
             payload["maxTranslationErrorMaxMeters"] = float(self.max_translation_error_max_meters)
         if self.max_heading_error_mean_radians is not None:
             payload["maxHeadingErrorMeanRadians"] = float(self.max_heading_error_mean_radians)
+        if self.max_pair_translation_error_meters is not None:
+            payload["maxPairTranslationErrorMeters"] = float(self.max_pair_translation_error_meters)
+        if self.max_exceeding_translation_pair_fraction is not None:
+            payload["maxExceedingTranslationPairFraction"] = float(self.max_exceeding_translation_pair_fraction)
         return payload
 
 
@@ -282,6 +299,8 @@ def real_vs_sim_correlation_thresholds_from_dict(payload: Mapping[str, Any]) -> 
         max_translation_error_p95_meters=_optional("maxTranslationErrorP95Meters"),
         max_translation_error_max_meters=_optional("maxTranslationErrorMaxMeters"),
         max_heading_error_mean_radians=_optional("maxHeadingErrorMeanRadians"),
+        max_pair_translation_error_meters=_optional("maxPairTranslationErrorMeters"),
+        max_exceeding_translation_pair_fraction=_optional("maxExceedingTranslationPairFraction"),
     )
 
 
@@ -366,6 +385,16 @@ def evaluate_real_vs_sim_correlation_thresholds(
         and float(report.heading_error_mean_radians) > thresholds.max_heading_error_mean_radians
     ):
         failed.append("heading-mean")
+    if (
+        thresholds.max_pair_translation_error_meters is not None
+        and thresholds.max_exceeding_translation_pair_fraction is not None
+        and report.pairs
+    ):
+        bound = float(thresholds.max_pair_translation_error_meters)
+        exceeding = sum(1 for pair in report.pairs if float(pair.translation_error_meters) > bound)
+        fraction = exceeding / len(report.pairs)
+        if fraction > float(thresholds.max_exceeding_translation_pair_fraction):
+            failed.append("translation-pair-distribution")
     return (not failed, tuple(failed))
 
 
