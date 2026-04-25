@@ -1530,6 +1530,15 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     rpsrev.add_argument(
+        "--correlation-thresholds-config",
+        default=None,
+        help=(
+            "Optional JSON file with per-bag-topic correlation threshold overrides (shape: "
+            "{<bag_source_topic>: {<thresholds>}}). Topics matched here use the override; "
+            "other topics fall through to the scalar --max-correlation-* defaults."
+        ),
+    )
+    rpsrev.add_argument(
         "--adoption-report",
         default=None,
         help="Optional scenario CI workflow adoption report JSON to embed in the review",

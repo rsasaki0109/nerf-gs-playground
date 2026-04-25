@@ -27,6 +27,8 @@ from .policy_scenario_set import load_route_policy_scenario_set_run_json
 from ..robotics.rosbag_correlation import (
     RealVsSimCorrelationReport,
     RealVsSimCorrelationThresholds,
+    correlation_threshold_overrides_from_dict,
+    correlation_threshold_overrides_to_dict,
     evaluate_real_vs_sim_correlation_thresholds,
     real_vs_sim_correlation_report_from_dict,
     real_vs_sim_correlation_thresholds_from_dict,
@@ -137,6 +139,7 @@ class RoutePolicyScenarioCIReviewArtifact:
     correlation_reports: tuple[RealVsSimCorrelationReport, ...] = ()
     correlation_report_paths: tuple[str, ...] = ()
     correlation_thresholds: RealVsSimCorrelationThresholds | None = None
+    correlation_threshold_overrides: Mapping[str, RealVsSimCorrelationThresholds] = field(default_factory=dict)
     correlation_failed_reports: tuple[tuple[int, str, tuple[str, ...]], ...] = ()
     metadata: Mapping[str, Any] = field(default_factory=dict)
     version: str = ROUTE_POLICY_SCENARIO_CI_REVIEW_VERSION
@@ -172,6 +175,12 @@ class RoutePolicyScenarioCIReviewArtifact:
             for index, topic, checks in self.correlation_failed_reports
         )
         object.__setattr__(self, "correlation_failed_reports", normalised_failures)
+        normalised_overrides: dict[str, RealVsSimCorrelationThresholds] = {
+            str(topic): thresholds
+            for topic, thresholds in self.correlation_threshold_overrides.items()
+            if not thresholds.is_empty
+        }
+        object.__setattr__(self, "correlation_threshold_overrides", normalised_overrides)
 
     @property
     def correlation_passed(self) -> bool:
@@ -237,8 +246,16 @@ class RoutePolicyScenarioCIReviewArtifact:
             payload["correlationReports"] = [report.to_dict() for report in self.correlation_reports]
             if self.correlation_report_paths:
                 payload["correlationReportPaths"] = list(self.correlation_report_paths)
-        if self.correlation_thresholds is not None and not self.correlation_thresholds.is_empty:
-            payload["correlationThresholds"] = self.correlation_thresholds.to_dict()
+        gate_active = (self.correlation_thresholds is not None and not self.correlation_thresholds.is_empty) or bool(
+            self.correlation_threshold_overrides
+        )
+        if gate_active:
+            if self.correlation_thresholds is not None and not self.correlation_thresholds.is_empty:
+                payload["correlationThresholds"] = self.correlation_thresholds.to_dict()
+            if self.correlation_threshold_overrides:
+                payload["correlationThresholdOverrides"] = correlation_threshold_overrides_to_dict(
+                    self.correlation_threshold_overrides
+                )
             payload["correlationPassed"] = self.correlation_passed
             if self.correlation_failed_reports:
                 payload["correlationFailedReports"] = [
@@ -263,6 +280,7 @@ def build_route_policy_scenario_ci_review_artifact(
     correlation_reports: Sequence[RealVsSimCorrelationReport] = (),
     correlation_report_paths: Sequence[str | Path] = (),
     correlation_thresholds: RealVsSimCorrelationThresholds | None = None,
+    correlation_threshold_overrides: Mapping[str, RealVsSimCorrelationThresholds] | None = None,
     metadata: Mapping[str, Any] | None = None,
 ) -> RoutePolicyScenarioCIReviewArtifact:
     """Build a compact review artifact for a scenario CI workflow change.
@@ -289,10 +307,20 @@ def build_route_policy_scenario_ci_review_artifact(
     if validation_report.manifest_id != activation_report.manifest_id:
         raise ValueError("validation and activation reports must reference the same manifest")
     correlation_failed_reports: tuple[tuple[int, str, tuple[str, ...]], ...] = ()
-    if correlation_thresholds is not None and not correlation_thresholds.is_empty:
+    overrides_map: dict[str, RealVsSimCorrelationThresholds] = {
+        str(topic): thresholds
+        for topic, thresholds in (correlation_threshold_overrides or {}).items()
+        if not thresholds.is_empty
+    }
+    default_thresholds = correlation_thresholds if correlation_thresholds is not None else None
+    gate_active = (default_thresholds is not None and not default_thresholds.is_empty) or bool(overrides_map)
+    if gate_active:
         failed: list[tuple[int, str, tuple[str, ...]]] = []
         for index, report in enumerate(correlation_reports):
-            _, failed_checks = evaluate_real_vs_sim_correlation_thresholds(report, correlation_thresholds)
+            applied = overrides_map.get(report.bag_source.source_topic, default_thresholds)
+            if applied is None or applied.is_empty:
+                continue
+            _, failed_checks = evaluate_real_vs_sim_correlation_thresholds(report, applied)
             if failed_checks:
                 failed.append((index, report.bag_source.source_topic, failed_checks))
         correlation_failed_reports = tuple(failed)
@@ -315,6 +343,7 @@ def build_route_policy_scenario_ci_review_artifact(
         correlation_reports=tuple(correlation_reports),
         correlation_report_paths=tuple(str(item) for item in correlation_report_paths),
         correlation_thresholds=correlation_thresholds,
+        correlation_threshold_overrides=overrides_map,
         correlation_failed_reports=correlation_failed_reports,
         metadata={
             "pagesBaseUrl": pages_base_url,
@@ -522,6 +551,12 @@ def route_policy_scenario_ci_review_from_dict(
         if isinstance(thresholds_payload, Mapping)
         else None
     )
+    overrides_payload = payload.get("correlationThresholdOverrides")
+    correlation_threshold_overrides = (
+        correlation_threshold_overrides_from_dict(_mapping(overrides_payload, "correlationThresholdOverrides"))
+        if isinstance(overrides_payload, Mapping)
+        else {}
+    )
     correlation_failed_reports = tuple(
         (
             int(item.get("index", 0)),
@@ -552,6 +587,7 @@ def route_policy_scenario_ci_review_from_dict(
         correlation_reports=correlation_reports,
         correlation_report_paths=correlation_report_paths,
         correlation_thresholds=correlation_thresholds,
+        correlation_threshold_overrides=correlation_threshold_overrides,
         correlation_failed_reports=correlation_failed_reports,
         metadata=_json_mapping(_mapping(payload.get("metadata", {}), "metadata")),
         version=version,
@@ -592,9 +628,17 @@ def render_route_policy_scenario_ci_review_markdown(artifact: RoutePolicyScenari
     if artifact.correlation_reports:
         lines.append("")
         lines.append("## Real-vs-sim correlation")
-        if artifact.correlation_thresholds is not None and not artifact.correlation_thresholds.is_empty:
+        gate_default_active = (
+            artifact.correlation_thresholds is not None and not artifact.correlation_thresholds.is_empty
+        )
+        if gate_default_active or artifact.correlation_threshold_overrides:
+            descriptor_parts: list[str] = []
+            if gate_default_active:
+                descriptor_parts.append(f"default: {_describe_correlation_thresholds(artifact.correlation_thresholds)}")
+            if artifact.correlation_threshold_overrides:
+                descriptor_parts.append(f"per-topic overrides: {len(artifact.correlation_threshold_overrides)}")
             lines.append(
-                f"- Gate: {'PASS' if artifact.correlation_passed else 'FAIL'}  ({_describe_correlation_thresholds(artifact.correlation_thresholds)})"
+                f"- Gate: {'PASS' if artifact.correlation_passed else 'FAIL'}  ({'; '.join(descriptor_parts)})"
             )
         lines.extend(
             [
@@ -769,6 +813,12 @@ def run_review_cli(args: Any) -> None:
     )
     if correlation_thresholds.is_empty:
         correlation_thresholds = None
+    overrides_path = getattr(args, "correlation_thresholds_config", None)
+    correlation_threshold_overrides: dict[str, RealVsSimCorrelationThresholds] = {}
+    if overrides_path:
+        from ..robotics.rosbag_correlation import load_correlation_threshold_overrides_json
+
+        correlation_threshold_overrides = load_correlation_threshold_overrides_json(overrides_path)
     artifact = build_route_policy_scenario_ci_review_artifact(
         merge_report,
         validation_report,
@@ -779,6 +829,7 @@ def run_review_cli(args: Any) -> None:
         correlation_reports=correlation_reports,
         correlation_report_paths=correlation_report_paths,
         correlation_thresholds=correlation_thresholds,
+        correlation_threshold_overrides=correlation_threshold_overrides,
     )
     bundle_dir = getattr(args, "bundle_dir", None)
     if bundle_dir:
@@ -872,12 +923,17 @@ def _render_correlation_section_html(artifact: RoutePolicyScenarioCIReviewArtifa
         )
     body = "\n".join(rows)
     gate_html = ""
-    if artifact.correlation_thresholds is not None and not artifact.correlation_thresholds.is_empty:
+    gate_default_active = artifact.correlation_thresholds is not None and not artifact.correlation_thresholds.is_empty
+    if gate_default_active or artifact.correlation_threshold_overrides:
         gate_pill = "pass" if artifact.correlation_passed else "fail"
         gate_label = "PASS" if artifact.correlation_passed else "FAIL"
+        descriptor_parts: list[str] = []
+        if gate_default_active:
+            descriptor_parts.append(f"default: {_describe_correlation_thresholds(artifact.correlation_thresholds)}")
+        if artifact.correlation_threshold_overrides:
+            descriptor_parts.append(f"per-topic overrides: {len(artifact.correlation_threshold_overrides)}")
         gate_html = (
-            f'<p>Gate <span class="pill {gate_pill}">{gate_label}</span> '
-            f"({escape(_describe_correlation_thresholds(artifact.correlation_thresholds))})</p>"
+            f'<p>Gate <span class="pill {gate_pill}">{gate_label}</span> ({escape("; ".join(descriptor_parts))})</p>'
         )
     failures_html = ""
     if artifact.correlation_failed_reports:

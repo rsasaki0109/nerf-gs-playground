@@ -19,7 +19,10 @@ from gs_sim2real.robotics import (
     RealVsSimCorrelationThresholds,
     SimPoseSample,
     correlate_against_sim_trajectory,
+    correlation_threshold_overrides_from_dict,
+    correlation_threshold_overrides_to_dict,
     evaluate_real_vs_sim_correlation_thresholds,
+    load_correlation_threshold_overrides_json,
     load_real_vs_sim_correlation_report_json,
     load_sim_pose_samples_jsonl,
     merge_navsat_with_imu_orientation,
@@ -596,3 +599,33 @@ def test_real_vs_sim_correlation_thresholds_round_trip_through_json() -> None:
     assert rebuilt == thresholds
     assert "maxTranslationErrorMaxMeters" not in thresholds.to_dict()
     assert real_vs_sim_correlation_thresholds_from_dict({}) == RealVsSimCorrelationThresholds()
+
+
+def test_correlation_threshold_overrides_round_trip_drops_empty_entries(tmp_path: Path) -> None:
+    """from_dict/to_dict + load_..._json must drop topics whose payload has no bounds set."""
+    payload = {
+        "/gnss/fix": {"maxTranslationErrorMeanMeters": 0.5},
+        "/imu/data": {"maxHeadingErrorMeanRadians": 0.05},
+        "/empty/topic": {},  # should be dropped
+    }
+    overrides = correlation_threshold_overrides_from_dict(payload)
+    assert set(overrides.keys()) == {"/gnss/fix", "/imu/data"}
+    assert overrides["/gnss/fix"].max_translation_error_mean_meters == pytest.approx(0.5)
+    assert overrides["/imu/data"].max_heading_error_mean_radians == pytest.approx(0.05)
+
+    rebuilt_payload = correlation_threshold_overrides_to_dict(overrides)
+    assert "/empty/topic" not in rebuilt_payload
+    assert correlation_threshold_overrides_from_dict(rebuilt_payload) == overrides
+
+    config_path = tmp_path / "overrides.json"
+    config_path.write_text(json.dumps(payload), encoding="utf-8")
+    loaded = load_correlation_threshold_overrides_json(config_path)
+    assert loaded == overrides
+
+
+def test_correlation_threshold_overrides_rejects_non_mapping_root(tmp_path: Path) -> None:
+    """A JSON file whose root is not an object must raise on load."""
+    bad = tmp_path / "bad.json"
+    bad.write_text('["not-an-object"]', encoding="utf-8")
+    with pytest.raises(ValueError, match="root must be an object"):
+        load_correlation_threshold_overrides_json(bad)
