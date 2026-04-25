@@ -285,6 +285,51 @@ def real_vs_sim_correlation_thresholds_from_dict(payload: Mapping[str, Any]) -> 
     )
 
 
+def correlation_threshold_overrides_from_dict(
+    payload: Mapping[str, Any],
+) -> dict[str, RealVsSimCorrelationThresholds]:
+    """Rebuild per-topic correlation threshold overrides from JSON.
+
+    The payload is a flat ``{<bag_source_topic>: {<thresholds>}}`` mapping.
+    Topics whose payload is empty (no bounds set) are dropped — they would
+    behave identically to falling through to the default thresholds.
+    """
+
+    overrides: dict[str, RealVsSimCorrelationThresholds] = {}
+    for topic, item in payload.items():
+        if not isinstance(item, Mapping):
+            raise ValueError(f"correlation thresholds for topic {topic!r} must be a mapping")
+        thresholds = real_vs_sim_correlation_thresholds_from_dict(item)
+        if thresholds.is_empty:
+            continue
+        overrides[str(topic)] = thresholds
+    return overrides
+
+
+def load_correlation_threshold_overrides_json(
+    path: str | Path,
+) -> dict[str, RealVsSimCorrelationThresholds]:
+    """Load per-topic correlation threshold overrides from a JSON file.
+
+    File shape: a flat ``{<bag_source_topic>: {<thresholds>}}`` object.
+    Empty entries are dropped on load (treated as \"no override for this
+    topic\").
+    """
+
+    raw = json.loads(Path(path).read_text(encoding="utf-8"))
+    if not isinstance(raw, Mapping):
+        raise ValueError("correlation threshold overrides JSON root must be an object")
+    return correlation_threshold_overrides_from_dict(raw)
+
+
+def correlation_threshold_overrides_to_dict(
+    overrides: Mapping[str, RealVsSimCorrelationThresholds],
+) -> dict[str, dict[str, Any]]:
+    """Serialise per-topic overrides into the JSON payload shape."""
+
+    return {str(topic): thresholds.to_dict() for topic, thresholds in overrides.items()}
+
+
 def evaluate_real_vs_sim_correlation_thresholds(
     report: RealVsSimCorrelationReport,
     thresholds: RealVsSimCorrelationThresholds,
