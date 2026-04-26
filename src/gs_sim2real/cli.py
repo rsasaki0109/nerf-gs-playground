@@ -1572,9 +1572,19 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=None,
         help=(
-            "Optional time stratification: split each correlation report's pair list into N equal-duration "
-            "windows by bag_timestamp_seconds and run the per-pair distribution gates against each window "
-            "independently (failure tag includes the window index)"
+            "Optional time stratification: split each correlation report's pair list into N windows "
+            "and run the per-pair distribution + aggregate-stat gates against each window independently "
+            "(failure tag includes the window index)"
+        ),
+    )
+    rpsrev.add_argument(
+        "--correlation-pair-distribution-strata-mode",
+        choices=("equal-duration", "equal-pair-count"),
+        default="equal-duration",
+        help=(
+            "Stratification mode for --correlation-pair-distribution-strata: 'equal-duration' splits "
+            "by bag_timestamp_seconds (default), 'equal-pair-count' splits by pair index so windows hold "
+            "near-equal pair counts even when bag sample density is uneven"
         ),
     )
     rpsrev.add_argument(

@@ -962,3 +962,95 @@ def test_correlation_aggregate_stratification_skips_heading_when_no_window_carri
     # heading-bearing pairs and skips silently. No failure either way.
     assert passed is True
     assert failed == ()
+
+
+def test_correlation_strata_mode_equal_pair_count_partitions_by_index() -> None:
+    """equal-pair-count mode keeps each window statistically meaningful for sparse bags."""
+    # Sparse-then-dense timeline: 3 pairs in [0,2] s, then 7 pairs in [9, 9.6] s.
+    # equal-duration with strata=2 puts ~all 10 pairs in window 1 (the longer half).
+    # equal-pair-count with strata=2 splits 5/5 by index order regardless of timestamps.
+    pairs_timeline = [
+        (0.0, 0.0),
+        (1.0, 0.0),
+        (2.0, 0.0),
+        (9.0, 1.0),
+        (9.1, 1.0),
+        (9.2, 1.0),
+        (9.3, 1.0),
+        (9.4, 1.0),
+        (9.5, 1.0),
+        (9.6, 1.0),
+    ]
+    report = _correlation_report_with_pair_timeline(pairs_timeline)
+    # Threshold tolerates 30% exceeding under the per-pair gate.
+    thresholds_index = RealVsSimCorrelationThresholds(
+        max_pair_translation_error_meters=0.5,
+        max_exceeding_translation_pair_fraction=0.3,
+        pair_distribution_strata=2,
+        pair_distribution_strata_mode="equal-pair-count",
+    )
+    # equal-pair-count window 0 = pairs[0:5] (3 clean + 2 dirty -> 40% exceeding -> fails).
+    # window 1 = pairs[5:10] (5 dirty -> 100% exceeding -> fails).
+    _, failed_index = evaluate_real_vs_sim_correlation_thresholds(report, thresholds_index)
+    assert "translation-pair-distribution-window-0" in failed_index
+    assert "translation-pair-distribution-window-1" in failed_index
+
+    # equal-duration on the same data: window 0 covers t in [0, 4.8], window 1 covers
+    # t in (4.8, 9.6]. Window 0 has 3 clean pairs (0% exceeding), window 1 has 7
+    # dirty pairs (100% exceeding). Window 0 should pass, window 1 fails.
+    thresholds_time = RealVsSimCorrelationThresholds(
+        max_pair_translation_error_meters=0.5,
+        max_exceeding_translation_pair_fraction=0.3,
+        pair_distribution_strata=2,
+        pair_distribution_strata_mode="equal-duration",
+    )
+    _, failed_time = evaluate_real_vs_sim_correlation_thresholds(report, thresholds_time)
+    assert "translation-pair-distribution-window-0" not in failed_time
+    assert "translation-pair-distribution-window-1" in failed_time
+
+
+def test_correlation_strata_mode_round_trips_through_json_only_when_non_default() -> None:
+    """Mode is dropped from JSON when default ('equal-duration') and round-trips otherwise."""
+    default = RealVsSimCorrelationThresholds(pair_distribution_strata=4)
+    assert "pairDistributionStrataMode" not in default.to_dict()
+    explicit = RealVsSimCorrelationThresholds(
+        pair_distribution_strata=4, pair_distribution_strata_mode="equal-pair-count"
+    )
+    payload = explicit.to_dict()
+    assert payload["pairDistributionStrataMode"] == "equal-pair-count"
+    assert real_vs_sim_correlation_thresholds_from_dict(payload) == explicit
+
+
+def test_correlation_strata_mode_rejects_unknown_value() -> None:
+    """Unknown mode strings must raise on construction so typos fail fast."""
+    with pytest.raises(ValueError, match="pair_distribution_strata_mode"):
+        RealVsSimCorrelationThresholds(pair_distribution_strata_mode="round-robin")
+
+
+def test_correlation_strata_mode_equal_pair_count_handles_uneven_split() -> None:
+    """Total pair count must be preserved when N does not divide evenly."""
+    # 10 pairs split into 4 windows: counts should be [3, 3, 2, 2].
+    pairs_timeline = [(float(i), 0.0) for i in range(10)]
+    report = _correlation_report_with_pair_timeline(pairs_timeline)
+    # Use a large bound so the gate passes; we just want to verify the splitter
+    # by examining that empty windows don't show up.
+    thresholds = RealVsSimCorrelationThresholds(
+        max_pair_translation_error_meters=999.0,
+        max_exceeding_translation_pair_fraction=0.5,
+        pair_distribution_strata=4,
+        pair_distribution_strata_mode="equal-pair-count",
+    )
+    passed, failed = evaluate_real_vs_sim_correlation_thresholds(report, thresholds)
+    assert passed is True
+    assert failed == ()
+    # Make threshold tighter to force every window to fail and check no "window-N"
+    # tag is missing (which would indicate an empty window was skipped).
+    thresholds_strict = RealVsSimCorrelationThresholds(
+        max_pair_translation_error_meters=-1.0,  # everything exceeds
+        max_exceeding_translation_pair_fraction=0.0,
+        pair_distribution_strata=4,
+        pair_distribution_strata_mode="equal-pair-count",
+    )
+    _, failed_strict = evaluate_real_vs_sim_correlation_thresholds(report, thresholds_strict)
+    for index in range(4):
+        assert f"translation-pair-distribution-window-{index}" in failed_strict
