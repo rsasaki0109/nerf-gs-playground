@@ -24,8 +24,10 @@
 - External SLAM import は VGGT-SLAM 2.0 / MASt3R-SLAM comparison splat まで実走済み。Pi3 / LoGeR profile も artifact resolver 側に候補追加済み。
 - 2026-04-24 時点では、屋外 3DGS だけでなく **Physical AI simulation benchmark environment** を目指す方向へ拡張中。
 - Route policy benchmark 系は、dataset / imitation / registry / benchmark / history / scenario-set / matrix / sharding / CI manifest / workflow materialization / validation / activation / review bundle / workflow trigger promotion gate / promotion-backed trigger adoption / adoption-aware review bundle まで分割済み。
-- 最新の pushed commit は `33a82c8`。adoption CLI subcommand まで反映済みで local full pytest / GitHub Actions CI / Pages deploy は green。
+- 最新の pushed commit は `2262f22`。Tier 2 chain (#121–#134) で env-hardening + correlation gate plumbing が完成。local full pytest / GitHub Actions CI / Pages deploy は green。
 - adoption step + CLI (`gs-mapper route-policy-scenario-ci-workflow-adopt`) + adoption-aware review bundle まで実装済み。review には `--adoption-report` を渡すと Pages の `review.{json,md,html}` に trigger mode / branches / manual vs adopted YAML の unified diff が乗る。
+- 2026-04-25 〜 26 の Tier 2 rollup で、real-vs-sim correlation library (#113/#115) → scenario-set run report への attach (#121) → review bundle への surface (#125) → regression gate (#126) → per-bag overrides (#128) → translation/heading pair-distribution gates (#129/#130) → time stratification (#131/#132) + equal-pair-count mode (#133) + per-window stats (#134) まで一気に完成。`gs-mapper route-policy-scenario-ci-review` の correlation gate は実用 production rollout で使える状態。
+- 同時に env-hardening 側も IMU finite-diff renderer (#111) → ObstaclePolicy protocol (#112) → IMU + peer-aware features を gym adapter feature dict へ surface (#122/#123) → query_collision / score_trajectory に per-step peer cache を threading (#124/#127) で multi-agent サポートが整った。
 
 ## 2. 現在の主戦場
 
@@ -43,43 +45,51 @@
 
 ## 3. Recent Commits / 現在地
 
-直近の主な流れ:
+直近の主な流れ (2026-04-25 〜 26 の Tier 2 chain):
 
 | Commit | 内容 |
 | --- | --- |
-| `dc08c2f` | Scenario CI workflow promotion gate を追加。review URL / trigger mode / branch policy / active workflow path を promotion report に閉じ込め、local validation・CI・Pages まで green。 |
-| `7bf7e4d` | README / Pages / launch-kit を Physical AI benchmark repo として再配置。 |
-| `1336f8d` | `query_source_identity` runtime benchmark の flaky failure を安定化。 |
-| `89b2c99` | 本 handoff plan を Physical AI / scenario CI 主軸に更新。 |
-| `6e68151` | Route policy scenario CI review publishing を追加。shard merge / validation / activation を Pages review bundle に集約。 |
-| `09f67d4` | Workflow activation guardrails を追加。validation PASS と `.github/workflows/` path などを gate 化。 |
-| `8c5e9b0` | Generated workflow validation を追加。YAML parse、matrix、commands、artifact paths を manifest と照合。 |
-| `8aa09b4` | Scenario CI workflow materialization を追加。manifest から GitHub Actions YAML を生成。 |
-| `99ffb52` | Scenario CI manifest を追加。shard jobs / merge job / cache / output paths を構造化。 |
-| `94b6411` | Scenario sharding を追加。scenario-set を CI-friendly shard に分割、merge report へ集約。 |
-| `f67e977` | Scenario matrix expansion を追加。registry / scene / goal suite / config matrix から scenario-set 群を生成。 |
-| `7c2f850` | Scenario-set runner を追加。scenario-set artifact を benchmark 実行単位にした。 |
-| `bb0e038` | Benchmark history gates を追加。baseline/current regression checks を構造化。 |
-| `aa8a60b` | Route policy registry artifacts を追加。policy registry と benchmark surface を分離。 |
+| `2262f22` | Per-window correlation stats (mean/p95/max/heading + bag-time span) を review bundle の Markdown / HTML に surface。 |
+| `95f1ea4` | `pair_distribution_strata_mode` で `equal-pair-count` を選べるように。スパース bag でも各 window を統計的に成立させる。 |
+| `cef2659` | aggregate-statistic (mean/p95/max/heading-mean) を per-window 評価に切り替え可能に。stratified 時は aggregate tag を suppress。 |
+| `2abd640` | `pair_distribution_strata` で per-pair 分布ゲートを N 等分時間 window に分けて評価。 |
+| `4629835` | heading 版 per-pair 分布ゲートを追加。heading-bearing subset を分母に使う。 |
+| `0683f91` | translation per-pair 分布ゲート (`max_pair_translation_error_meters` + fraction) を追加。 |
+| `3762717` | per-bag-topic correlation threshold overrides を `--correlation-thresholds-config` JSON で受け付ける。 |
+| `6db678e` | `score_trajectory` に per-step peer cache を threading。hypothetical trajectory でも policy obstacle が peer を見える。 |
+| `5a6edfd` | correlation regression gate (mean/p95/max/heading-mean) を `gs-mapper route-policy-scenario-ci-review` に追加、`--fail-on-review` で exit 2。 |
+| `ab8fbbe` | scenario CI review bundle (Markdown + HTML) に Real-vs-sim correlation セクションを追加。 |
+| `ea1b5f8` | `HeadlessPhysicalAIEnvironment.query_collision` に per-step peer cache を threading。 |
+| `a038b61` | `RoutePolicyGymAdapter` に peer-aware obstacle features (`peer-min-separation-meters` 等) + `step_positions` 解決を導入。 |
+| `9bb15d2` | `RoutePolicyGymAdapter` の feature dict に IMU 7 軸 (step_dt + ang_vel + lin_acc) を出力。 |
+| `b40e4a3` | scenario-set run report に correlation reports を attach (`--correlation-report`)、Markdown サマリ surface。 |
+| `5195130` | rosbag correlator に IMU orientation merge を追加 (`merge_navsat_with_imu_orientation`)。 |
+| `9e3be8b` | `ObstaclePolicy` protocol + 4 reference impl (Waypoint / Chase / Flee / MaintainSeparation) を導入。 |
+| `8bf29b1` | env に IMU kinematic finite-diff renderer を baked-in。`imu-proxy` sensor が `ready-via-kinematic-finite-diff`。 |
+| `7127641` | real-vs-sim rosbag correlation library + CLI (`scripts/run_rosbag_correlation.py`) を新設。 |
 
-この chain は、Physical AI simulation の「検証単位を小さくする」ための土台です。
+この chain で **correlation gate plumbing** と **multi-agent obstacle plumbing** が両方とも production rollout に使える状態に到達した。
 
 ### 3.1 Claude handoff snapshot
 
-- 基準にする pushed state は `main @ dc08c2f`。
-- `dc08c2f` 時点では working tree は clean、origin/main と同期済み。Claude に渡す前の doc 更新で差分があるなら、まず `docs/plan_outdoor_gs.md` のみか確認する。
+- 基準にする pushed state は `main @ 2262f22`。
+- working tree は clean、origin/main と同期済み。Claude に渡す前の doc 更新で差分があるなら、まず `docs/plan_outdoor_gs.md` のみか確認する。
 - GitHub Actions:
-  - CI `24834259595` success on 2026-04-24
-  - Deploy to GitHub Pages `24834259592` success on 2026-04-24
+  - CI green on 2026-04-26 (PR #134 まで)
+  - Deploy to GitHub Pages green on 2026-04-26
 - local validation snapshot:
   - `python3 -m ruff check src/ tests/ scripts/`
   - `python3 -m ruff format --check src/ tests/ scripts/`
   - `git diff --check`
-  - `python3 -m pytest tests/ -q` => `552 passed`
+  - `python3 -m pytest tests/ -q --ignore=tests/e2e` => `738 passed`
 - mypy note:
   - `python3 -m mypy src/gs_sim2real/sim/policy_scenario_ci_promotion.py` は pass。
-  - `src/gs_sim2real/cli.py` を含む mypy は Waymo / MCD 周辺の既知型不整合で落ちる。promotion gate の regression ではない。
-- Claude が最初に触るなら、promotion gate 自体の作り直しではなく、**matrix -> review -> promotion を一周する smoke recipe** を優先する。
+  - `src/gs_sim2real/cli.py` を含む mypy は Waymo / MCD 周辺の既知型不整合で落ちる。Tier 2 chain は regression を入れていない。
+- Tier 1 MCD rerun (`scripts/plan_mcd_quality_runs.py`) の 2/3 profile (`single_400_depth_long` L1=0.1951 / `single_800_ba` L1=0.2699) が gate pass。Profile 3 (`multi_3cam_300each_ba`) は手元 bag に `d455t` / `d435i` topics が無いので data-blocked。
+- Claude が次に触るときの推奨 starting point:
+  1. **event-aligned stratification** (#133 OOS): scenario phase boundary を外部 event timestamp 列で受け取る stratification mode。
+  2. **Pi3 / LoGeR production comparison asset** (§12.3): GPU run + asset bundle、external SLAM comparison surface を厚くする。
+  3. **`read_gsof_ins_pose_stream`** (#113 OOS): applanix custom msg schema の vendor が必要なので外部依存あり。
 
 ## 4. System Map
 
@@ -629,21 +639,21 @@ python3 scripts/collect_mcd_quality_runs.py --format gate --fail-on-gate
 
 ### 12.2 B: Physical AI env hardening
 
-| Task | Why |
+| Task | Status (2026-04-26) |
 | --- | --- |
-| Observation renderer integration | Policy が実際に scene image / depth を見る流れに近づける。`HeadlessPhysicalAIEnvironment` は `raw_sensor_noise_profile` 引数 + `render_observation()` での auto-wrap まで着地。残りは gym adapter 側で observation を policy feature に通す seam、および scene bundle に input 可能な sensor を増やすこと。 |
-| Sensor noise profiles (raw sensors) | Pose / goal / heading 用の `RoutePolicySensorNoiseProfile` + RGB / depth / LiDAR / IMU 用の `RawSensorNoiseProfile` + headless env 自動適用 + scenario spec / matrix config への `raw_sensor_noise_profile_path` wiring 着地済み。IMU sensor は default rig に placeholder として追加、`angular-velocity` / `linear-acceleration` block を perturb する noise seam は準備済み (renderer 未実装)。残りは route policy benchmark から observation 経由で feature を引く seam、および physics / rosbag-replay 由来の IMU renderer。 |
-| Dynamic obstacles (multi-agent) | シングル moving obstacle は scenario config に入った。Gym adapter の observation block は nearest + second-nearest を surface 済み、reactive-mode scalar (+1/-1/0) 付き。Reactive behavior は chase (agent pose に向かう) と flee (離れる) の 2 primitives が着地、mutually exclusive + pure-function stateless。chase + flee + static waypoint を 1 つの timeline に並べた multi-reactive scenario-set の end-to-end smoke と、`scripts/show_dynamic_obstacle_timeline.py` による Markdown/JSON inspect も着地済み (Markdown summary に reactive mode + speed 列あり)。残りは obstacle 側も policy を持つ状況 (本格的 ObstaclePolicy protocol)。 |
-| Route policy replay viewer | Policy trajectory と scene を Pages で inspect したい。 |
-| Real-vs-sim correlation report | rosbag replay と headless benchmark の差を見る。 |
+| Observation renderer integration | ✅ 完了。`RoutePolicyGymAdapter` の feature dict に IMU 7 軸 (#122) と peer-aware obstacle features (#123) を surface。残課題は scene bundle 側の input sensor を増やすこと (depth / LiDAR fan-out) — このセッション以降の別チケット。 |
+| Sensor noise profiles (raw sensors) | ✅ 完了。env-side noise + IMU kinematic finite-diff renderer (#111) が実装され、gym adapter feature dict に流れる (#122) ので route policy benchmark から observation 経由で σ が乗る。physics / rosbag-replay 由来の IMU renderer は引き続き OOS。 |
+| Dynamic obstacles (multi-agent) | ✅ 完了。`ObstaclePolicy` protocol + 4 reference impls (#112)、env / gym adapter に per-step peer cache (#123/#124/#127)、`MaintainSeparationObstaclePolicy` 等の policy obstacle が rollout 中に peer を観測可能。残課題は Pi3-style 大規模 multi-agent scenario の production 配信 — Tier 3 候補。 |
+| Route policy replay viewer | 引き続き OOS。Policy trajectory と scene を Pages で inspect する viewer は未着手。 |
+| Real-vs-sim correlation report | ✅ 完了。`scripts/run_rosbag_correlation.py` (#113/#115) → scenario-set run report への attach (#121) → review bundle への surface + regression gate (#125/#126) → per-bag overrides (#128) → translation/heading per-pair distribution + time stratification (#129〜#134) まで実装済み。`gs-mapper route-policy-scenario-ci-review --max-correlation-* --correlation-thresholds-config --correlation-pair-distribution-strata` が production rollout で使える。残課題は event-aligned stratification (#133 OOS、外部 event timestamp が必要)。 |
 
 ### 12.3 B: Outdoor asset quality
 
-| Task | Why |
+| Task | Status (2026-04-26) |
 | --- | --- |
-| Pi3 production comparison | README に Pi3 が出ているので production asset があると強い。 |
-| LoGeR production comparison | Same。External SLAM comparison の説得力が増す。 |
-| MCD `ntu_day_02` quality reruns | supervised demo の品質改善余地がある。 |
+| Pi3 production comparison | 引き続き OOS。README に Pi3 が出ているので production asset があると強い。要 GPU run + asset bundle。 |
+| LoGeR production comparison | 引き続き OOS。External SLAM comparison の説得力が増す。要 GPU run。 |
+| MCD `ntu_day_02` quality reruns | 部分完了。`single_400_depth_long` (L1=0.1951) と `single_800_ba` (L1=0.2699) は gate pass。`multi_3cam_300each_ba` は手元の bag に `d455t` / `d435i` topics が無く data-blocked、要 MCDVIRAL の追加 download。 |
 | Waymo E2E | high-value だが dataset access と env blocker がある。 |
 
 #### 12.3.1 MCD quality gate targets
