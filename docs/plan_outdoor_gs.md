@@ -85,11 +85,12 @@
 - mypy note:
   - `python3 -m mypy src/gs_sim2real/sim/policy_scenario_ci_promotion.py` は pass。
   - `src/gs_sim2real/cli.py` を含む mypy は Waymo / MCD 周辺の既知型不整合で落ちる。Tier 2 chain は regression を入れていない。
-- Tier 1 MCD rerun (`scripts/plan_mcd_quality_runs.py`) の 2/3 profile (`single_400_depth_long` L1=0.1951 / `single_800_ba` L1=0.2699) が gate pass。Profile 3 (`multi_3cam_300each_ba`) は手元 bag に `d455t` / `d435i` topics が無いので data-blocked。
+- Tier 1 MCD rerun (`scripts/plan_mcd_quality_runs.py`) の 2/3 profile (`single_400_depth_long` L1=0.1951 / `single_800_ba` L1=0.2699) が gate pass。Profile 3 はもとは `multi_3cam_300each_ba` (`/d455t/color/image_raw` 含む) として定義されていたが、MCDVIRAL Download page を 2026-04-26 に再確認したところ ATV rig は `d435i` + `d455b` の 2 camera 構成で `d455t` topic は upstream に存在しない (calibration_atv.yaml にも無い)。そのため `multi_2cam_300each_ba` (d455b + d435i) に redefine 済み。残課題は `d435i.bag` (4.7 GB, drive id `1svtLKBcoxixWZjatwSP1MtJEmVTPE3wA`) を `data/mcd/ntu_day_02/` に取得して GPU 実走するだけ。
 - Claude が次に触るときの推奨 starting point:
   1. **event-aligned stratification** (#133 OOS): scenario phase boundary を外部 event timestamp 列で受け取る stratification mode。
   2. **Pi3 / LoGeR production comparison asset** (§12.3): GPU run + asset bundle、external SLAM comparison surface を厚くする。
   3. **`read_gsof_ins_pose_stream`** (#113 OOS): applanix custom msg schema の vendor が必要なので外部依存あり。
+  4. **Profile 3 d435i.bag fetch + GPU rerun**: spec 訂正済み (2-camera)。`scripts/download_mcd_session.sh 1svtLKBcoxixWZjatwSP1MtJEmVTPE3wA data/mcd/ntu_day_02/ntu_day_02_d435i.bag` を retry loop で kick、その後 `scripts/plan_mcd_quality_runs.py --profile ntu_day02_multi_2cam_300each_ba` の preprocess/train/export を流す。
 
 ## 4. System Map
 
@@ -653,7 +654,7 @@ python3 scripts/collect_mcd_quality_runs.py --format gate --fail-on-gate
 | --- | --- |
 | Pi3 production comparison | 引き続き OOS。README に Pi3 が出ているので production asset があると強い。要 GPU run + asset bundle。 |
 | LoGeR production comparison | 引き続き OOS。External SLAM comparison の説得力が増す。要 GPU run。 |
-| MCD `ntu_day_02` quality reruns | 部分完了。`single_400_depth_long` (L1=0.1951) と `single_800_ba` (L1=0.2699) は gate pass。`multi_3cam_300each_ba` は手元の bag に `d455t` / `d435i` topics が無く data-blocked、要 MCDVIRAL の追加 download。 |
+| MCD `ntu_day_02` quality reruns | 部分完了。`single_400_depth_long` (L1=0.1951) と `single_800_ba` (L1=0.2699) は gate pass。元の `multi_3cam_300each_ba` 案は `d455t` topic が MCDVIRAL ATV に存在しないことが 2026-04-26 に判明したため `multi_2cam_300each_ba` (d455b + d435i) に redefine。残るのは `d435i.bag` (4.7 GB) を取得して GPU 実走するだけ。 |
 | Waymo E2E | high-value だが dataset access と env blocker がある。 |
 
 #### 12.3.1 MCD quality gate targets
@@ -672,7 +673,7 @@ Production rerun は `scripts/collect_mcd_quality_runs.py --format gate --fail-o
 | `final_l1` | `require_final_l1=True` | train log に final L1 が残っている |
 | `final_l1_max` | `max_final_l1=None` | 数値上限が必要なときだけ set する |
 
-`ntu_day_02` rerun profile (`ntu_day02_single_400_depth_long` / `ntu_day02_single_800_ba` / `ntu_day02_multi_3cam_300each_ba`) は `scripts/plan_mcd_quality_runs.py` が生成。production 実行後は上記 gate を全 profile で満たす ことが完了条件。`max_final_l1` は baseline run の実測が出るまで `None` のままにしておく (regression guard として後から絞る)。
+`ntu_day_02` rerun profile (`ntu_day02_single_400_depth_long` / `ntu_day02_single_800_ba` / `ntu_day02_multi_2cam_300each_ba`) は `scripts/plan_mcd_quality_runs.py` が生成。production 実行後は上記 gate を全 profile で満たす ことが完了条件。`max_final_l1` は baseline run の実測が出るまで `None` のままにしておく (regression guard として後から絞る)。`multi_2cam_300each_ba` は当初 `multi_3cam_300each_ba` (`/d455t/color/image_raw` 含む) として定義されていたが、MCDVIRAL ATV rig には `d455t` が存在しないため 2 camera (d455b + d435i) に訂正済み。
 
 ### 12.4 C: Public launch polish
 
