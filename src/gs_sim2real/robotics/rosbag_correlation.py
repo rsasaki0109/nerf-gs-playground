@@ -50,6 +50,8 @@ from typing import Any
 
 REAL_VS_SIM_CORRELATION_REPORT_VERSION = "gs-mapper-real-vs-sim-correlation-report/v1"
 
+_PAIR_DISTRIBUTION_STRATA_MODES: frozenset[str] = frozenset({"equal-duration", "equal-pair-count"})
+
 
 @dataclass(frozen=True, slots=True)
 class BagPoseSample:
@@ -261,12 +263,19 @@ class RealVsSimCorrelationThresholds:
     max_pair_heading_error_radians: float | None = None
     max_exceeding_heading_pair_fraction: float | None = None
     pair_distribution_strata: int | None = None
+    pair_distribution_strata_mode: str = "equal-duration"
 
     def __post_init__(self) -> None:
         if self.pair_distribution_strata is not None:
             if int(self.pair_distribution_strata) < 1:
                 raise ValueError("pair_distribution_strata must be >= 1 when set")
             object.__setattr__(self, "pair_distribution_strata", int(self.pair_distribution_strata))
+        mode = str(self.pair_distribution_strata_mode)
+        if mode not in _PAIR_DISTRIBUTION_STRATA_MODES:
+            raise ValueError(
+                f"pair_distribution_strata_mode must be one of {sorted(_PAIR_DISTRIBUTION_STRATA_MODES)}; got {mode!r}"
+            )
+        object.__setattr__(self, "pair_distribution_strata_mode", mode)
 
     @property
     def is_empty(self) -> bool:
@@ -301,6 +310,8 @@ class RealVsSimCorrelationThresholds:
             payload["maxExceedingHeadingPairFraction"] = float(self.max_exceeding_heading_pair_fraction)
         if self.pair_distribution_strata is not None and self.pair_distribution_strata > 1:
             payload["pairDistributionStrata"] = int(self.pair_distribution_strata)
+            if self.pair_distribution_strata_mode != "equal-duration":
+                payload["pairDistributionStrataMode"] = self.pair_distribution_strata_mode
         return payload
 
 
@@ -312,6 +323,7 @@ def real_vs_sim_correlation_thresholds_from_dict(payload: Mapping[str, Any]) -> 
         return None if value is None else float(value)
 
     strata_value = payload.get("pairDistributionStrata")
+    mode_value = payload.get("pairDistributionStrataMode")
     return RealVsSimCorrelationThresholds(
         max_translation_error_mean_meters=_optional("maxTranslationErrorMeanMeters"),
         max_translation_error_p95_meters=_optional("maxTranslationErrorP95Meters"),
@@ -322,6 +334,7 @@ def real_vs_sim_correlation_thresholds_from_dict(payload: Mapping[str, Any]) -> 
         max_pair_heading_error_radians=_optional("maxPairHeadingErrorRadians"),
         max_exceeding_heading_pair_fraction=_optional("maxExceedingHeadingPairFraction"),
         pair_distribution_strata=None if strata_value is None else int(strata_value),
+        pair_distribution_strata_mode="equal-duration" if mode_value is None else str(mode_value),
     )
 
 
@@ -386,13 +399,14 @@ def evaluate_real_vs_sim_correlation_thresholds(
 
     failed: list[str] = []
     strata = thresholds.pair_distribution_strata
+    strata_mode = thresholds.pair_distribution_strata_mode
     aggregate_stratified = strata is not None and strata > 1 and bool(report.pairs)
     if aggregate_stratified:
         # Stratified mode replaces the report-level aggregate checks with
         # per-window aggregates computed from report.pairs (the strided
         # sample). Empty windows skip silently. Aggregates from heading
         # use the heading-bearing subset of the window.
-        for window_index, window_pairs in enumerate(_split_pairs_by_time(report.pairs, int(strata))):
+        for window_index, window_pairs in enumerate(_split_pairs(report.pairs, int(strata), strata_mode)):
             if not window_pairs:
                 continue
             translation_errors = [float(pair.translation_error_meters) for pair in window_pairs]
@@ -456,7 +470,7 @@ def evaluate_real_vs_sim_correlation_thresholds(
             if exceeding / len(report.pairs) > limit:
                 failed.append("translation-pair-distribution")
         else:
-            for window_index, window_pairs in enumerate(_split_pairs_by_time(report.pairs, strata)):
+            for window_index, window_pairs in enumerate(_split_pairs(report.pairs, strata, strata_mode)):
                 if not window_pairs:
                     continue
                 exceeding = sum(1 for pair in window_pairs if float(pair.translation_error_meters) > bound)
@@ -476,7 +490,7 @@ def evaluate_real_vs_sim_correlation_thresholds(
                 if exceeding / len(with_heading) > limit:
                     failed.append("heading-pair-distribution")
         else:
-            for window_index, window_pairs in enumerate(_split_pairs_by_time(report.pairs, strata)):
+            for window_index, window_pairs in enumerate(_split_pairs(report.pairs, strata, strata_mode)):
                 with_heading = [pair for pair in window_pairs if pair.heading_error_radians is not None]
                 if not with_heading:
                     continue
@@ -515,6 +529,45 @@ def _split_pairs_by_time(
             index = strata - 1
         windows[index].append(pair)
     return windows
+
+
+def _split_pairs_by_count(
+    pairs: Sequence[CorrelatedPosePair],
+    strata: int,
+) -> list[list[CorrelatedPosePair]]:
+    """Partition ``pairs`` into ``strata`` near-equal-count groups by index order.
+
+    The first ``len(pairs) % strata`` windows hold one extra pair so the
+    total population is preserved (e.g. 10 pairs across 4 windows yields
+    counts ``[3, 3, 2, 2]``). Useful when the bag has uneven sample
+    density (long quiet stretches followed by bursts) and equal-duration
+    windows would leave most windows nearly empty.
+    """
+
+    if strata <= 1 or not pairs:
+        return [list(pairs)]
+    total = len(pairs)
+    base = total // strata
+    extras = total % strata
+    windows: list[list[CorrelatedPosePair]] = []
+    cursor = 0
+    for window_index in range(strata):
+        size = base + (1 if window_index < extras else 0)
+        windows.append(list(pairs[cursor : cursor + size]))
+        cursor += size
+    return windows
+
+
+def _split_pairs(
+    pairs: Sequence[CorrelatedPosePair],
+    strata: int,
+    mode: str,
+) -> list[list[CorrelatedPosePair]]:
+    """Dispatch to the requested stratification splitter."""
+
+    if mode == "equal-pair-count":
+        return _split_pairs_by_count(pairs, strata)
+    return _split_pairs_by_time(pairs, strata)
 
 
 _NAVSAT_MSGTYPES: frozenset[str] = frozenset({"sensor_msgs/msg/NavSatFix", "sensor_msgs/NavSatFix"})
