@@ -126,7 +126,7 @@ def build_default_launch_kit() -> LaunchKit:
             "Project page", DEFAULT_SITE_URL, "First-stop page with the GS Mapper pitch and viewer entry points."
         ),
         LaunchLink(
-            "Live splat viewer", DEFAULT_LIVE_VIEWER_URL, "WebGL scene picker with eight bundled comparison splats."
+            "Live splat viewer", DEFAULT_LIVE_VIEWER_URL, "WebGL scene picker with nine bundled comparison splats."
         ),
         LaunchLink(
             "Spark mobile / VR viewer", DEFAULT_SPARK_VIEWER_URL, "Spark viewer for mobile and WebXR-capable devices."
@@ -164,7 +164,7 @@ def build_default_launch_kit() -> LaunchKit:
                 "I released GS Mapper: an open-source pipeline for turning real outdoor robot data, "
                 "DUSt3R / MASt3R pose-free reconstructions, and MASt3R-SLAM / VGGT-SLAM 2.0 / Pi3 / "
                 "LoGeR artifacts into Gaussian-splat scenes and Physical AI policy benchmark artifacts.\n\n"
-                "It ships eight public comparison scenes, external SLAM dry-run manifests, route-policy "
+                "It ships nine public comparison scenes, external SLAM dry-run manifests, route-policy "
                 "benchmarks with pose and raw camera / depth / LiDAR noise profiles, dynamic-obstacle "
                 "timelines with multi-agent observation features, scenario matrix expansion, CI "
                 "sharding, generated workflow validation, activation guards, and review bundles.\n\n"
@@ -180,7 +180,7 @@ def build_default_launch_kit() -> LaunchKit:
                 "SLAM artifacts, then produces browser-viewable .splat files, scene contracts, policy "
                 "benchmark reports, scenario shards, and review bundles.\n\n"
                 "The current demo set compares supervised GNSS + LiDAR, DUSt3R, MASt3R, VGGT-SLAM 2.0, "
-                "and MASt3R-SLAM outputs on outdoor robotics scenes. The benchmark stack keeps dataset, "
+                "MASt3R-SLAM, and Pi3X outputs on outdoor robotics scenes. The benchmark stack keeps dataset, "
                 "policy registry, scenario matrix, CI manifest, workflow validation, activation, and "
                 "review publishing as separate testable artifacts, plus partial-information knobs "
                 "(pose / goal / heading noise, raw camera / depth / LiDAR noise, and dynamic "

@@ -1,5 +1,5 @@
 {
-  "sceneCount": 8,
+  "sceneCount": 9,
   "scenes": [
     {
       "assetUrl": "assets/outdoor-demo/outdoor-demo.splat",
@@ -972,6 +972,178 @@
       ],
       "trajectoryExtentMeters": 2.16,
       "viewerUrl": "https://rsasaki0109.github.io/gs-mapper/splat.html?url=assets/outdoor-demo/bag6-mast3r-slam-20-15k.splat"
+    },
+    {
+      "assetUrl": "assets/outdoor-demo/bag6-pi3x-20-15k.splat",
+      "bounds": {
+        "center": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "confidence": "estimated",
+        "extent": [
+          74.4,
+          4.0,
+          74.4
+        ],
+        "max": [
+          37.2,
+          2.0,
+          37.2
+        ],
+        "min": [
+          -37.2,
+          -2.0,
+          -37.2
+        ],
+        "source": "readme-trajectory-extent"
+      },
+      "coordinateFrame": {
+        "frameId": "autoware_estimated_metric_world",
+        "gravity": [
+          0.0,
+          -9.80665,
+          0.0
+        ],
+        "handedness": "right-handed",
+        "scaleStatus": "estimated-metric",
+        "unit": "meter",
+        "upAxis": "y"
+      },
+      "evaluationTasks": [
+        {
+          "kind": "pose-estimation",
+          "label": "Visual localization",
+          "metrics": [
+            "translation-error",
+            "rotation-error",
+            "tracking-success-rate"
+          ],
+          "requiredSensors": [
+            "rgb-forward"
+          ],
+          "taskId": "localization"
+        },
+        {
+          "kind": "planning",
+          "label": "Viewpoint planning",
+          "metrics": [
+            "coverage-gain",
+            "path-length",
+            "render-validity"
+          ],
+          "requiredSensors": [
+            "rgb-forward",
+            "depth-proxy"
+          ],
+          "taskId": "viewpoint-planning"
+        },
+        {
+          "kind": "navigation",
+          "label": "Waypoint navigation",
+          "metrics": [
+            "goal-success",
+            "collision-rate",
+            "path-efficiency"
+          ],
+          "requiredSensors": [
+            "rgb-forward",
+            "lidar-ray-proxy"
+          ],
+          "taskId": "waypoint-navigation"
+        },
+        {
+          "kind": "mapping",
+          "label": "Mapping coverage",
+          "metrics": [
+            "surface-coverage",
+            "frontier-count",
+            "revisit-rate"
+          ],
+          "requiredSensors": [
+            "rgb-forward",
+            "depth-proxy"
+          ],
+          "taskId": "mapping-coverage"
+        }
+      ],
+      "label": "bag6 cam0 — Pi3X (15k)",
+      "previewUrl": "images/demo-sweep/09_bag6-pi3x.png",
+      "reconstructionMethod": "pi3x-vo",
+      "sceneFamily": "autoware",
+      "sceneId": "bag6-pi3x-20-15k",
+      "sensorRig": {
+        "rigId": "physical-ai-default",
+        "sensors": [
+          {
+            "description": "RGB observation rendered from the browser-viewable splat scene.",
+            "modality": "rgb",
+            "outputs": [
+              "rgb"
+            ],
+            "sensorId": "rgb-forward",
+            "status": "ready-via-splat-viewer"
+          },
+          {
+            "description": "Depth proxy rendered from the local splat rasterizer as float32 depth plus validity mask.",
+            "modality": "depth",
+            "outputs": [
+              "depth",
+              "validity-mask"
+            ],
+            "sensorId": "depth-proxy",
+            "status": "ready-via-splat-raster"
+          },
+          {
+            "description": "LiDAR-like range and point proxy sampled from the local splat raster depth image.",
+            "modality": "lidar",
+            "outputs": [
+              "ranges",
+              "points"
+            ],
+            "sensorId": "lidar-ray-proxy",
+            "status": "ready-via-depth-rays"
+          },
+          {
+            "description": "IMU proxy synthesised by HeadlessPhysicalAIEnvironment: each step finite-differences the agent pose to estimate body-frame angular velocity and linear acceleration, with no gravity model. teleport actions and the post-reset state both report the zero kinematic state (step_dt_seconds == 0). Raw-sensor noise profiles' IMU σ fields perturb the rendered outputs in place.",
+            "modality": "imu",
+            "outputs": [
+              "angular-velocity",
+              "linear-acceleration"
+            ],
+            "sensorId": "imu-proxy",
+            "status": "ready-via-kinematic-finite-diff"
+          }
+        ]
+      },
+      "summary": "Autoware bag6 cam0, 20 Pi3X VO frames, external tensor artifact import — comparison-quality",
+      "tags": [
+        "pi3x-vo",
+        "autoware",
+        "estimated-metric",
+        "pi3x",
+        "pi3",
+        "external-slam"
+      ],
+      "taskSplit": [
+        {
+          "description": "Trajectory poses used for reconstruction or artifact import.",
+          "episodeId": "bag6-pi3x-20-15k-train",
+          "poseCount": 16,
+          "source": "reconstruction-trajectory",
+          "split": "train"
+        },
+        {
+          "description": "Held-out viewpoints sampled within scene bounds for Physical AI evaluation.",
+          "episodeId": "bag6-pi3x-20-15k-eval",
+          "poseCount": 4,
+          "source": "held-out-viewpoint-contract",
+          "split": "eval"
+        }
+      ],
+      "trajectoryExtentMeters": 74.4,
+      "viewerUrl": "https://rsasaki0109.github.io/gs-mapper/splat.html?url=assets/outdoor-demo/bag6-pi3x-20-15k.splat"
     },
     {
       "assetUrl": "assets/outdoor-demo/mcd-tuhh-day04-mast3r.splat",

@@ -260,6 +260,7 @@ SCENE_PROFILES: dict[str, _SceneProfile] = {
     "bag6-mast3r-slam-20-15k": _SceneProfile(
         "autoware", "estimated-metric", 2.16, 10, ("mast3r-slam", "external-slam")
     ),
+    "bag6-pi3x-20-15k": _SceneProfile("autoware", "estimated-metric", 74.4, 20, ("pi3x", "pi3", "external-slam")),
     "mcd-tuhh-day04-mast3r": _SceneProfile("mcd", "metric", 59.0, 20, ("mast3r", "pose-free", "metric")),
     "mcd-ntu-day02-supervised": _SceneProfile("mcd", "metric", 250.0, 400, ("supervised", "gnss", "lidar")),
 }
@@ -376,6 +377,12 @@ def _infer_reconstruction_method(scene_payload: dict[str, Any]) -> str:
         return "vggt-slam-2.0"
     if "mast3r-slam" in text:
         return "mast3r-slam"
+    if "pi3x" in text:
+        return "pi3x-vo"
+    if "pi3" in text:
+        return "pi3-vo"
+    if "loger" in text:
+        return "loger"
     if "mast3r" in text:
         return "mast3r-pose-free"
     if "dust3r" in text:

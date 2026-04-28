@@ -1,6 +1,6 @@
 # 屋外 3D Gaussian Splatting / Physical AI Simulation 開発計画
 
-更新日: 2026-04-29（Pages sample review bundle 反映）
+更新日: 2026-04-29（Pi3X production comparison asset 反映）
 
 この文書は、GS Mapper の屋外 3DGS パイプラインと、その上に載せる Physical AI simulation / policy benchmark / scenario CI の現行計画をまとめる長めの handoff です。
 
@@ -18,10 +18,10 @@
 
 - GS Mapper は、写真フォルダ、Autoware / MCD の robotics logs、MASt3R-SLAM / VGGT-SLAM 2.0 / Pi3 / LoGeR などの external SLAM artifacts を、3D Gaussian Splatting training / export / browser viewer へつなぐ repo。
 - Public demo は GitHub Pages で公開済み。`docs/scenes-list.json` が README table / preview capture / hero GIF / viewer picker の source of truth。
-- Production viewer picker は 8 scenes。2 supervised、4 pose-free、2 external-SLAM comparison。
+- Production viewer picker は 9 scenes。2 supervised、4 pose-free、3 external-SLAM comparison。
 - MCD `tuhh_day_04` の supervised GNSS 成功扱いは撤回済み。`/vn200/GPS` が all-zero なので production picker には入れない。
 - Valid GNSS supervised MCD demo は `ntu_day_02`。production asset は `docs/assets/outdoor-demo/mcd-ntu-day02-supervised.splat`。
-- External SLAM import は VGGT-SLAM 2.0 / MASt3R-SLAM comparison splat まで実走済み。Pi3 / LoGeR profile も artifact resolver 側に候補追加済み。
+- External SLAM import は VGGT-SLAM 2.0 / MASt3R-SLAM / Pi3X comparison splat まで実走済み。LoGeR profile も artifact resolver 側に候補追加済み。
 - 2026-04-24 時点では、屋外 3DGS だけでなく **Physical AI simulation benchmark environment** を目指す方向へ拡張中。
 - Route policy benchmark 系は、dataset / imitation / registry / benchmark / history / scenario-set / matrix / sharding / CI manifest / workflow materialization / validation / activation / review bundle / workflow trigger promotion gate / promotion-backed trigger adoption / adoption-aware review bundle まで分割済み。
 - 最新の merged Pages refresh は `ee42f7a`。Tier 2 chain (#121–#134) で env-hardening + correlation gate plumbing が完成し、Pages landing は outdoor GS demo-first に刷新済み。local full pytest / GitHub Actions CI / Pages deploy は green。
@@ -126,8 +126,9 @@
 4. `assets/outdoor-demo/bag6-mast3r.splat` — bag6 MAST3R pose-free metric
 5. `assets/outdoor-demo/bag6-vggt-slam-20-15k.splat` — bag6 VGGT-SLAM 2.0 comparison
 6. `assets/outdoor-demo/bag6-mast3r-slam-20-15k.splat` — bag6 MASt3R-SLAM comparison
-7. `assets/outdoor-demo/mcd-tuhh-day04-mast3r.splat` — MCD `tuhh_day_04` MAST3R pose-free metric
-8. `assets/outdoor-demo/mcd-ntu-day02-supervised.splat` — MCD `ntu_day_02` supervised valid-GNSS demo
+7. `assets/outdoor-demo/bag6-pi3x-20-15k.splat` — bag6 Pi3X comparison
+8. `assets/outdoor-demo/mcd-tuhh-day04-mast3r.splat` — MCD `tuhh_day_04` MAST3R pose-free metric
+9. `assets/outdoor-demo/mcd-ntu-day02-supervised.splat` — MCD `ntu_day_02` supervised valid-GNSS demo
 
 重要:
 
@@ -153,7 +154,7 @@
 - IMU orientation CSV normalization。
 - Angular-velocity yaw fallback。
 - External SLAM artifact import facade。
-- VGGT-SLAM 2.0 / MASt3R-SLAM comparison splat 実走。
+- VGGT-SLAM 2.0 / MASt3R-SLAM / Pi3X comparison splat 実走。
 - Pi3 / LoGeR profile / resolver candidate patterns。
 - Pi3 / LoGeR smoke は archive に記録済み。
 - README / Pages launch-kit / docs assets 整理。
@@ -204,7 +205,7 @@ GS Mapper 側の責務:
 | --- | --- | --- |
 | MASt3R-SLAM | production comparison 実走済み | `bag6-mast3r-slam-20-15k.splat` |
 | VGGT-SLAM 2.0 | production comparison 実走済み | `bag6-vggt-slam-20-15k.splat` |
-| Pi3 / Pi3X | smoke 済み、profile 候補追加済み | camera_poses tensor / dense points flattening 対応候補。production asset は未実走。 |
+| Pi3 / Pi3X | production comparison 実走済み | `bag6-pi3x-20-15k.splat`。camera_poses tensor + dense points/colors/confidence を `external-slam` importer で materialize。 |
 | LoGeR | smoke 済み、profile 候補追加済み | `--output_txt` trajectory と `.pt` artifact 候補。production asset は未実走。 |
 
 ### 7.3 Dry-run examples
@@ -670,7 +671,7 @@ python3 scripts/collect_mcd_quality_runs.py --format gate --fail-on-gate
 
 | Task | Status (2026-04-26) |
 | --- | --- |
-| Pi3 production comparison | 引き続き OOS。README に Pi3 が出ているので production asset があると強い。要 GPU run + asset bundle。 |
+| Pi3 production comparison | 完了。Pi3X VO 20 frames → `external-slam` import → gsplat 15k → `docs/assets/outdoor-demo/bag6-pi3x-20-15k.splat`。 |
 | LoGeR production comparison | 引き続き OOS。External SLAM comparison の説得力が増す。要 GPU run。 |
 | MCD `ntu_day_02` quality reruns | 部分完了。`single_400_depth_long` (L1=0.1951) と `single_800_ba` (L1=0.2699) は gate pass。`multi_3cam_300each_ba` は手元の bag に `d455t` / `d435i` topics が無く data-blocked、要 MCDVIRAL の追加 download。 |
 | Waymo E2E | high-value だが dataset access と env blocker がある。 |
@@ -698,7 +699,7 @@ Production rerun は `scripts/collect_mcd_quality_runs.py --format gate --fail-o
 | Task | Why |
 | --- | --- |
 | Launch kit cleanup | Star を増やすには短い copy と画像が必要。Env-hardening (pose + raw sensor noise / multi-agent dynamic obstacles) を technical / community copy に反映、Physical AI docs link + topics (`gsplat` / `scenario-ci` / `route-policy-benchmark`) 追加済み。残りは実スクリーンショット / 動画素材の差し替え。 |
-| Demo preview refresh | 完了。`scripts/enhance_demo_sweep_previews.py` で 8 production preview PNG を 1280x720 のまま foreground crop / punch-up し、`hero.gif` も production scene preview 由来の軽量 loop に更新。Pages landing は Outdoor GS capability / production scene wall を前面化済み。 |
+| Demo preview refresh | 完了。`scripts/enhance_demo_sweep_previews.py` で 9 production preview PNG を 1280x720 のまま foreground crop / punch-up し、`hero.gif` も production scene preview 由来の軽量 loop に更新。Pages landing は Outdoor GS capability / production scene wall を前面化済み。 |
 
 ## 13. Scope Boundaries
 
