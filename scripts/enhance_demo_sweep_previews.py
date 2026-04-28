@@ -85,7 +85,8 @@ def build_static_preview_hero_gif(
     font_meta = _load_font(14)
     frames: list[Image.Image] = []
     for index, scene in enumerate(scenes, start=1):
-        preview = Image.open(docs_dir / scene["preview"]).convert("RGB").resize(HERO_SIZE, Image.Resampling.LANCZOS)
+        with Image.open(docs_dir / scene["preview"]) as source:
+            preview = source.convert("RGB").resize(HERO_SIZE, Image.Resampling.LANCZOS)
         frame = preview.convert("RGBA")
         overlay = Image.new("RGBA", HERO_SIZE, (0, 0, 0, 0))
         draw = ImageDraw.Draw(overlay)
@@ -169,12 +170,15 @@ def _crop_for_bbox(
     crop_top = max(0.0, min(crop_top, height - box_height))
     crop_right = min(width, crop_left + box_width)
     crop_bottom = min(height, crop_top + box_height)
-    return (
+    crop = (
         int(round(crop_left)),
         int(round(crop_top)),
         int(round(crop_right)),
         int(round(crop_bottom)),
     )
+    if crop[0] <= 2 and crop[1] <= 2 and width - crop[2] <= 2 and height - crop[3] <= 2:
+        return (0, 0, width, height)
+    return crop
 
 
 def _draw_bottom_gradient(draw: ImageDraw.ImageDraw, size: tuple[int, int]) -> None:

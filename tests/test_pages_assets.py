@@ -331,6 +331,12 @@ def test_demo_sweep_enhancement_script_and_hero_gif_cover_production_scenes() ->
     module = _load_script_module(REPO_ROOT / "scripts" / "enhance_demo_sweep_previews.py")
     assert module.TARGET_SIZE == (1280, 720)
     assert module.HERO_SIZE == (720, 405)
+    assert module._crop_for_bbox((1280, 720), (328, 56, 951, 665), target_size=(1280, 720), padding=1.18) == (
+        0,
+        0,
+        1280,
+        720,
+    )
     hero = REPO_ROOT / "docs" / "images" / "demo-sweep" / "hero.gif"
     assert hero.stat().st_size > 50_000
     with Image.open(hero) as image:
