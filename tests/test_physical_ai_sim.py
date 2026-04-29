@@ -30,8 +30,8 @@ def test_simulation_catalog_wraps_all_public_scenes() -> None:
     catalog = load_simulation_catalog_from_scene_picker(REPO_ROOT / "docs" / "scenes-list.json")
 
     assert catalog.version == "gs-mapper-physical-ai-sim/v1"
-    assert len(catalog.scenes) == 8
-    assert len(set(catalog.scene_ids())) == 8
+    assert len(catalog.scenes) == 9
+    assert len(set(catalog.scene_ids())) == 9
 
     outdoor = catalog.scene_by_id("outdoor-demo")
     assert outdoor.coordinate_frame.scale_status == "metric"
@@ -52,12 +52,17 @@ def test_simulation_catalog_wraps_all_public_scenes() -> None:
     assert dust3r.has_task("localization")
     assert not dust3r.has_task("waypoint-navigation")
 
+    pi3x = catalog.scene_by_id("bag6-pi3x-20-15k")
+    assert pi3x.reconstruction_method == "pi3x-vo"
+    assert pi3x.trajectory_extent_meters == 74.4
+    assert pi3x.has_task("waypoint-navigation")
+
 
 def test_simulation_catalog_json_is_stable_and_contains_agent_contract() -> None:
     catalog = load_simulation_catalog_from_scene_picker(REPO_ROOT / "docs" / "scenes-list.json")
     payload = json.loads(render_simulation_catalog_json(catalog))
 
-    assert payload["sceneCount"] == 8
+    assert payload["sceneCount"] == 9
     first = payload["scenes"][0]
     assert first["sceneId"] == "outdoor-demo"
     assert payload["sourceCatalog"] == "docs/scenes-list.json"

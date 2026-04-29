@@ -65,7 +65,7 @@ Project notes: [Physical AI sim contract](docs/physical-ai-sim.md),
 [outdoor pipeline handoff](docs/plan_outdoor_gs.md), [launch kit](docs/launch-kit.md),
 release notes [v0.1.0](docs/releases/v0.1.0.md).
 
-The repo ships **eight** production demo scenes that A/B-compare pose-free and
+The repo ships **nine** production demo scenes that A/B-compare pose-free and
 external-SLAM outputs against supervised GNSS + LiDAR baselines. Pick any scene
 from the dropdown in the [live viewer](https://rsasaki0109.github.io/gs-mapper/splat.html).
 The old MCD `tuhh_day_04` zero-GNSS artifact is retained only as a diagnostic
@@ -190,7 +190,7 @@ GitHub Pages hosts four views of the same 6-bag Autoware Leo Drive ISUZU bundle:
 | [`/splat_spark.html`](https://rsasaki0109.github.io/gs-mapper/splat_spark.html) | `sparkjsdev/spark` 2.0 (WebGL2, ESM) | THREE.js-based World Labs renderer with view-dependent LoD, progressive streaming, and VRAM virtualization. Handles mobile / VR as well as desktop; an **Enter VR** button is wired up for WebXR-capable devices (Meta Quest / Vision Pro). Tune LoD at runtime with `?lod=auto\|high\|low` (high pulls more splats at smaller pixel radius for desktop GPUs; low does the opposite for mobile / VR). Ships its own scene picker. |
 | [`/splat_webgpu.html`](https://rsasaki0109.github.io/gs-mapper/splat_webgpu.html) | `shrekshao/webgpu-3d-gaussian-splat-viewer` (WebGPU, GPU radix sort) | True WebGPU: compute-shader preprocess + radix sort per frame. Requires Chrome 113+, Edge 113+, or Safari TP with WebGPU enabled. |
 
-`splat.html` ships a scene picker across **two** supervised splats (Autoware fused and MCD `ntu_day_02`), **four** pose-free variants, and **two** external-SLAM artifact comparison scenes. Each shipped pose-free / external-SLAM `.splat` and the MCD supervised splat are capped at a 400k-gauss / 12.8 MB antimatter15 binary; the default Autoware supervised scene uses a smaller 80k gauss export for faster first paint (see table footnote).
+`splat.html` ships a scene picker across **two** supervised splats (Autoware fused and MCD `ntu_day_02`), **four** pose-free variants, and **three** external-SLAM artifact comparison scenes. Each shipped pose-free / external-SLAM `.splat` and the MCD supervised splat are capped at a 400k-gauss / 12.8 MB antimatter15 binary; the default Autoware supervised scene uses a smaller 80k gauss export for faster first paint (see table footnote).
 
 | Scene | Preview | Pipeline |
 |-------|---------|----------|
@@ -200,6 +200,7 @@ GitHub Pages hosts four views of the same 6-bag Autoware Leo Drive ISUZU bundle:
 | bag6 cam0 — MAST3R pose-free (metric) | [![](docs/images/demo-sweep/04_bag6-mast3r.png)](https://rsasaki0109.github.io/gs-mapper/splat.html?url=assets/outdoor-demo/bag6-mast3r.splat) | Same 20 frames → MAST3R sparse global alignment → gsplat **15k** iter. Metric-scale, 20/20 non-degenerate poses. See [Quality push](#quality-push-3k-vs-15k-mast3r-training) for the before/after |
 | bag6 cam0 — VGGT-SLAM 2.0 (15k) | [![](docs/images/demo-sweep/07_bag6-vggt-slam.png)](https://rsasaki0109.github.io/gs-mapper/splat.html?url=assets/outdoor-demo/bag6-vggt-slam-20-15k.splat) | Same 20 frames → VGGT-SLAM 2.0 in an isolated env → `external-slam` artifact import → gsplat **15k** iter. Comparison-quality rather than the default demo |
 | bag6 cam0 — MASt3R-SLAM (15k) | [![](docs/images/demo-sweep/08_bag6-mast3r-slam.png)](https://rsasaki0109.github.io/gs-mapper/splat.html?url=assets/outdoor-demo/bag6-mast3r-slam-20-15k.splat) | 20 stride-2 frames → official MASt3R-SLAM in an isolated env → `external-slam` artifact import → gsplat **15k** iter. Comparison-quality; 10/20 candidates became tracked keyframes |
+| bag6 cam0 — Pi3X (15k) | [![](docs/images/demo-sweep/09_bag6-pi3x.png)](https://rsasaki0109.github.io/gs-mapper/splat.html?url=assets/outdoor-demo/bag6-pi3x-20-15k.splat) | Same 20 frames → Pi3X VO tensor export → `external-slam` artifact import → gsplat **15k** iter. Comparison-quality with 20/20 recovered poses |
 | MCD tuhh_day_04 — MAST3R pose-free (metric) | [![](docs/images/demo-sweep/05_mcd-tuhh-day04-mast3r.png)](https://rsasaki0109.github.io/gs-mapper/splat.html?url=assets/outdoor-demo/mcd-tuhh-day04-mast3r.splat) | Same frames → MAST3R → gsplat **15k** iter. Matrix completes {bag6, MCD} × {DUSt3R, MAST3R} |
 | MCD ntu_day_02 — supervised | [![](docs/images/demo-sweep/06_mcd-ntu-day02-supervised.png)](https://rsasaki0109.github.io/gs-mapper/splat.html?url=assets/outdoor-demo/mcd-ntu-day02-supervised.splat) | ATV session with valid `/vn200/GPS` after warm-up trim → ATV calibration YAML → LiDAR-seeded COLMAP sparse + depth-supervised gsplat 30k iter |
 
@@ -236,6 +237,7 @@ Numbers below are the end-to-end wall-clock and quality figures for the producti
 | bag6 cam0 — MAST3R | ~3 min | **20 / 20** | **28.1 m (metric)** | 15 000 | 285 s | 923k | ~0.16 | 12.8 MB / 400k gauss |
 | bag6 cam0 — VGGT-SLAM 2.0 | external run + artifact import | **20 / 20** unique poses | 3.23 m trajectory | 15 000 | 190 s | 222k | not tracked | 6.6 MB / 214k gauss |
 | bag6 cam0 — MASt3R-SLAM | external run + artifact import | **10 / 20** keyframes | 2.16 m trajectory | 15 000 | 460 s | 1.34M → 400k filter | ~0.24 | 12.8 MB / 400k gauss |
+| bag6 cam0 — Pi3X | 108 s Pi3X VO + 7 s artifact import | **20 / 20** poses | 74.4 m trajectory | 15 000 | 184 s | 328k | ~0.14 sampled final L1 | 9.8 MB / 321k gauss |
 | MCD tuhh_day_04 — DUSt3R | ~3 min | 19 / 20 | 1.78 m (unscaled) | 3 000 | 147 s | 3.23M → 400k filter | ~0.18 | 12.8 MB / 400k gauss |
 | MCD tuhh_day_04 — MAST3R | ~5 min | **20 / 20** | **59.0 m (metric)** | 15 000 | 413 s | 1.15M | ~0.16 | 12.8 MB / 400k gauss |
 | MCD ntu_day_02 — supervised | GNSS + ATV calibration + LiDAR seed (400 cams after 35 s trim) | 400/400 | 250 m horizontal GNSS extent | 30 000 | 500 s | 906k → 400k filter | 0.195 | 12.8 MB / 400k gauss |

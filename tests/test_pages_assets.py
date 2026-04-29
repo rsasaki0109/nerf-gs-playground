@@ -146,6 +146,17 @@ def test_bag6_mast3r_slam_splat_present(assets_dir: Path) -> None:
     assert "bag6-mast3r-slam-20-15k.splat" in html
 
 
+def test_bag6_pi3x_splat_present(assets_dir: Path) -> None:
+    """Pi3X-derived bag6 splat must be bundled and linked from splat.html."""
+    splat = assets_dir / "outdoor-demo" / "bag6-pi3x-20-15k.splat"
+    assert splat.is_file(), "missing Pi3X bag6 demo splat"
+    size = splat.stat().st_size
+    assert size > 1_000_000, f"splat looks too small ({size} bytes)"
+    assert size % 32 == 0, f"splat is not 32-byte aligned ({size} bytes)"
+    html = (REPO_ROOT / "docs" / "splat.html").read_text(encoding="utf-8")
+    assert "bag6-pi3x-20-15k.splat" in html
+
+
 def test_mcd_tuhh_day04_mast3r_splat_present(assets_dir: Path) -> None:
     """MAST3R-derived MCD splat must be bundled and linked from splat.html."""
     splat = assets_dir / "outdoor-demo" / "mcd-tuhh-day04-mast3r.splat"
@@ -295,8 +306,8 @@ def test_shared_scene_picker_assets_present(assets_dir: Path) -> None:
 
 
 def test_scene_count_matches_documented_production_bundle() -> None:
-    """The public demo currently ships 8 production scenes."""
-    assert len(_scene_picker_urls()) == 8
+    """The public demo currently ships 9 production scenes."""
+    assert len(_scene_picker_urls()) == 9
 
 
 def test_readme_preview_script_covers_every_production_scene() -> None:

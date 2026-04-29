@@ -7,13 +7,13 @@
 <meta name="description" content="GS Mapper turns real outdoor robot logs and external SLAM outputs into browser-viewable Gaussian splats, scene contracts, policy benchmarks, and CI review bundles.">
 <link rel="canonical" href="https://rsasaki0109.github.io/gs-mapper/">
 <meta property="og:title" content="GS Mapper - Outdoor robot logs to Gaussian splats">
-<meta property="og:description" content="Open eight bundled outdoor Gaussian-splat demos built from robotics logs, GNSS/LiDAR supervision, DUSt3R, MASt3R, VGGT-SLAM, and MASt3R-SLAM outputs.">
+<meta property="og:description" content="Open nine bundled outdoor Gaussian-splat demos built from robotics logs, GNSS/LiDAR supervision, DUSt3R, MASt3R, VGGT-SLAM, MASt3R-SLAM, and Pi3X outputs.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://rsasaki0109.github.io/gs-mapper/">
 <meta property="og:image" content="https://rsasaki0109.github.io/gs-mapper/images/demo-sweep/01_outdoor-demo.png">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="GS Mapper - Outdoor robot logs to Gaussian splats">
-<meta name="twitter:description" content="Open eight bundled outdoor Gaussian-splat demos built from robotics logs, GNSS/LiDAR supervision, DUSt3R, MASt3R, VGGT-SLAM, and MASt3R-SLAM outputs.">
+<meta name="twitter:description" content="Open nine bundled outdoor Gaussian-splat demos built from robotics logs, GNSS/LiDAR supervision, DUSt3R, MASt3R, VGGT-SLAM, MASt3R-SLAM, and Pi3X outputs.">
 <meta name="twitter:image" content="https://rsasaki0109.github.io/gs-mapper/images/demo-sweep/01_outdoor-demo.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -927,9 +927,9 @@ footer a:hover { text-decoration: underline; }
       <a class="hero-action" href="https://github.com/rsasaki0109/gs-mapper/blob/main/docs/physical-ai-sim.md">Physical AI docs &rarr;</a>
     </div>
     <div class="hero-proof">
-      <span>8 production splats</span>
+      <span>9 production splats</span>
       <span>Autoware + MCD outdoor logs</span>
-      <span>DUSt3R / MASt3R / VGGT-SLAM</span>
+      <span>DUSt3R / MASt3R / VGGT-SLAM / Pi3X</span>
       <span>reviewable scenario CI artifacts</span>
     </div>
   </div>
@@ -995,6 +995,14 @@ footer a:hover { text-decoration: underline; }
           <p>MASt3R-SLAM candidate trajectories imported through the same artifact facade.</p>
         </div>
       </a>
+      <a class="scene-showcase-card" href="splat.html?url=assets/outdoor-demo/bag6-pi3x-20-15k.splat">
+        <img src="images/demo-sweep/09_bag6-pi3x.png" alt="Autoware bag6 Pi3X comparison Gaussian splat preview">
+        <div class="scene-showcase-body">
+          <span class="scene-showcase-kicker">External tensor import</span>
+          <h3>bag6 Pi3X</h3>
+          <p>Pi3X VO poses and dense tensor points imported into the same 15k splat path.</p>
+        </div>
+      </a>
       <a class="scene-showcase-card" href="splat.html?url=assets/outdoor-demo/mcd-tuhh-day04-mast3r.splat">
         <img src="images/demo-sweep/05_mcd-tuhh-day04-mast3r.png" alt="MCD tuhh_day_04 MAST3R pose-free Gaussian splat preview">
         <div class="scene-showcase-body">
@@ -1025,7 +1033,7 @@ footer a:hover { text-decoration: underline; }
         <p>GS Mapper is built around outdoor robotics data, not indoor toy scans: Autoware rosbags, MCD ATV / handheld sessions, GNSS and LiDAR supervision, pose-free camera-only recovery, and imported external-SLAM trajectories all land in the same browser-viewable splat contract.</p>
       </div>
       <div class="proof-summary">
-        <div class="proof-summary-row"><span>Production splats</span><strong>8</strong></div>
+        <div class="proof-summary-row"><span>Production splats</span><strong>9</strong></div>
         <div class="proof-summary-row"><span>Real log families</span><strong>Autoware + MCD</strong></div>
         <div class="proof-summary-row"><span>Pose sources</span><strong>GNSS/LiDAR + pose-free + SLAM</strong></div>
         <div class="proof-summary-row"><span>Browser paths</span><strong>WebGL + Spark + WebGPU</strong></div>
@@ -1050,7 +1058,7 @@ footer a:hover { text-decoration: underline; }
       <div class="proof-card">
         <span>04 / comparison</span>
         <h3>External SLAM import</h3>
-        <p>VGGT-SLAM 2.0 and MASt3R-SLAM artifacts become comparable outdoor splats.</p>
+        <p>VGGT-SLAM 2.0, MASt3R-SLAM, and Pi3X artifacts become comparable outdoor splats.</p>
       </div>
     </div>
     <div class="proof-media-grid">
@@ -1242,11 +1250,11 @@ footer a:hover { text-decoration: underline; }
     </div>
     <div class="dataset-card">
       <span class="tag" style="background:rgba(210,153,34,0.15);color:var(--accent-orange);">External SLAM</span>
-      <h3>MASt3R-SLAM / VGGT-SLAM</h3>
+      <h3>MASt3R-SLAM / VGGT-SLAM / Pi3X</h3>
       <p class="desc">External trajectories and point artifacts are imported after the heavy SLAM front-end runs outside the repo.</p>
       <div class="dataset-stats">
         <div class="stat"><div class="label">Systems</div><div class="value">4</div></div>
-        <div class="stat"><div class="label">Production</div><div class="value" style="color:var(--accent-green);">2 splats</div></div>
+        <div class="stat"><div class="label">Production</div><div class="value" style="color:var(--accent-green);">3 splats</div></div>
         <div class="stat"><div class="label">Import</div><div class="value">artifacts</div></div>
         <div class="stat"><div class="label">Gate</div><div class="value" style="color:var(--accent-purple);">dry-run</div></div>
       </div>
